@@ -1,0 +1,371 @@
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                String             @id @default(auto()) @map("_id") @db.ObjectId
+  fullName          String?
+  phone             String             @unique
+  address           String?
+  email             String?            @unique
+  isProfileComplete Boolean            @default(false)
+  isVerifyed        Boolean            @default(false)
+  buyerRating       Float?
+  fcmToken          String?
+  profileImage      String?            @default("https://i.ibb.co.com/nrs3FjM/images.png")
+  shopOpeningTime   String?
+  role              UserRole
+  status            UserStatus         @default(Active)
+  referralCode      String?            @unique
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  brance            brance?            @relation(fields: [branceId], references: [id])
+  branceId          String?            @db.ObjectId
+  order             order[]
+  shippingAddress   shippingAddress[]
+  verificationUsers verificationUsers?
+  UserLocation      UserLocation?
+  Wallet            Wallet?
+  Spin              Spin[]
+  Review            Review[]
+
+  @@map("users")
+}
+
+model PendingUser {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  phone     String   @unique
+  role      UserRole @default(Customer)
+  otpCode   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("pendingUsers")
+}
+
+model Otp {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  phone     String   @unique
+  otpCode   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("otps")
+}
+
+enum UserStatus {
+  All
+  New
+  Active
+  Inactive
+  Reactivate
+  Online
+  Offline
+  PerDayOrder
+  Blocked
+  Deleted
+}
+
+enum UserRole {
+  SuperAdmin
+  Admin
+  Customer
+  Agent
+  Owner
+  Driver
+}
+
+model UserLocation {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique @db.ObjectId
+  latitude  Float
+  longitude Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("user_locations")
+}
+
+model shippingAddress {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?  @db.ObjectId
+  shopName  String
+  landmark  String
+  address   String
+  latitude  Float
+  longitude Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  order     order[]
+
+  @@map("shippingAddresses")
+}
+
+model verificationUsers {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?  @unique @db.ObjectId
+  buyerName  String
+  buyerPhoto String
+  shopName   String
+  shopPhoto  String
+  documents  String[]
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@map("verificationUsers")
+}
+
+// ------- brances  information
+model brance {
+  id               String             @id @default(auto()) @map("_id") @db.ObjectId
+  name             String
+  address          String
+  latitude         Float
+  longitude        Float
+  openingTime      String
+  closingTime      String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  verticalBanner   verticalBanner[]
+  horizontalBanner horizontalBanner[]
+  handlaningCharge handlaningCharge[]
+  cartValue        cartValue[]
+  User             User[]
+  order            order[]
+  product          product[]
+  productCategory  productCategory[]
+
+  @@map("brances")
+}
+
+model handlaningCharge {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  charge    Float
+  condition String
+  brance    brance?  @relation(fields: [branceId], references: [id])
+  branceId  String?  @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("handlaningCharges")
+}
+
+model cartValue {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  minValue  Float
+  brance    brance?  @relation(fields: [branceId], references: [id])
+  branceId  String?  @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cartValues")
+}
+
+model verticalBanner {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  title     String
+  image     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brance   brance? @relation(fields: [branceId], references: [id])
+  branceId String? @db.ObjectId
+
+  @@map("verticalBanners")
+}
+
+model horizontalBanner {
+  id                     String                   @id @default(auto()) @map("_id") @db.ObjectId
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  brance                 brance?                  @relation(fields: [branceId], references: [id])
+  branceId               String?                  @db.ObjectId
+  horizontalBannerSlider horizontalBannerSlider[]
+
+  @@unique([branceId])
+  @@map("horizontalBanners")
+}
+
+model horizontalBannerSlider {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  title     String
+  image     String
+  serialNo  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  horizontalBanner   horizontalBanner? @relation(fields: [horizontalBannerId], references: [id])
+  horizontalBannerId String?           @db.ObjectId
+
+  @@unique([horizontalBannerId])
+  @@map("horizontalBannerSliders")
+}
+
+//-//--------------- Product and Order Models -----//
+
+model product {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  name              String
+  images            String[]
+  tag               String
+  realPrice         Float
+  sellingPrice      Float
+  availableQuantity Int
+  minOrderQuantity  Int
+  maxOrderQuantity  Int
+  unit              unit
+  branceId          String?  @db.ObjectId
+  brance            brance?  @relation(fields: [branceId], references: [id])
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  orderProduct     orderProduct[]
+  productVariation productVariation[]
+
+  @@map("products")
+}
+
+model productVariation {
+  id           String @id @default(auto()) @map("_id") @db.ObjectId
+  realPrice    Float
+  sellingPrice Float
+  weight       Float
+  unit         unit
+
+  product   product? @relation(fields: [productId], references: [id])
+  productId String?  @db.ObjectId
+}
+
+enum unit {
+  KG
+  Box
+  Punnet
+  Tray
+}
+
+model productCategory {
+  id     String   @id @default(auto()) @map("_id") @db.ObjectId
+  name   String   @unique
+  images String[]
+
+  branchId  String?  @db.ObjectId
+  branch    brance?  @relation(fields: [branchId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("productCategories")
+}
+
+model order {
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  orderId           String           @unique
+  user              User?            @relation(fields: [userId], references: [id])
+  userId            String?          @db.ObjectId
+  products          orderProduct[]
+  totalAmount       Float
+  isPaid            Boolean?
+  status            OrderStatus      @default(Pending)
+  shippingAddressId String?          @db.ObjectId
+  shippingAddress   shippingAddress? @relation(fields: [shippingAddressId], references: [id])
+  branceId          String?          @db.ObjectId
+  brance            brance?          @relation(fields: [branceId], references: [id])
+  paymentMethodId   String?
+  paymentIntentId   String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@map("orders")
+}
+
+model orderProduct {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  order     order?   @relation(fields: [orderId], references: [id])
+  orderId   String?  @db.ObjectId
+  product   product? @relation(fields: [productId], references: [id])
+  productId String?  @db.ObjectId
+  quantity  Int
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("orderProducts")
+}
+
+enum OrderStatus {
+  Pending
+  onTheway
+  Delivered
+  Cancelled
+}
+
+/// ------ Buyer  Review Model -----///
+
+model Review {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String?  @db.ObjectId
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("reviews")
+}
+
+/// ---------- Wallet and spins Models -----//
+
+model Wallet {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?  @unique @db.ObjectId
+  balance   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wallets")
+}
+
+model Spin {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?  @db.ObjectId
+  wonAmount Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("spins")
+}
+
+/// --- --------------- Contact and Notification Models -----//
+model contact {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  firstName String
+  lastName  String
+  email     String
+  message   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  receiverId String?  @db.ObjectId
+  senderId   String?  @db.ObjectId
+  title      String?
+  content    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("notifications")
+}

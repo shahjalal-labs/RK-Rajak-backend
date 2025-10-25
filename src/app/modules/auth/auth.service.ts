@@ -1,0 +1,208 @@
+import prisma from "../../../shared/prisma";
+import ApiError from "../../../errors/ApiErrors";
+import { jwtHelpers } from "../../../helpers/jwtHelpers";
+import config from "../../../config";
+import { User, UserLocation, UserRole } from "@prisma/client";
+import generateOTP from "../../../helpers/generateOtp";
+import { uploadInSpace } from "../../../shared/UploadHelper";
+import { sendSingleNotification } from "../notifications/notification.services";
+import httpStatus from "http-status";
+
+const buyerLoginIntoDB = async (payload: { phone: string }) => {
+  const user = await prisma.user.findUnique({
+    where: {
+      phone: payload.phone,
+    },
+  });
+  if (!user) {
+    // if user not found, create a new user with sending OTP
+    const existingUser = await prisma.user.findFirst({
+      where: { phone: payload.phone },
+    });
+    const otp = generateOTP(); // 4-digit OTP
+    // let otp ; // 4-digit OTP
+
+    const OTP_EXPIRATION_TIME = 5 * 60 * 1000;
+    const expiresAt = Date.now() + OTP_EXPIRATION_TIME;
+
+    await prisma.pendingUser.upsert({
+      where: {
+        phone: payload.phone,
+      },
+      update: { otpCode: otp, expiresAt: new Date(expiresAt) },
+      create: {
+        phone: payload.phone,
+        role: UserRole.Customer,
+        otpCode: otp,
+        expiresAt: new Date(expiresAt),
+      },
+    });
+
+    return { phone: payload.phone, otp , status: 'new' };
+  }
+  if (user.status === "Blocked") {
+    throw new ApiError(
+      400,
+      "Your account is blocked, please contact Admin or super Admin"
+    );
+  }
+
+  const otp = generateOTP(); // 4-digit OTP
+  // let otp ; // 4-digit OTP
+
+  const OTP_EXPIRATION_TIME = 5 * 60 * 1000;
+  const expiresAt = Date.now() + OTP_EXPIRATION_TIME;
+  await prisma.pendingUser.upsert({
+    where: {
+      phone: payload.phone,
+    },
+    update: {
+      otpCode: otp,
+      expiresAt: new Date(expiresAt),
+    },
+    create: {
+      phone: payload.phone,
+      role: UserRole.Customer,
+      otpCode: otp,
+      expiresAt: new Date(expiresAt),
+    },
+  });
+
+  return otp;
+};
+
+const authLoginIntoDB = async (payload: {
+  phone: string;
+  fcmToken: string;
+}) => {
+  const user = await prisma.user.findUnique({
+    where: {
+      phone: payload.phone,
+    },
+  });
+  if (!user) {
+    throw new ApiError(404, "User not found, please contact Owner/ superAdmin");
+  }
+  if (user.status === "Blocked") {
+    throw new ApiError(
+      400,
+      "Your account is blocked, please contact please contact Owner/ superAdmin"
+    );
+  }
+
+  const otp = generateOTP(); // 4-digit OTP
+
+  const OTP_EXPIRATION_TIME = 5 * 60 * 1000;
+  const expiresAt = Date.now() + OTP_EXPIRATION_TIME;
+  await prisma.pendingUser.upsert({
+    where: {
+      phone: payload.phone,
+    },
+    update: {
+      otpCode: otp,
+      expiresAt: new Date(expiresAt),
+    },
+    create: {
+      phone: payload.phone,
+      otpCode: otp,
+      role: user.role,
+      expiresAt: new Date(expiresAt),
+    },
+  });
+
+  return {phone : payload.phone ,otp};
+};
+
+const getProfileFromDB = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include :{
+      verificationUsers : true,
+      UserLocation : true,
+      shippingAddress : true
+    }
+  }
+);
+  if (!user) {
+    throw new ApiError(404, "user not found!");
+  }
+
+  const { createdAt, updatedAt, ...sanitizedUser } = user;
+
+  return sanitizedUser;
+};
+
+const updateProfileIntoDB = async (
+  payload: User,
+  userId: string,
+  file: Express.Multer.File
+) => {
+
+  if(payload.email){
+    const isThisEmailExist = await prisma.user.findFirst({
+      where :{
+        email : payload.email
+      }
+    })
+    if(isThisEmailExist){
+      throw new ApiError(httpStatus.BAD_REQUEST, "This email already used!")
+    }
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new ApiError(404, "user not found for edit user");
+  }
+
+  if (user.status === "Blocked") {
+    throw new ApiError(
+      400,
+      "Your account is blocked, please contact please contact Owner/ superAdmin"
+    );
+  }
+
+  let profileImage;
+
+  if (file) {
+    profileImage = await uploadInSpace(file, "users/profileImage");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...payload,
+      profileImage: file ? profileImage : user.profileImage,
+      isProfileComplete : true,
+    },
+  });
+  return;
+};
+const userLocationUpdateInDB = async (
+  userId: string,
+  userLocation: UserLocation
+) => {
+  await prisma.userLocation.upsert({
+    where: {
+      userId,
+    },
+    create: {
+      userId,
+      longitude: userLocation.longitude,
+      latitude: userLocation.latitude,
+    },
+    update: {
+      longitude: userLocation.longitude,
+      latitude: userLocation.latitude,
+    },
+  });
+
+  return;
+};
+
+export const authService = {
+  buyerLoginIntoDB,
+  authLoginIntoDB,
+  getProfileFromDB,
+  updateProfileIntoDB,
+  userLocationUpdateInDB
+};
