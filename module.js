@@ -32,27 +32,38 @@ const files = {
   [`${moduleName}.service.ts`]: `
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
- 
-const create${capModule} = async (data: any) => {
+
+const create${capModule} = async (data: ${moduleName}) => {
   return await prisma.${moduleName}.create({ data });
 };
- 
+
 const getAll${capModule}s = async () => {
   return await prisma.${moduleName}.findMany();
 };
- 
+
 const get${capModule}ById = async (id: string) => {
-  return await prisma.${moduleName}.findUnique({ where: { id } });
+  const res = await prisma.${moduleName}.findUnique({ where: { id } });
+  if(!res){
+    throw new ApiError(httpStatus.NOT_FOUND, " No data found");
+  }
 };
- 
-const update${capModule} = async (id: string, data: any) => {
+
+const update${capModule} = async (id: string, data: Partial<${moduleName}>) => {
+  const isExist = await prisma.${moduleName}.findUnique({ where: { id } });
+  if(!isExist){
+    throw new ApiError(httpStatus.NOT_FOUND, " No data found");
+  }
   return await prisma.${moduleName}.update({ where: { id }, data });
 };
- 
+
 const delete${capModule} = async (id: string) => {
+  const isExist = await prisma.${moduleName}.findUnique({ where: { id } });
+  if(!isExist){
+    throw new ApiError(httpStatus.NOT_FOUND, " No data found");
+  }
   return await prisma.${moduleName}.delete({ where: { id } });
 };
- 
+
 export const ${moduleName}Services = {
   create${capModule},
   getAll${capModule}s,
@@ -132,11 +143,11 @@ import { ${moduleName}Controllers } from "./${moduleName}.controller";
  
 const router = express.Router();
  
-router.post('/', ${moduleName}Controllers.create${capModule});
-router.get('/', ${moduleName}Controllers.getAll${capModule}s);
-router.get('/:id', ${moduleName}Controllers.get${capModule}ById);
-router.patch('/:id', ${moduleName}Controllers.update${capModule});
-router.delete('/:id', ${moduleName}Controllers.delete${capModule});
+router.post('/', auth(), ${moduleName}Controllers.create${capModule});
+router.get('/', auth(), ${moduleName}Controllers.getAll${capModule}s);
+router.get('/:id',auth(), ${moduleName}Controllers.get${capModule}ById);
+router.patch('/:id',auth(), ${moduleName}Controllers.update${capModule});
+router.delete('/:id',auth(), ${moduleName}Controllers.delete${capModule});
  
 export const ${moduleName}Routes = router;
   `,
@@ -145,7 +156,6 @@ export const ${moduleName}Routes = router;
 import * as z from 'zod';
  
 export const create${capModule}Schema = z.object({
-  // Define fields
   name: z.string(),
 });
  

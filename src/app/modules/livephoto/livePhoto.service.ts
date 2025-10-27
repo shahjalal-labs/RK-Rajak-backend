@@ -1,31 +1,44 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
- 
-const createLivePhoto = async (data: any) => {
-  return await prisma.livePhoto.create({ data });
+import { livePhoto, PrismaClient } from "@prisma/client";
+import ApiError from "../../../errors/ApiErrors";
+import httpStatus from "http-status";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import prisma from "../../../shared/prisma";
+
+const createLivePhoto = async (
+  data: livePhoto,
+  categoryId: string,
+  file: Express.Multer.File
+) => {
+  const isCategoryExist = await prisma.livePhotoCategory.findUnique({
+    where: {
+      id: categoryId,
+    },
+  });
+  if (!isCategoryExist) {
+    throw new ApiError(
+      httpStatus.NOT_FOUND,
+      "Live Photo Category does not exist"
+    );
+  }
+  data.livePhotoCategoryId = categoryId;
+  let photoUrl;
+  try {
+    photoUrl = (await uploadToDigitalOceanAWS(file)).Location;
+  } catch (error: any) {
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Photo upload failed");
+  }
+  return await prisma.livePhoto.create({ data: { ...data, photo: photoUrl , livePhotoCategoryId : categoryId } });
 };
- 
-const getAllLivePhotos = async () => {
-  return await prisma.livePhoto.findMany();
-};
- 
-const getLivePhotoById = async (id: string) => {
-  return await prisma.livePhoto.findUnique({ where: { id } });
-};
- 
-const updateLivePhoto = async (id: string, data: any) => {
-  return await prisma.livePhoto.update({ where: { id }, data });
-};
- 
+
 const deleteLivePhoto = async (id: string) => {
+  const isExist = await prisma.livePhoto.findUnique({ where: { id } });
+  if (!isExist) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Live Photo does not exist");
+  }
   return await prisma.livePhoto.delete({ where: { id } });
 };
- 
+
 export const livePhotoServices = {
   createLivePhoto,
-  getAllLivePhotos,
-  getLivePhotoById,
-  updateLivePhoto,
   deleteLivePhoto,
-}
-  
+};

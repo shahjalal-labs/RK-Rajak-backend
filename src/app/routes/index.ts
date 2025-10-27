@@ -6,6 +6,8 @@ import { shippingAddressRoutes } from "../modules/shippingaddress/shippingAddres
 import { contactRoutes } from "../modules/contact/contact.routes";
 import { branchRoutes } from "../modules/branch/branch.routes";
 import { livePhotoCategoryRoutes } from "../modules/livephotocategory/livePhotoCategory.routes";
+import { livePhotoRoutes } from "../modules/livephoto/livePhoto.routes";
+import { productCategoryRoutes } from "../modules/productcategory/productCategory.routes";
 
 const router = express.Router();
 
@@ -38,6 +40,15 @@ const moduleRoutes = [
     path: "/livePhotoCategory",
     route: livePhotoCategoryRoutes,
   },
+  {
+    path: "/livePhoto",
+    route: livePhotoRoutes,
+  },
+  {
+    path: "/productCategory",
+    route: productCategoryRoutes,
+  },
+
 ];
 
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

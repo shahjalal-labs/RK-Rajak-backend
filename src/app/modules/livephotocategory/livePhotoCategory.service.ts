@@ -8,6 +8,17 @@ const createLivePhotoCategory = async (
   data: livePhotoCategory,
   file: Express.Multer.File
 ) => {
+  const isExistThisName = await prisma.livePhotoCategory.findUnique({
+    where: {
+      name: data.name,
+    },
+  });
+  if (isExistThisName) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Live photo category with this name already exist"
+    );
+  }
   const isBranchExist = await prisma.branch.findUnique({
     where: {
       id: data.branchId,
@@ -30,8 +41,20 @@ const createLivePhotoCategory = async (
   });
 };
 
-const getAllLivePhotoCategorys = async () => {
-  return await prisma.livePhotoCategory.findMany();
+const getAllLivePhotoCategorys = async (branchId: string) => {
+  const isBranchExist = await prisma.branch.findUnique({
+    where: {
+      id: branchId,
+    },
+  });
+  if (!isBranchExist) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Branch does not exist");
+  }
+  return await prisma.livePhotoCategory.findMany({
+    where: {
+      branchId: branchId,
+    },
+  });
 };
 
 const getLivePhotoCategoryById = async (id: string) => {
@@ -67,10 +90,26 @@ const deleteLivePhotoCategory = async (id: string) => {
   return await prisma.livePhotoCategory.delete({ where: { id } });
 };
 
+const getCategoryDetails = async (categoryId: string) => {
+  const category = await prisma.livePhotoCategory.findUnique({
+    where: { id: categoryId },
+    include: {
+      branch: true,
+      livePhoto: true,
+    },
+  });
+  if (!category) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Category does not exist");
+  }
+  return category;
+}
+
+
 export const livePhotoCategoryServices = {
   createLivePhotoCategory,
   getAllLivePhotoCategorys,
   getLivePhotoCategoryById,
   updateLivePhotoCategory,
   deleteLivePhotoCategory,
+  getCategoryDetails
 };

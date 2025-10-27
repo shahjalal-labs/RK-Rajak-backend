@@ -20,8 +20,8 @@ router.post(
   livePhotoCategoryControllers.createLivePhotoCategory
 );
 router.get(
-  "/",
-  auth(UserRole.SuperAdmin),
+  "/:branchId",
+  auth(),
   livePhotoCategoryControllers.getAllLivePhotoCategorys
 );
 router.get(
@@ -44,5 +44,7 @@ router.delete(
   auth(UserRole.SuperAdmin),
   livePhotoCategoryControllers.deleteLivePhotoCategory
 );
+
+router.get("/category-details/:id", livePhotoCategoryControllers.getCategoryDetails);
 
 export const livePhotoCategoryRoutes = router;

@@ -143,16 +143,18 @@ model branch {
   productCategory   productCategory[]
   livePhotoCategory livePhotoCategory[]
 
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("branchs")
 }
 
 model livePhoto {
   id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  name                String
   livePhotoCategory   livePhotoCategory? @relation(fields: [livePhotoCategoryId], references: [id])
   livePhotoCategoryId String?            @db.ObjectId
-  photos              String[]
+  photo               String
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 }
@@ -161,8 +163,8 @@ model livePhotoCategory {
   id        String      @id @default(auto()) @map("_id") @db.ObjectId
   name      String      @unique
   image     String
-  branchId  String     @db.ObjectId
-  branch    branch     @relation(fields: [branchId], references: [id])
+  branchId  String      @db.ObjectId
+  branch    branch      @relation(fields: [branchId], references: [id])
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   livePhoto livePhoto[]
@@ -244,8 +246,8 @@ model product {
   minOrderQuantity  Int
   maxOrderQuantity  Int
   unit              unit
-  branchId          String?  @db.ObjectId
-  branch            branch?  @relation(fields: [branchId], references: [id])
+  branchId          String  @db.ObjectId
+  branch            branch  @relation(fields: [branchId], references: [id])
 
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -276,8 +278,8 @@ enum unit {
 model productCategory {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   name      String   @unique
-  branchId  String?  @db.ObjectId
-  branch    branch?  @relation(fields: [branchId], references: [id])
+  branchId  String  @db.ObjectId
+  branch    branch  @relation(fields: [branchId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

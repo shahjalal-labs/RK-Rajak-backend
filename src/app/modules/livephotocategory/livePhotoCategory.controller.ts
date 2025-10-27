@@ -29,7 +29,8 @@ const createLivePhotoCategory = catchAsync(
 
 const getAllLivePhotoCategorys = catchAsync(
   async (_req: Request, res: Response) => {
-    const result = await livePhotoCategoryServices.getAllLivePhotoCategorys();
+    const branchId = _req.params.branchId;
+    const result = await livePhotoCategoryServices.getAllLivePhotoCategorys(branchId);
     sendResponse(res, {
       success: true,
       statusCode: 200,
@@ -81,10 +82,24 @@ const deleteLivePhotoCategory = catchAsync(
   }
 );
 
+const getCategoryDetails = catchAsync(
+  async (req: Request, res: Response) => {
+    const categoryId = req.params.id;
+    const result = await livePhotoCategoryServices.getCategoryDetails(categoryId);
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "livePhotoCategory has been retrieved successfully",
+      data: result,
+    });
+  }
+);
+
 export const livePhotoCategoryControllers = {
   createLivePhotoCategory,
   getAllLivePhotoCategorys,
   getLivePhotoCategoryById,
   updateLivePhotoCategory,
   deleteLivePhotoCategory,
+  getCategoryDetails
 };
