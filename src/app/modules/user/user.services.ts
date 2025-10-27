@@ -9,6 +9,8 @@ import { uploadInSpace } from "../../../shared/UploadHelper";
 import getModelKeys from "../../../helpers/getModelKeys";
 import QueryBuilder from "../../builder/QueryBuilder";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { userCreationByOwner } from "./user.const";
+import httpStatus from "http-status";
 
 const resendVerifyOTP = async (phone: string) => {
   console.log(phone);
@@ -358,6 +360,32 @@ const verifyMyAccount = async (
   return;
 };
 
+const userCreateByOwner = async (payload : userCreationByOwner) => {
+  const isUserPhone = await prisma.user.findFirst({
+    where :{
+      phone : payload.phone
+    }
+  });
+  if(isUserPhone){
+    throw new ApiError(httpStatus.BAD_REQUEST , `Phone number is already used for- ${isUserPhone.fullName}. please provide a different phone number`)
+  }
+  const isBranchExist = await prisma.branch.findUnique({
+    where :{
+      id : payload.branchId
+    }
+  })
+  if(!isBranchExist){
+    throw new ApiError(httpStatus.BAD_REQUEST , "Branch is is wrong. please provide a valid branch id")
+  }
+  const user = await prisma.user.create({
+    data: {
+      ...payload,
+      status: "Active",
+    },
+  });
+  return user;
+};
+
 export const userService = {
   buyerOtpLogin,
   getUsers,
@@ -369,4 +397,5 @@ export const userService = {
   authOtpLogin,
   deleteUserAccount,
   verifyMyAccount,
+  userCreateByOwner
 };

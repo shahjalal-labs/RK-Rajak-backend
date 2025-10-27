@@ -20,15 +20,33 @@ router.post(
   validateRequest(userValidation.authLoginValidation),
   UserControllers.authOtpLogin
 );
+
+//------------------  User creation by Owner ------------------//
+
+router.post(
+  "/user-create",
+  auth(UserRole.Owner),
+  validateRequest(userValidation.userCreateValidation),
+  UserControllers.createUserByOwner
+);
+
 router.get("/", auth(UserRole.Admin), UserControllers.getUsers);
-router.get("/single/:id", auth(UserRole.Owner , UserRole.Admin , UserRole.SuperAdmin), UserControllers.getSingleUser);
+router.get(
+  "/single/:id",
+  auth(UserRole.Owner, UserRole.Admin, UserRole.SuperAdmin),
+  UserControllers.getSingleUser
+);
 router.patch(
   "/block-user/:id",
   auth(UserRole.Admin),
   UserControllers.blockUser
 );
 router.delete("/", auth(), UserControllers.deleteMyAccount);
-router.delete("/delete-user/:id", auth(UserRole.Owner), UserControllers.deleteUserAccount);
+router.delete(
+  "/delete-user/:id",
+  auth(UserRole.Owner),
+  UserControllers.deleteUserAccount
+);
 router.patch(
   "/update-user/:userId",
   auth(UserRole.Owner),
@@ -36,7 +54,13 @@ router.patch(
   parseBodyData,
   UserControllers.updateUser
 );
-router.post("/verify-my-account",fileUploader.uploadMultiple, parseBodyData, validateRequest(userValidation.userVerifyValidation), auth(), UserControllers.verifyMyAccount);
-
+router.post(
+  "/verify-my-account",
+  fileUploader.uploadMultiple,
+  parseBodyData,
+  validateRequest(userValidation.userVerifyValidation),
+  auth(),
+  UserControllers.verifyMyAccount
+);
 
 export const userRoutes = router;

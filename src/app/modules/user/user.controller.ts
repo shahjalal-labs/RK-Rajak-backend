@@ -139,8 +139,21 @@ const verifyMyAccount = catchAsync(async (req, res) => {
   });
 });
 
+//------------------ User create by Owneer ---------------
+const createUserByOwner = catchAsync(async(req , res)=>{
+  const result = await userService.userCreateByOwner(req.body)
+  sendResponse(res, {
+    success: true,
+    statusCode: 201,
+    message: "User created successfully",
+    data: result,
+  });
+})
+
+
 export const UserControllers = {
   buyerOtpLogin,
+  createUserByOwner,
   getUsers,
   getSingleUser,
   updateUser,

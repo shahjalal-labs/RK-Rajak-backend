@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { string, z } from "zod";
 
 const buyerLoginValidation = z.object({
   phone: z
@@ -30,8 +30,17 @@ const userVerifyValidation = z.object({
   shopName: z.string({ required_error: "Shop name is required" }),
 });
 
+const userCreateValidation = z.object({
+  fullName: string({ required_error: "fullName is required" }),
+  phone: string({ required_error: "Phone number is required" }),
+  role: z.string({ required_error: "user role is required" }),
+  branchId: z.string({ required_error: "Branch ID is required" }),
+});
+
+
 export const userValidation = {
   buyerLoginValidation,
   authLoginValidation,
   userVerifyValidation,
+  userCreateValidation
 };

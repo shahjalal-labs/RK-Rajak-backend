@@ -1,12 +1,11 @@
 import prisma from "../../../shared/prisma";
 import ApiError from "../../../errors/ApiErrors";
-import { jwtHelpers } from "../../../helpers/jwtHelpers";
-import config from "../../../config";
 import { User, UserLocation, UserRole } from "@prisma/client";
 import generateOTP from "../../../helpers/generateOtp";
 import { uploadInSpace } from "../../../shared/UploadHelper";
-import { sendSingleNotification } from "../notifications/notification.services";
 import httpStatus from "http-status";
+import { getDistance } from "./auth.helpers";
+
 
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
@@ -193,6 +192,27 @@ const userLocationUpdateInDB = async (
     update: {
       longitude: userLocation.longitude,
       latitude: userLocation.latitude,
+    },
+  });
+
+  // need to check which branch is nearest to user location then save this user info that his location is in that branch area
+  const branches = await prisma.branch.findMany();
+  const nearestBranch = branches.reduce((prev, curr) => {
+    const prevDistance = getDistance(
+      { latitude: userLocation.latitude, longitude: userLocation.longitude },
+      { latitude: prev.latitude, longitude: prev.longitude }
+    );
+    const currDistance = getDistance(
+      { latitude: userLocation.latitude, longitude: userLocation.longitude },
+      { latitude: curr.latitude, longitude: curr.longitude }
+    );
+    return currDistance < prevDistance ? curr : prev;
+  });
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      branchId: nearestBranch.id,
     },
   });
 
