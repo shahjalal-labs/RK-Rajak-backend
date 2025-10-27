@@ -1,11 +1,15 @@
 import * as z from 'zod';
  
 export const createLivePhotoCategorySchema = z.object({
-  // Define fields
   name: z.string(),
+  branchId: z.string(),
+});
+export const updateLivePhotoCategorySchema = z.object({
+  name: z.string().optional(),
 });
  
 export const LivePhotoCategorySchemaValidation = {
-createLivePhotoCategorySchema
+  createLivePhotoCategorySchema,
+  updateLivePhotoCategorySchema
 };
   

@@ -160,8 +160,9 @@ model livePhoto {
 model livePhotoCategory {
   id        String      @id @default(auto()) @map("_id") @db.ObjectId
   name      String      @unique
-  branchId  String?     @db.ObjectId
-  branch    branch?     @relation(fields: [branchId], references: [id])
+  image     String
+  branchId  String     @db.ObjectId
+  branch    branch     @relation(fields: [branchId], references: [id])
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   livePhoto livePhoto[]

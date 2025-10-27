@@ -1,13 +1,48 @@
-import express from 'express';
+import express from "express";
 import { livePhotoCategoryControllers } from "./livePhotoCategory.controller";
- 
+import auth from "../../middlewares/auth";
+import { UserRole } from "@prisma/client";
+import validateRequest from "../../middlewares/validateRequest";
+import { LivePhotoCategorySchemaValidation } from "./livePhotoCategory.validation";
+import { fileUploader } from "../../../helpers/fileUploadHelper";
+import { parseBodyData } from "../../middlewares/parseBodyData";
+
 const router = express.Router();
- 
-router.post('/', livePhotoCategoryControllers.createLivePhotoCategory);
-router.get('/', livePhotoCategoryControllers.getAllLivePhotoCategorys);
-router.get('/:id', livePhotoCategoryControllers.getLivePhotoCategoryById);
-router.patch('/:id', livePhotoCategoryControllers.updateLivePhotoCategory);
-router.delete('/:id', livePhotoCategoryControllers.deleteLivePhotoCategory);
- 
+
+router.post(
+  "/",
+  auth(UserRole.SuperAdmin),
+  fileUploader.uploadSingle,
+  parseBodyData,
+  validateRequest(
+    LivePhotoCategorySchemaValidation.createLivePhotoCategorySchema
+  ),
+  livePhotoCategoryControllers.createLivePhotoCategory
+);
+router.get(
+  "/",
+  auth(UserRole.SuperAdmin),
+  livePhotoCategoryControllers.getAllLivePhotoCategorys
+);
+router.get(
+  "/:id",
+  auth(UserRole.SuperAdmin),
+  livePhotoCategoryControllers.getLivePhotoCategoryById
+);
+router.patch(
+  "/:id",
+  auth(UserRole.SuperAdmin),
+  fileUploader.uploadSingle,
+  parseBodyData,
+  validateRequest(
+    LivePhotoCategorySchemaValidation.updateLivePhotoCategorySchema
+  ),
+  livePhotoCategoryControllers.updateLivePhotoCategory
+);
+router.delete(
+  "/:id",
+  auth(UserRole.SuperAdmin),
+  livePhotoCategoryControllers.deleteLivePhotoCategory
+);
+
 export const livePhotoCategoryRoutes = router;
-  

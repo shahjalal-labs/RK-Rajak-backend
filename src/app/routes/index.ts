@@ -5,6 +5,7 @@ import reviewRouter from "../modules/review/review.routes";
 import { shippingAddressRoutes } from "../modules/shippingaddress/shippingAddress.routes";
 import { contactRoutes } from "../modules/contact/contact.routes";
 import { branchRoutes } from "../modules/branch/branch.routes";
+import { livePhotoCategoryRoutes } from "../modules/livephotocategory/livePhotoCategory.routes";
 
 const router = express.Router();
 
@@ -32,6 +33,10 @@ const moduleRoutes = [
   {
     path: "/branch",
     route: branchRoutes,
+  },
+  {
+    path: "/livePhotoCategory",
+    route: livePhotoCategoryRoutes,
   },
 ];
 
