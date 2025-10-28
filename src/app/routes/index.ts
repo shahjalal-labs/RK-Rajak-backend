@@ -8,6 +8,7 @@ import { branchRoutes } from "../modules/branch/branch.routes";
 import { livePhotoCategoryRoutes } from "../modules/livephotocategory/livePhotoCategory.routes";
 import { livePhotoRoutes } from "../modules/livephoto/livePhoto.routes";
 import { productCategoryRoutes } from "../modules/productcategory/productCategory.routes";
+import { productRoutes } from "../modules/product/product.routes";
 
 const router = express.Router();
 
@@ -47,6 +48,10 @@ const moduleRoutes = [
   {
     path: "/productCategory",
     route: productCategoryRoutes,
+  },
+  {
+    path: "/product",
+    route: productRoutes,
   },
 
 ];

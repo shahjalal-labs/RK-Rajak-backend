@@ -15,13 +15,15 @@ router.post(
   validateRequest(ProductSchemaValidation.createProductSchema),
   productControllers.createProduct
 );
-router.get("/", auth(), productControllers.getAllProducts);
-router.get("/:id", auth(), productControllers.getProductById);
+router.get("/for-buyer", auth(), productControllers.getAllProductsForBuyer);
+router.get("/:branchId", auth(), productControllers.getAllProducts);
+router.get("/details/:id", auth(), productControllers.getProductById);
 router.patch(
   "/:id",
   auth(),
   fileUploader.uploadMultiple,
   parseBodyData,
+  validateRequest(ProductSchemaValidation.updateProductSchema),
   productControllers.updateProduct
 );
 router.delete("/:id", auth(), productControllers.deleteProduct);

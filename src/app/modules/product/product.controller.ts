@@ -12,6 +12,7 @@ const createProduct = catchAsync(async (req: Request, res: Response) => {
   if (!productImages) {
     throw new Error("Product images are required");
   }
+
   const result = await productServices.createProduct(req.body, productImages);
   sendResponse(res, {
     success: true,
@@ -20,8 +21,10 @@ const createProduct = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 });
+
 const getAllProducts = catchAsync(async (_req: Request, res: Response) => {
-  const result = await productServices.getAllProducts(_req.query);
+  const branchId = _req.params.branchId;
+  const result = await productServices.getAllProducts({ ..._req.query }, branchId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -29,6 +32,17 @@ const getAllProducts = catchAsync(async (_req: Request, res: Response) => {
     data: result,
   });
 });
+
+const getAllProductsForBuyer = catchAsync(async (_req: Request, res: Response) => {
+  const result = await productServices.getAllProductsForBuyer({ ..._req.query } , _req.user);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "All products has been retrived For App successfully",
+    data: result,
+  });
+});
+
 const bestSelling = catchAsync(async (_req: Request, res: Response) => {
   const result = await productServices.bestSelling();
   sendResponse(res, {
@@ -40,7 +54,7 @@ const bestSelling = catchAsync(async (_req: Request, res: Response) => {
 });
 
 const getProductById = catchAsync(async (req: Request, res: Response) => {
-  const result = await productServices.getProductById(req.params.id);
+  const result = await productServices.getProductById(req.params.id , req.user);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -82,5 +96,6 @@ export const productControllers = {
   getProductById,
   updateProduct,
   deleteProduct,
-  bestSelling
+  bestSelling,
+  getAllProductsForBuyer
 };
