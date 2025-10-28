@@ -36,17 +36,29 @@ export interface ICreateProduct {
   productVariations: IProductVariation[];
 }
 
-// Update Product Interface (all fields optional)
-export interface IUpdateProduct {
-  name?: string;
-  tag?: string;
-  branchId?: string;
-  productVariations?: IProductVariation[];
-}
-
 // Product Response Interface (if you need it for the complete product with ID)
 export interface IProduct extends ICreateProduct {
   id: string;
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+
+export interface ProductVariationUpdate {
+  variationId: string;
+  realPrice?: number;
+  sellingPrice?: number;
+  availableQuantity?: number;
+  minOrderQuantity?: number;
+  maxOrderQuantity?: number;
+  unit?: Unit;
+  weight?: number;
+}
+
+export interface UpdateProductPayload {
+  name?: string;
+  tag?: string;
+  branchId?: string;
+  categoryId?: string;
+  productVariations?: ProductVariationUpdate[];
 }

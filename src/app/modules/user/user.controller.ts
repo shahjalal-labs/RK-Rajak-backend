@@ -53,6 +53,19 @@ const getUsers = catchAsync(async (req, res) => {
     data: users,
   });
 });
+const getCustomersForBranch = catchAsync(async (req, res) => {
+  const branchId = req.params.branchId;
+  if (!branchId) {
+    throw new Error("Branch id is required");
+  }
+  const users = await userService.getCustomersForBranch(req.query,branchId);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Customer retrived successfully",
+    data: users,
+  });
+});
 
 //get single user
 const getSingleUser = catchAsync(async (req, res) => {
@@ -163,4 +176,5 @@ export const UserControllers = {
   authOtpLogin,
   deleteUserAccount,
   verifyMyAccount,
+  getCustomersForBranch
 };

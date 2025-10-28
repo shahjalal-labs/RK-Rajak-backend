@@ -36,7 +36,34 @@ export const createProductSchema = z.object({
 });
 
 // Update Product Schema (for PATCH requests)
-export const updateProductSchema = createProductSchema.partial();
+export const updateProductSchema = z.object({
+  name: z.string().min(1, "Product name is required").optional(),
+  tag: z.string().min(1, "Tag is required").optional(),
+  categoryId: z.string().optional(),
+  branchId: z.string().optional(),
+  productVariations: z.array(z.object({
+    variationId: z.string({required_error: "Variation ID is required"}),
+    realPrice: z.number().nonnegative("Real price must be positive").optional(),
+    sellingPrice: z.number().nonnegative("Selling price must be positive").optional(),
+    availableQuantity: z
+      .number()
+      .int()
+      .nonnegative("Available quantity must be non-negative")
+      .optional(),
+    minOrderQuantity: z
+      .number()
+      .int()
+      .positive("Minimum order quantity must be positive")
+      .optional(),
+    maxOrderQuantity: z
+      .number()
+      .int()
+      .positive("Maximum order quantity must be positive")
+      .optional(),
+    unit: unitSchema.optional(),
+    weight: z.number().positive("Weight must be positive").optional(),
+  })).optional(),
+});
 
 export const ProductSchemaValidation = {
   createProductSchema,

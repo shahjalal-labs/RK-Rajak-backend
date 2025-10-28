@@ -1,8 +1,12 @@
-import { PrismaClient, product, branch, UserRole } from '@prisma/client';
+import { PrismaClient, product, branch, UserRole } from "@prisma/client";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
 import ApiError from "../../../errors/ApiErrors";
-import { GetAllProductsResponse, ICreateProduct } from "./const";
-import { JwtPayload } from 'jsonwebtoken';
+import {
+  GetAllProductsResponse,
+  ICreateProduct,
+  UpdateProductPayload,
+} from "./const";
+import { JwtPayload } from "jsonwebtoken";
 const prisma = new PrismaClient();
 
 const createProduct = async (
@@ -13,13 +17,13 @@ const createProduct = async (
   const isCategoryExist = await prisma.productCategory.findFirst({
     where: { id: data.categoryId },
   });
-  if(!isCategoryExist) {
+  if (!isCategoryExist) {
     throw new ApiError(404, "Product category not found");
   }
   const isBranchExist = await prisma.branch.findFirst({
     where: { id: data.branchId },
   });
-  if(!isBranchExist) {
+  if (!isBranchExist) {
     throw new ApiError(404, "Branch not found");
   }
   let imagesUpload = [];
@@ -41,11 +45,14 @@ const createProduct = async (
       productId: createdProduct.id,
     })),
   });
-  return await prisma.product.findUnique({ where: { id: createdProduct.id } , include:{
-    productVariation: true,
-    category: true,
-    branch: true,
-  } }) as product;
+  return (await prisma.product.findUnique({
+    where: { id: createdProduct.id },
+    include: {
+      productVariation: true,
+      category: true,
+      branch: true,
+    },
+  })) as product;
 };
 
 interface GetAllProductsParams {
@@ -59,7 +66,10 @@ interface GetAllProductsParams {
   status?: boolean | string;
 }
 
-const getAllProducts = async (query: GetAllProductsParams , branchId: string) => {
+const getAllProducts = async (
+  query: GetAllProductsParams,
+  branchId: string
+) => {
   const {
     page = 1,
     limit = 10,
@@ -84,25 +94,23 @@ const getAllProducts = async (query: GetAllProductsParams , branchId: string) =>
   }
   // Status filter
   if (status !== undefined) {
-    where.status = status === true || status === 'true';
+    where.status = status === true || status === "true";
   }
 
-if (category && subcategory) {
-  where.category = {
-    name: category,
-    productSubcategory: {
-      some: {
-        name: subcategory,
+  if (category && subcategory) {
+    where.category = {
+      name: category,
+      productSubcategory: {
+        some: {
+          name: subcategory,
+        },
       },
-    },
-  };
-} else if (category) {
-  where.category = {
-    name: category,
-  };
-}
-
-
+    };
+  } else if (category) {
+    where.category = {
+      name: category,
+    };
+  }
 
   // Search in name
   if (searchTerm) {
@@ -128,9 +136,9 @@ if (category && subcategory) {
     include: {
       productVariation: true,
       category: {
-        include :{
-          productSubcategory : true,
-        }
+        include: {
+          productSubcategory: true,
+        },
       },
       branch: true,
     },
@@ -151,7 +159,10 @@ if (category && subcategory) {
 
   return response;
 };
-const getAllProductsForBuyer = async (query: GetAllProductsParams , user : JwtPayload ) => {
+const getAllProductsForBuyer = async (
+  query: GetAllProductsParams,
+  user: JwtPayload
+) => {
   const {
     page = 1,
     limit = 10,
@@ -172,10 +183,13 @@ const getAllProductsForBuyer = async (query: GetAllProductsParams , user : JwtPa
   });
 
   if (!userData || !userData.branch) {
-    throw new ApiError(400, "you are not assigned to any branch. please contact with Owner");
+    throw new ApiError(
+      400,
+      "you are not assigned to any branch. please contact with Owner"
+    );
   }
   // Build where conditions
-  const where: any = { branchId: userData.branchId };
+  const where: any = { branchId: userData.branchId , status: true };
 
   // Price range filter (based on productVariation)
   // Tag filter
@@ -184,23 +198,23 @@ const getAllProductsForBuyer = async (query: GetAllProductsParams , user : JwtPa
   }
   // Status filter
   if (status !== undefined) {
-    where.status = status === true || status === 'true';
+    where.status = status === true || status === "true";
   }
 
-if (category && subcategory) {
-  where.category = {
-    name: category,
-    productSubcategory: {
-      some: {
-        name: subcategory,
+  if (category && subcategory) {
+    where.category = {
+      name: category,
+      productSubcategory: {
+        some: {
+          name: subcategory,
+        },
       },
-    },
-  };
-} else if (category) {
-  where.category = {
-    name: category,
-  };
-}
+    };
+  } else if (category) {
+    where.category = {
+      name: category,
+    };
+  }
   // Search in name
   if (searchTerm) {
     where.name = { contains: searchTerm, mode: "insensitive" };
@@ -224,15 +238,15 @@ if (category && subcategory) {
     take: Number(limit),
     include: {
       productVariation: {
-        omit :{
-          realPrice : true,
-          productId : true,
-        }
+        omit: {
+          realPrice: true,
+          productId: true,
+        },
       },
       category: {
-        include :{
-          productSubcategory : true,
-        }
+        include: {
+          productSubcategory: true,
+        },
       },
     },
   });
@@ -253,22 +267,22 @@ if (category && subcategory) {
   return response;
 };
 
-const getProductById = async (id: string , user: JwtPayload) => {
+const getProductById = async (id: string, user: JwtPayload) => {
   const userRole = user.role;
-  if(userRole === UserRole.Customer) {
+  if (userRole === UserRole.Customer) {
     const productData = await prisma.product.findUnique({
       where: { id },
       include: {
         productVariation: {
-          omit :{
-            realPrice : true,
-            productId : true,
-          }
+          omit: {
+            realPrice: true,
+            productId: true,
+          },
         },
         category: {
-          include :{
-            productSubcategory : true,
-          }
+          include: {
+            productSubcategory: true,
+          },
         },
       },
     });
@@ -293,9 +307,10 @@ const getProductById = async (id: string , user: JwtPayload) => {
 
 const updateProduct = async (
   id: string,
-  data: Partial<product>,
-  productImages: Express.Multer.File[]
+  data: UpdateProductPayload,
+  productImages?: Express.Multer.File[]
 ) => {
+  const { productVariations, ...productData } = data;
   const isProductExist = await prisma.product.findUnique({
     where: {
       id,
@@ -304,7 +319,7 @@ const updateProduct = async (
   if (!isProductExist) {
     throw new ApiError(404, "Product not found");
   }
-  
+
   // Validate categoryId if provided
   if (data.categoryId) {
     const isCategoryExist = await prisma.productCategory.findFirst({
@@ -337,15 +352,37 @@ const updateProduct = async (
       throw new ApiError(500, "Failed to upload images: " + error.message);
     }
   }
-  return await prisma.product.update({
+  await prisma.product.update({
     where: { id },
-    data: { ...data, images: imagesUpload },
+    data: { ...productData, images: imagesUpload },
+  });
+  // Update product variations if provided
+  if (productVariations && productVariations.length > 0) {
+    for (const variation of productVariations) {
+      const { variationId, ...variationData } = variation;
+      const isVariationExist = await prisma.productVariation.findUnique({
+        where: { id: variationId },
+      });
+      if (!isVariationExist) {
+        throw new ApiError(
+          404,
+          `Product variation with ID ${variationId} not found`
+        );
+      }
+      await prisma.productVariation.update({
+        where: { id: variationId },
+        data: { ...variationData },
+      });
+    }
+  }
+  return (await prisma.product.findUnique({
+    where: { id },
     include: {
       productVariation: true,
       category: true,
       branch: true,
     },
-  });
+  })) as product;
 };
 
 const bestSelling = async () => {
@@ -381,5 +418,5 @@ export const productServices = {
   updateProduct,
   deleteProduct,
   bestSelling,
-  getAllProductsForBuyer
+  getAllProductsForBuyer,
 };

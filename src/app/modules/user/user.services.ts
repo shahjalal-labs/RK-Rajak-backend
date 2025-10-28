@@ -245,13 +245,42 @@ const getUsers = async (query: any) => {
   const couponQuery = new QueryBuilder(prisma.user, query, keys);
   const result = await couponQuery
     .setCustomWhere({
-      role: UserRole.Customer,
+      role: {
+      notIn: [UserRole.Owner],
+      },
     })
     .search(["fullName", "email"])
     .filter()
     .sort()
     .exclude()
     .include()
+    .paginate()
+    .execute();
+  const pagination = await couponQuery.countTotal();
+  return {
+    meta: pagination,
+    result,
+  };
+};
+
+const getCustomersForBranch = async (query: any, branchId: string) => {
+  const keys = await getModelKeys("user");
+  const couponQuery = new QueryBuilder(prisma.user, query, keys);
+  const result = await couponQuery
+    .setCustomWhere({
+      role: UserRole.Customer,
+      branchId: branchId,
+    })
+    .search(["fullName", "email"])
+    .filter()
+    .sort()
+    .exclude()
+    .include({
+      Wallet: true,
+      order : true,
+      Spin : true,
+      //pending ammounts
+    })
     .paginate()
     .execute();
   const pagination = await couponQuery.countTotal();
@@ -397,5 +426,6 @@ export const userService = {
   authOtpLogin,
   deleteUserAccount,
   verifyMyAccount,
-  userCreateByOwner
+  userCreateByOwner,
+  getCustomersForBranch
 };

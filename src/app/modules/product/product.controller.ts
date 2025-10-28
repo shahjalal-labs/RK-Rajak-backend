@@ -69,9 +69,6 @@ const updateProduct = catchAsync(async (req: Request, res: Response) => {
     (req.files as { [fieldname: string]: Express.Multer.File[] })[
       "productImages"
     ];
-  if (!productImages) {
-    throw new Error("Product images are required");
-  }
   const result = await productServices.updateProduct(req.params.id, req.body , productImages);
   sendResponse(res, {
     success: true,
