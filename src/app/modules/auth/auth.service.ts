@@ -6,7 +6,6 @@ import { uploadInSpace } from "../../../shared/UploadHelper";
 import httpStatus from "http-status";
 import { getDistance } from "./auth.helpers";
 
-
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
     where: {
@@ -37,7 +36,7 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
       },
     });
 
-    return { phone: payload.phone, otp , status: 'new' };
+    return { phone: payload.phone, otp, status: "new" };
   }
   if (user.status === "Blocked") {
     throw new ApiError(
@@ -67,7 +66,7 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
     },
   });
 
-  return { phone: payload.phone, otp , status: 'existing' };
+  return { phone: payload.phone, otp, status: "existing" };
 };
 
 const authLoginIntoDB = async (payload: {
@@ -109,19 +108,18 @@ const authLoginIntoDB = async (payload: {
     },
   });
 
-  return {phone : payload.phone ,otp};
+  return { phone: payload.phone, otp };
 };
 
 const getProfileFromDB = async (userId: string) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include :{
-      verificationUsers : true,
-      UserLocation : true,
-      shippingAddress : true
-    }
-  }
-);
+    include: {
+      verificationUsers: true,
+      UserLocation: true,
+      shippingAddress: true,
+    },
+  });
   if (!user) {
     throw new ApiError(404, "user not found!");
   }
@@ -136,16 +134,26 @@ const updateProfileIntoDB = async (
   userId: string,
   file: Express.Multer.File
 ) => {
-
-  if(payload.email){
+  if (payload.email) {
     const isThisEmailExist = await prisma.user.findFirst({
-      where :{
-        email : payload.email
-      }
-    })
-    if(isThisEmailExist){
-      throw new ApiError(httpStatus.BAD_REQUEST, "This email already used!")
+      where: {
+        email: payload.email,
+      },
+    });
+    if (isThisEmailExist) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "This email already used!");
     }
+  }
+  const isPhoneExist = await prisma.user.findFirst({
+    where: {
+      phone: payload.phone,
+    },
+  });
+  if (isPhoneExist) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "This phone number already used!"
+    );
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -171,7 +179,7 @@ const updateProfileIntoDB = async (
     data: {
       ...payload,
       profileImage: file ? profileImage : user.profileImage,
-      isProfileComplete : true,
+      isProfileComplete: true,
     },
   });
   return;
@@ -224,5 +232,5 @@ export const authService = {
   authLoginIntoDB,
   getProfileFromDB,
   updateProfileIntoDB,
-  userLocationUpdateInDB
+  userLocationUpdateInDB,
 };
