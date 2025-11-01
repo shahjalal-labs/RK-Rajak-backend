@@ -1,6 +1,7 @@
-import { PrismaClient, productCategory } from "@prisma/client";
+import { PrismaClient, productCategory, branch } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
+import { JwtPayload } from "jsonwebtoken";
 const prisma = new PrismaClient();
 
 const createProductCategory = async (data: productCategory) => {
@@ -16,7 +17,7 @@ const createProductCategory = async (data: productCategory) => {
   return await prisma.productCategory.create({ data });
 };
 
-const getAllProductCategorys = async (branchId : string) => {
+const getAllProductCategorys = async (branchId: string) => {
   const isBranchExist = await prisma.branch.findUnique({
     where: { id: branchId },
   });
@@ -28,8 +29,26 @@ const getAllProductCategorys = async (branchId : string) => {
   }
   return await prisma.productCategory.findMany({
     where: { branchId },
+  });
+};
+const getAllProductCategorysForBuyer = async (user: JwtPayload) => {
+  const userdata = await prisma.user.findUnique({
+    where: {
+      id: user.id,
+    },
+  });
+
+  const branchId = userdata?.branchId as string;
+
+  if (!branchId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Your account is not associated with any branch"
+    );
   }
-);
+  return await prisma.productCategory.findMany({
+    where: { branchId },
+  });
 };
 
 const getProductCategoryById = async (id: string) => {
@@ -64,4 +83,5 @@ export const productCategoryServices = {
   getProductCategoryById,
   updateProductCategory,
   deleteProductCategory,
+  getAllProductCategorysForBuyer
 };

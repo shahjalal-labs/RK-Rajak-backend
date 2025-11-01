@@ -28,6 +28,15 @@ const getAllProductCategorys = catchAsync(async (_req: Request, res: Response) =
     data: result,
   });
 })
+const getAllProductCategorysForBuyer = catchAsync(async (_req: Request, res: Response) => {
+  const result = await productCategoryServices.getAllProductCategorysForBuyer(_req.user);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "All productCategorys has been retrived successfully",
+    data: result,
+  });
+})
  
 const getProductCategoryById = catchAsync(async (req: Request, res: Response) => {
   const result = await productCategoryServices.getProductCategoryById(req.params.id);
@@ -64,5 +73,6 @@ export const productCategoryControllers = {
   getProductCategoryById,
   updateProductCategory,
   deleteProductCategory,
+  getAllProductCategorysForBuyer
 }
   
