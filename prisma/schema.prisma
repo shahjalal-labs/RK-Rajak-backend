@@ -88,14 +88,14 @@ model UserLocation {
   longitude Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User?    @relation(fields: [userId], references: [id] )
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@map("user_locations")
 }
 
 model shippingAddress {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  user      User?    @relation(fields: [userId], references: [id] )
+  user      User?    @relation(fields: [userId], references: [id])
   userId    String?  @db.ObjectId
   shopName  String
   landmark  String
@@ -111,7 +111,7 @@ model shippingAddress {
 
 model verificationUsers {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  user       User?    @relation(fields: [userId], references: [id] )
+  user       User?    @relation(fields: [userId], references: [id])
   userId     String?  @unique @db.ObjectId
   buyerName  String
   buyerPhoto String
@@ -152,7 +152,7 @@ model branch {
 model livePhoto {
   id                  String             @id @default(auto()) @map("_id") @db.ObjectId
   name                String
-  livePhotoCategory   livePhotoCategory? @relation(fields: [livePhotoCategoryId], references: [id] , onDelete: Cascade)
+  livePhotoCategory   livePhotoCategory? @relation(fields: [livePhotoCategoryId], references: [id], onDelete: Cascade)
   livePhotoCategoryId String?            @db.ObjectId
   photo               String
   createdAt           DateTime           @default(now())
@@ -164,7 +164,7 @@ model livePhotoCategory {
   name      String      @unique
   image     String
   branchId  String      @db.ObjectId
-  branch    branch      @relation(fields: [branchId], references: [id] ,  onDelete: Cascade)
+  branch    branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   livePhoto livePhoto[]
@@ -174,7 +174,7 @@ model handlaningCharge {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   charge    Float
   condition String
-  branch    branch?  @relation(fields: [branchId], references: [id] , onDelete: Cascade)
+  branch    branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId  String?  @db.ObjectId
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -185,7 +185,7 @@ model handlaningCharge {
 model cartValue {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   minValue  Float
-  branch    branch?  @relation(fields: [branchId], references: [id] , onDelete: Cascade)
+  branch    branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId  String?  @db.ObjectId
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -200,7 +200,7 @@ model verticalBanner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch   branch? @relation(fields: [branchId], references: [id] , onDelete: Cascade)
+  branch   branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId String? @db.ObjectId
 
   @@map("verticalBanners")
@@ -210,7 +210,7 @@ model horizontalBanner {
   id                     String                   @id @default(auto()) @map("_id") @db.ObjectId
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
-  branch                 branch?                  @relation(fields: [branchId], references: [id] , onDelete: Cascade)
+  branch                 branch?                  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId               String?                  @db.ObjectId
   horizontalBannerSlider horizontalBannerSlider[]
 
@@ -226,7 +226,7 @@ model horizontalBannerSlider {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  horizontalBanner   horizontalBanner? @relation(fields: [horizontalBannerId], references: [id] , onDelete: Cascade)
+  horizontalBanner   horizontalBanner? @relation(fields: [horizontalBannerId], references: [id], onDelete: Cascade)
   horizontalBannerId String?           @db.ObjectId
 
   @@unique([horizontalBannerId])
@@ -242,9 +242,9 @@ model product {
   tag        String
   status     Boolean         @default(true)
   branchId   String          @db.ObjectId
-  branch     branch          @relation(fields: [branchId], references: [id] , onDelete: Cascade)
+  branch     branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
   categoryId String          @db.ObjectId
-  category   productCategory @relation(fields: [categoryId], references: [id] , onDelete: Cascade)
+  category   productCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -264,7 +264,7 @@ model productVariation {
   unit              unit
   weight            Float
 
-  product   product? @relation(fields: [productId], references: [id] , onDelete: Cascade)
+  product   product? @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String?  @db.ObjectId
 }
 
@@ -278,8 +278,9 @@ enum unit {
 model productCategory {
   id                 String               @id @default(auto()) @map("_id") @db.ObjectId
   name               String               @unique
+  image              String?
   branchId           String               @db.ObjectId
-  branch             branch               @relation(fields: [branchId], references: [id] , onDelete: Cascade)
+  branch             branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   productSubcategory productSubcategory[]
@@ -292,7 +293,7 @@ model productSubcategory {
   id                String           @id @default(auto()) @map("_id") @db.ObjectId
   name              String
   productCategoryId String?          @db.ObjectId
-  productCategory   productCategory? @relation(fields: [productCategoryId], references: [id] , onDelete: Cascade)
+  productCategory   productCategory? @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -322,7 +323,7 @@ model order {
 
 model orderProduct {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  order     order?   @relation(fields: [orderId], references: [id] , onDelete: Cascade)
+  order     order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId   String?  @db.ObjectId
   product   product? @relation(fields: [productId], references: [id])
   productId String?  @db.ObjectId

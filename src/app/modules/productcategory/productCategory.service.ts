@@ -2,9 +2,22 @@ import { PrismaClient, productCategory, branch } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { JwtPayload } from "jsonwebtoken";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
 const prisma = new PrismaClient();
 
-const createProductCategory = async (data: productCategory) => {
+const createProductCategory = async (
+  data: productCategory,
+  file?: Express.Multer.File
+) => {
+  let imageUrl = "";
+  if (file) {
+    try {
+      imageUrl = (await uploadToDigitalOceanAWS(file)).Location;
+    } catch (error: any) {
+      throw new ApiError(httpStatus.BAD_REQUEST, error.message);
+    }
+  }
+
   const isBranchExist = await prisma.branch.findUnique({
     where: { id: data.branchId },
   });
@@ -14,7 +27,9 @@ const createProductCategory = async (data: productCategory) => {
       "Branch id is invalid. please provide a valid branch id"
     );
   }
-  return await prisma.productCategory.create({ data });
+  return await prisma.productCategory.create({
+    data: { ...data, image: imageUrl },
+  });
 };
 
 const getAllProductCategorys = async (branchId: string) => {
@@ -60,13 +75,28 @@ const getProductCategoryById = async (id: string) => {
 
 const updateProductCategory = async (
   id: string,
-  data: Partial<productCategory>
+  data: Partial<productCategory>,
+  file?: Express.Multer.File
 ) => {
+  let imageUrl = "";
+
   const isExist = await prisma.productCategory.findUnique({ where: { id } });
   if (!isExist) {
     throw new ApiError(httpStatus.NOT_FOUND, " No data found");
   }
-  return await prisma.productCategory.update({ where: { id }, data });
+
+  if (file) {
+    try {
+      imageUrl = (await uploadToDigitalOceanAWS(file)).Location;
+    } catch (error: any) {
+      throw new ApiError(httpStatus.BAD_REQUEST, error.message);
+    }
+  }
+
+  return await prisma.productCategory.update({
+    where: { id },
+    data: { ...data, image: imageUrl ?? isExist.image },
+  });
 };
 
 const deleteProductCategory = async (id: string) => {
@@ -83,5 +113,5 @@ export const productCategoryServices = {
   getProductCategoryById,
   updateProductCategory,
   deleteProductCategory,
-  getAllProductCategorysForBuyer
+  getAllProductCategorysForBuyer,
 };

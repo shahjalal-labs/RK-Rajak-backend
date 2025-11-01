@@ -6,7 +6,8 @@ import ApiError from '../../../errors/ApiErrors';
 import httpStatus from 'http-status';
  
 const createProductCategory = catchAsync (async (req: Request, res: Response) => {
-  const result = await productCategoryServices.createProductCategory(req.body);
+  const file = req.file;
+  const result = await productCategoryServices.createProductCategory(req.body , file);
   sendResponse(res, {
     success: true,
     statusCode: 201,
@@ -49,7 +50,8 @@ const getProductCategoryById = catchAsync(async (req: Request, res: Response) =>
 })
  
 const updateProductCategory = catchAsync(async (req: Request, res: Response) => {
-  const result = await productCategoryServices.updateProductCategory(req.params.id, req.body);
+  const file = req.file;
+  const result = await productCategoryServices.updateProductCategory(req.params.id, req.body, file);
   sendResponse(res, {
     success: true,
     statusCode: 200,
