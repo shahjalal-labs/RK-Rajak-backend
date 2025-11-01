@@ -91,6 +91,7 @@ const buyerOtpLogin = async (
       accessToken,
       id: isExistingUser.id,
       role: isExistingUser.role,
+      status: 'existing'
     };
   }
 
@@ -140,6 +141,7 @@ const buyerOtpLogin = async (
     accessToken,
     id: user.id,
     role: user.role,
+    status: 'new'
   };
 };
 const authOtpLogin = async (phone: string, otp: string, fcmToken?: string) => {

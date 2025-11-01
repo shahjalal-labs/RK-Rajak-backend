@@ -67,7 +67,7 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
     },
   });
 
-  return otp;
+  return { phone: payload.phone, otp , status: 'existing' };
 };
 
 const authLoginIntoDB = async (payload: {
