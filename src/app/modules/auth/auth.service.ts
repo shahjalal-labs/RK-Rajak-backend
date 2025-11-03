@@ -5,6 +5,7 @@ import generateOTP from "../../../helpers/generateOtp";
 import { uploadInSpace } from "../../../shared/UploadHelper";
 import httpStatus from "http-status";
 import { getDistance } from "./auth.helpers";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
 
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
@@ -134,28 +135,6 @@ const updateProfileIntoDB = async (
   userId: string,
   file: Express.Multer.File
 ) => {
-  if (payload.email) {
-    const isThisEmailExist = await prisma.user.findFirst({
-      where: {
-        email: payload.email,
-      },
-    });
-    if (isThisEmailExist) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "This email already used!");
-    }
-  }
-  const isPhoneExist = await prisma.user.findFirst({
-    where: {
-      phone: payload.phone,
-    },
-  });
-  if (isPhoneExist) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "This phone number already used!"
-    );
-  }
-
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new ApiError(404, "user not found for edit user");
@@ -171,7 +150,7 @@ const updateProfileIntoDB = async (
   let profileImage;
 
   if (file) {
-    profileImage = await uploadInSpace(file, "users/profileImage");
+    profileImage = (await uploadToDigitalOceanAWS(file)).Location;
   }
 
   await prisma.user.update({

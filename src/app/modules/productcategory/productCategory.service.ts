@@ -84,7 +84,7 @@ const updateProductCategory = async (
   if (!isExist) {
     throw new ApiError(httpStatus.NOT_FOUND, " No data found");
   }
-
+  
   if (file) {
     try {
       imageUrl = (await uploadToDigitalOceanAWS(file)).Location;
