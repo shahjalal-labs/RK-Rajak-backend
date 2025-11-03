@@ -243,11 +243,11 @@ const getAllProductsForBuyer = async (
           productId: true,
         },
       },
-      category: {
-        include: {
-          productSubcategory: true,
-        },
-      },
+      // category: {
+      //   include: {
+      //     productSubcategory: true,
+      //   },
+      // },
     },
   });
 
