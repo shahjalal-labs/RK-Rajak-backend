@@ -1,6 +1,5 @@
-import { PendingUser, User, UserRole, verificationUsers } from "@prisma/client";
+import { User, UserRole, verificationUsers } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
-import bcrypt from "bcryptjs";
 import { jwtHelpers } from "../../../helpers/jwtHelpers";
 import config from "../../../config";
 import prisma from "../../../shared/prisma";
@@ -91,7 +90,7 @@ const buyerOtpLogin = async (
       accessToken,
       id: isExistingUser.id,
       role: isExistingUser.role,
-      status: 'existing'
+      status: "existing",
     };
   }
 
@@ -141,7 +140,7 @@ const buyerOtpLogin = async (
     accessToken,
     id: user.id,
     role: user.role,
-    status: 'new'
+    status: "new",
   };
 };
 const authOtpLogin = async (phone: string, otp: string, fcmToken?: string) => {
@@ -248,7 +247,7 @@ const getUsers = async (query: any) => {
   const result = await couponQuery
     .setCustomWhere({
       role: {
-      notIn: [UserRole.Owner],
+        notIn: [UserRole.Owner],
       },
     })
     .search(["fullName", "email"])
@@ -267,8 +266,8 @@ const getUsers = async (query: any) => {
 
 const getCustomersForBranch = async (query: any, branchId: string) => {
   const keys = await getModelKeys("user");
-  const couponQuery = new QueryBuilder(prisma.user, query, keys);
-  const result = await couponQuery
+  const customerQuery = new QueryBuilder(prisma.user, query, keys);
+  const result = await customerQuery
     .setCustomWhere({
       role: UserRole.Customer,
       branchId: branchId,
@@ -279,13 +278,62 @@ const getCustomersForBranch = async (query: any, branchId: string) => {
     .exclude()
     .include({
       Wallet: true,
-      order : true,
-      Spin : true,
+      order: true,
+      Spin: true,
       //pending ammounts
     })
     .paginate()
     .execute();
-  const pagination = await couponQuery.countTotal();
+  const pagination = await customerQuery.countTotal();
+  return {
+    meta: pagination,
+    result,
+  };
+};
+const getAllAgentsFromDB = async (query: any,) => {
+  const keys = await getModelKeys("user");
+  const agentQuery = new QueryBuilder(prisma.user, query, keys);
+  let result;
+  if (query.branchId) {
+    result = await agentQuery
+      // if branchId exist then set branchId condition
+      .setCustomWhere({
+        role: UserRole.Agent,
+        branchId: query.branchId,
+      })
+      .search(["fullName", "email"])
+      .filter()
+      .sort()
+      .exclude()
+      .include({
+        Wallet: true,
+        order: true,
+        Spin: true,
+        //pending ammounts
+      })
+      .paginate()
+      .execute();
+  } else {
+    result = await agentQuery
+      // if branchId exist then set branchId condition
+      .setCustomWhere({
+        role: UserRole.Agent,
+      })
+      .search(["fullName", "email"])
+      .filter()
+      .sort()
+      .exclude()
+      .include({
+        Wallet: true,
+        order: true,
+        Spin: true,
+        //pending ammounts
+      })
+      .paginate()
+      .execute();
+  }
+
+  const pagination = await agentQuery.countTotal();
   return {
     meta: pagination,
     result,
@@ -380,7 +428,7 @@ const verifyMyAccount = async (
 
   await prisma.verificationUsers.create({
     data: {
-      userId : userId,
+      userId: userId,
       buyerName: payload.buyerName,
       buyerPhoto: buyerPhotoUrl,
       shopName: payload.shopName,
@@ -391,22 +439,28 @@ const verifyMyAccount = async (
   return;
 };
 
-const userCreateByOwner = async (payload : userCreationByOwner) => {
+const userCreateByOwner = async (payload: userCreationByOwner) => {
   const isUserPhone = await prisma.user.findFirst({
-    where :{
-      phone : payload.phone
-    }
+    where: {
+      phone: payload.phone,
+    },
   });
-  if(isUserPhone){
-    throw new ApiError(httpStatus.BAD_REQUEST , `Phone number is already used for- ${isUserPhone.fullName}. please provide a different phone number`)
+  if (isUserPhone) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Phone number is already used for- ${isUserPhone.fullName}. please provide a different phone number`
+    );
   }
   const isBranchExist = await prisma.branch.findUnique({
-    where :{
-      id : payload.branchId
-    }
-  })
-  if(!isBranchExist){
-    throw new ApiError(httpStatus.BAD_REQUEST , "Branch is is wrong. please provide a valid branch id")
+    where: {
+      id: payload.branchId,
+    },
+  });
+  if (!isBranchExist) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Branch is is wrong. please provide a valid branch id"
+    );
   }
   const user = await prisma.user.create({
     data: {
@@ -429,5 +483,6 @@ export const userService = {
   deleteUserAccount,
   verifyMyAccount,
   userCreateByOwner,
-  getCustomersForBranch
+  getCustomersForBranch,
+  getAllAgentsFromDB,
 };

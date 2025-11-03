@@ -32,6 +32,7 @@ router.post(
 
 router.get("/", auth(UserRole.Owner), UserControllers.getUsers);
 router.get("/customers/:branchId", auth(UserRole.Owner , UserRole.SuperAdmin), UserControllers.getCustomersForBranch);
+router.get('/all-agents', auth(UserRole.Owner, UserRole.SuperAdmin), UserControllers.getAllAgents);
 router.get(
   "/single/:id",
   auth(UserRole.Owner, UserRole.Admin, UserRole.SuperAdmin),

@@ -66,6 +66,15 @@ const getCustomersForBranch = catchAsync(async (req, res) => {
     data: users,
   });
 });
+const getAllAgents = catchAsync(async (req, res) => {
+  const users = await userService.getAllAgentsFromDB(req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Agent retrived successfully",
+    data: users,
+  });
+});
 
 //get single user
 const getSingleUser = catchAsync(async (req, res) => {
@@ -176,5 +185,6 @@ export const UserControllers = {
   authOtpLogin,
   deleteUserAccount,
   verifyMyAccount,
-  getCustomersForBranch
+  getCustomersForBranch,
+  getAllAgents
 };
