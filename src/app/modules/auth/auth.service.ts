@@ -113,16 +113,54 @@ const authLoginIntoDB = async (payload: {
 };
 
 const getProfileFromDB = async (userId: string) => {
-  const user = await prisma.user.findUnique({
+  let user: any = await prisma.user.findUnique({
     where: { id: userId },
-    include: {
-      verificationUsers: true,
-      UserLocation: true,
-      shippingAddress: true,
-    },
+    select :{
+      id: true,
+      fullName: true,
+      phone: true,
+      role : true,
+      email: true,
+      profileImage: true,
+      address: true,
+      isProfileComplete: true,
+      isVerifyed  : true,
+      branchId : true,
+      buyerRating : true,
+      status : true,
+      agentId : true,
+      referralCode : true,
+      fcmToken : true,
+      shopOpeningTime : true,
+      threshold : true,
+      discount : true,
+      createdAt : true,
+      updatedAt : true,
+      UserLocation: {
+        select :{
+          id : true,
+          latitude : true,
+          longitude : true,
+        }
+      },
+      verificationUsers : true
+    }
   });
   if (!user) {
     throw new ApiError(404, "user not found!");
+  }
+  if(user.agentId){
+    user.agentData =  await prisma.user.findUnique({
+      where: { id: user.agentId },
+      select :{
+        id: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        profileImage: true,
+        address: true,
+      }
+    });
   }
 
   const { createdAt, updatedAt, ...sanitizedUser } = user;

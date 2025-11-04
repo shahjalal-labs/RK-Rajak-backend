@@ -132,6 +132,7 @@ model branch {
   id                String              @id @default(auto()) @map("_id") @db.ObjectId
   name              String
   location          String
+  isOpen            Boolean             @default(true)
   latitude          Float
   longitude         Float
   openingTime       String

@@ -75,6 +75,15 @@ const getAllAgents = catchAsync(async (req, res) => {
     data: users,
   });
 });
+const getMyCustomers = catchAsync(async (req, res) => {
+  const users = await userService.getMyCustomersFromDB(req.query , req.user.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: " Your Customer retrived successfully",
+    data: users,
+  });
+});
 
 //get single user
 const getSingleUser = catchAsync(async (req, res) => {
@@ -186,5 +195,6 @@ export const UserControllers = {
   deleteUserAccount,
   verifyMyAccount,
   getCustomersForBranch,
-  getAllAgents
+  getAllAgents,
+  getMyCustomers
 };

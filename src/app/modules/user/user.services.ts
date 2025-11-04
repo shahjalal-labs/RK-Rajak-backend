@@ -471,6 +471,26 @@ const userCreateByOwner = async (payload: userCreationByOwner) => {
   return user;
 };
 
+const getMyCustomersFromDB = async (query: any, userId: string) => {
+  const keys = await getModelKeys("user");
+  const customerQuery = new QueryBuilder(prisma.user, query, keys); 
+  const result = await customerQuery
+    .setCustomWhere({
+      role: UserRole.Customer,
+      agentId: userId,
+    }).search(["fullName", "email"])
+    .filter()
+    .sort()
+    .paginate()
+    .execute();
+
+  const pagination = await customerQuery.countTotal();
+  return {
+    meta: pagination,
+    result,
+  };
+};
+
 export const userService = {
   buyerOtpLogin,
   getUsers,
@@ -485,4 +505,5 @@ export const userService = {
   userCreateByOwner,
   getCustomersForBranch,
   getAllAgentsFromDB,
+  getMyCustomersFromDB
 };
