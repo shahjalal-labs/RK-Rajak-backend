@@ -51,7 +51,7 @@ router.delete(
 );
 router.patch(
   "/update-user/:userId",
-  auth(UserRole.Owner),
+  auth(UserRole.Owner , UserRole.SuperAdmin),
   fileUploader.profileImage,
   parseBodyData,
   UserControllers.updateUser
