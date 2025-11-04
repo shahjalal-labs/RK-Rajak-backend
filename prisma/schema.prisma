@@ -15,7 +15,7 @@ model User {
   email             String?
   isProfileComplete Boolean            @default(false)
   isVerifyed        Boolean            @default(false)
-  buyerRating       Float?
+  buyerRating       Float?             @default(0)
   fcmToken          String?
   profileImage      String?            @default("https://i.ibb.co.com/nrs3FjM/images.png")
   shopOpeningTime   String?
@@ -363,14 +363,33 @@ model Review {
 /// ---------- Wallet and spins Models -----//
 
 model Wallet {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  user      User?    @relation(fields: [userId], references: [id])
-  userId    String?  @unique @db.ObjectId
-  balance   Float    @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String              @id @default(auto()) @map("_id") @db.ObjectId
+  user               User?               @relation(fields: [userId], references: [id])
+  userId             String?             @unique @db.ObjectId
+  balance            Float               @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  walletTransactions WalletTransaction[]
 
+  @@index([userId, id])
   @@map("wallets")
+}
+
+model WalletTransaction {
+  id        String          @id @default(auto()) @map("_id") @db.ObjectId
+  wallet    Wallet?         @relation(fields: [walletId], references: [id])
+  walletId  String?         @db.ObjectId
+  amount    Float
+  type      TransactionType
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@map("walletTransactions")
+}
+
+enum TransactionType {
+  Credit
+  Debit
 }
 
 model Spin {

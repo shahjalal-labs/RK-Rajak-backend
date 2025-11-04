@@ -123,6 +123,11 @@ const buyerOtpLogin = async (
       status: "Active",
       fcmToken: fcmToken ?? "",
       referralCode: raffaralCode,
+      Wallet : {
+        create : {  
+          balance : 0,
+        }
+      }
     },
   });
   // access token
@@ -214,6 +219,12 @@ const authOtpLogin = async (phone: string, otp: string, fcmToken?: string) => {
 const getSingleUserIntoDB = async (id: string) => {
   const user = await prisma.user.findUnique({
     where: { id },
+    include :{
+      order : true,
+      shippingAddress : true,
+      Wallet : true,
+      UserLocation : true,
+    }
   });
   if (!user) {
     throw new ApiError(404, "user not found!");

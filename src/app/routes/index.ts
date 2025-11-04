@@ -9,6 +9,7 @@ import { livePhotoCategoryRoutes } from "../modules/livephotocategory/livePhotoC
 import { livePhotoRoutes } from "../modules/livephoto/livePhoto.routes";
 import { productCategoryRoutes } from "../modules/productcategory/productCategory.routes";
 import { productRoutes } from "../modules/product/product.routes";
+import { WalletRoutes } from "../modules/wallet/Wallet.routes";
 
 const router = express.Router();
 
@@ -52,6 +53,10 @@ const moduleRoutes = [
   {
     path: "/product",
     route: productRoutes,
+  },
+  {
+    path: "/wallet",
+    route: WalletRoutes,
   },
 
 ];

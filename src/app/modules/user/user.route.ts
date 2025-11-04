@@ -36,7 +36,7 @@ router.get('/all-agents', auth(UserRole.Owner, UserRole.SuperAdmin), UserControl
 router.get('/my-customers', auth(UserRole.Agent), UserControllers.getMyCustomers);
 router.get(
   "/single/:id",
-  auth(UserRole.Owner, UserRole.Admin, UserRole.SuperAdmin),
+  auth(UserRole.Owner, UserRole.Admin, UserRole.SuperAdmin , UserRole.Agent),
   UserControllers.getSingleUser
 );
 router.patch(
