@@ -24,6 +24,13 @@ const prisma = new PrismaClient();
 })();
 
 app.use(cors());
+
+// Cashfree webhook needs raw body for signature verification
+app.use(
+  "/api/v1/payment/webhook/cashfree",
+  express.raw({ type: "application/json" })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));

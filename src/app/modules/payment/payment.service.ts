@@ -12,7 +12,7 @@ const prisma = new PrismaClient();
  * This ensures the webhook is actually from Cashfree
  */
 const verifyWebhookSignature = (
-  body: any,
+  rawBody: string | Buffer,
   headers: any
 ): boolean => {
   const signature = headers["x-webhook-signature"];
@@ -22,8 +22,11 @@ const verifyWebhookSignature = (
     return false;
   }
 
+  // Convert Buffer to string if needed
+  const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
+
   // Create signature using webhook secret
-  const signedPayload = `${timestamp}${JSON.stringify(body)}`;
+  const signedPayload = `${timestamp}${bodyString}`;
   const expectedSignature = crypto
     .createHmac("sha256", config.cashfree.webhook_secret!)
     .update(signedPayload)
@@ -35,11 +38,16 @@ const verifyWebhookSignature = (
 /**
  * Handle Cashfree webhook
  */
-const handleCashfreeWebhook = async (payload: any, headers: any) => {
-  console.log("Cashfree webhook received:", payload);
+const handleCashfreeWebhook = async (rawBody: any, headers: any) => {
+  console.log("Cashfree webhook received");
 
-  // Verify webhook signature
-  const isValid = verifyWebhookSignature(payload, headers);
+  // Parse body if it's a Buffer (from express.raw)
+  const payload = Buffer.isBuffer(rawBody) 
+    ? JSON.parse(rawBody.toString('utf8')) 
+    : rawBody;
+
+  // Verify webhook signature with raw body
+  const isValid = verifyWebhookSignature(rawBody, headers);
   if (!isValid) {
     throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
   }
