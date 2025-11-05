@@ -27,11 +27,9 @@ const rechargeBalance = async (userId: string , payload : {amount : number}) => 
 
   return existingWallet;
 };
-
 const getAllWallets = async () => {
   return await prisma.wallet.findMany();
 };
-
 const getWalletById = async (id: string) => {
   const user = await prisma.user.findUnique({
     where: { id, role: "Customer" },

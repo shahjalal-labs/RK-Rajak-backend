@@ -10,6 +10,9 @@ import { livePhotoRoutes } from "../modules/livephoto/livePhoto.routes";
 import { productCategoryRoutes } from "../modules/productcategory/productCategory.routes";
 import { productRoutes } from "../modules/product/product.routes";
 import { WalletRoutes } from "../modules/wallet/Wallet.routes";
+import { spinRoutes } from "../modules/spin/spin.routes";
+import { orderRoutes } from "../modules/order/order.routes";
+import { PaymentRoutes } from "../modules/payment/payment.routes";
 
 const router = express.Router();
 
@@ -58,7 +61,18 @@ const moduleRoutes = [
     path: "/wallet",
     route: WalletRoutes,
   },
-
+  {
+    path: "/spin",
+    route: spinRoutes,
+  },
+  {
+    path: "/order",
+    route: orderRoutes,
+  },
+  {
+    path: "/payment",
+    route: PaymentRoutes,
+  },
 ];
 
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

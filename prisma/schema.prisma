@@ -39,7 +39,6 @@ model User {
 
   @@map("users")
 }
-
 model PendingUser {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   phone     String   @unique
@@ -50,7 +49,6 @@ model PendingUser {
 
   @@map("pendingUsers")
 }
-
 model Otp {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   phone     String   @unique
@@ -83,7 +81,6 @@ enum UserRole {
   Owner
   Driver
 }
-
 model UserLocation {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @unique @db.ObjectId
@@ -95,7 +92,6 @@ model UserLocation {
 
   @@map("user_locations")
 }
-
 model shippingAddress {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   user      User?    @relation(fields: [userId], references: [id])
@@ -111,7 +107,6 @@ model shippingAddress {
 
   @@map("shippingAddresses")
 }
-
 model verificationUsers {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   user       User?    @relation(fields: [userId], references: [id])
@@ -311,14 +306,33 @@ model order {
   userId            String?          @db.ObjectId
   products          orderProduct[]
   totalAmount       Float
-  isPaid            Boolean?
+  isPaid            Boolean?         @default(false)
   status            OrderStatus      @default(Pending)
   shippingAddressId String?          @db.ObjectId
   shippingAddress   shippingAddress? @relation(fields: [shippingAddressId], references: [id])
   branchId          String?          @db.ObjectId
   branch            branch?          @relation(fields: [branchId], references: [id])
-  paymentMethodId   String?
-  paymentIntentId   String?
+  
+  // Payment tracking
+  paymentMethod     PaymentMethod?   @default(COD)
+  paymentGateway    String?          // "cashfree",
+  cashfreeOrderId   String?          // Cashfree order ID
+  paymentSessionId  String?          // Cashfree session ID
+  paymentStatus     PaymentStatus?   @default(Pending)
+  
+  // Wallet payment tracking
+  walletAmountUsed  Float?           @default(0)
+  onlineAmountPaid  Float?           @default(0)
+  
+  // Return tracking
+  isReturned        Boolean?         @default(false)
+  isPartialReturn   Boolean?         @default(false)
+  totalReturnedAmount Float?         @default(0)
+  
+  // MainOrder relation
+  mainOrderId       String?          @db.ObjectId
+  mainOrder         MainOrder?       @relation(fields: [mainOrderId], references: [id])
+  
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -326,15 +340,18 @@ model order {
 }
 
 model orderProduct {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  order     order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId   String?  @db.ObjectId
-  product   product? @relation(fields: [productId], references: [id])
-  productId String?  @db.ObjectId
-  quantity  Int
-  price     Float
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  order            order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId          String?  @db.ObjectId
+  product          product? @relation(fields: [productId], references: [id])
+  productId        String?  @db.ObjectId
+  variationId      String?  @db.ObjectId
+  quantity         Int
+  price            Float
+  returnedQuantity Int      @default(0)
+  isReturned       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@map("orderProducts")
 }
@@ -344,6 +361,41 @@ enum OrderStatus {
   onTheway
   Delivered
   Cancelled
+  PartiallyReturned
+  FullyReturned
+}
+
+enum PaymentMethod {
+  COD
+  Online
+  Wallet
+}
+
+enum PaymentStatus {
+  Pending
+  Success
+  Failed
+  Refunded
+  PartiallyRefunded
+}
+
+/// ------ Main Order Model (Daily Aggregation) -----///
+
+model MainOrder {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String   @db.ObjectId
+  orders               order[]
+  totalAmount          Float
+  pendingAmount        Float    @default(0) // COD + unpaid amounts
+  totalReturnedAmount  Float    @default(0)
+  totalWalletUsed      Float    @default(0)
+  totalOnlinePaid      Float    @default(0)
+  orderDate            DateTime // Date when orders were placed
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId, orderDate])
+  @@map("mainOrders")
 }
 
 /// ------ Buyer  Review Model -----///
@@ -376,13 +428,16 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id        String          @id @default(auto()) @map("_id") @db.ObjectId
-  wallet    Wallet?         @relation(fields: [walletId], references: [id])
-  walletId  String?         @db.ObjectId
-  amount    Float
-  type      TransactionType
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  wallet      Wallet?         @relation(fields: [walletId], references: [id])
+  walletId    String?         @db.ObjectId
+  amount      Float
+  type        TransactionType
+  description String?         // e.g., "Order payment", "Refund for order #123"
+  orderId     String?         // Track which order this transaction is for
+  status      String?         @default("Success") // "Success", "Pending", "Failed"
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@map("walletTransactions")
 }
@@ -401,6 +456,19 @@ model Spin {
   updatedAt DateTime @updatedAt
 
   @@map("spins")
+}
+
+model spinValue {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  branchId  String   @db.ObjectId
+  spinValue Float
+  month     DateTime
+  year      Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId, month, year], name: "branch_month_year_index")
+  @@map("spinValues")
 }
 
 /// --- --------------- Contact and Notification Models -----//

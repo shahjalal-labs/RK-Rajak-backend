@@ -1,0 +1,141 @@
+import { Request, Response } from "express";
+import { orderServices } from "./order.service";
+import sendResponse from "../../../shared/sendResponse";
+import catchAsync from "../../../shared/catchAsync";
+
+/**
+ * Create order (handles all payment methods)
+ */
+const createOrder = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user.id; // Assuming auth middleware adds user to request
+  const result = await orderServices.createOrder({ ...req.body, userId });
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 201,
+    message: "Order created successfully",
+    data: result,
+  });
+});
+
+/**
+ * Cancel order
+ */
+const cancelOrder = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const { orderId, reason } = req.body;
+
+  const result = await orderServices.cancelOrder({
+    orderId,
+    userId,
+    reason,
+  });
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Order cancelled successfully",
+    data: result,
+  });
+});
+
+/**
+ * Return order (partial or full)
+ */
+const returnOrder = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const { orderId, products, reason } = req.body;
+
+  const result = await orderServices.returnOrder({
+    orderId,
+    userId,
+    products,
+    reason,
+  });
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Order returned successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get all orders
+ */
+const getAllOrders = catchAsync(async (_req: Request, res: Response) => {
+  const result = await orderServices.getAllOrders();
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "All orders retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get order by ID
+ */
+const getOrderById = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getOrderById(req.params.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Order retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get user's orders
+ */
+const getUserOrders = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const result = await orderServices.getUserOrders(userId);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "User orders retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Update order status
+ */
+const updateOrderStatus = catchAsync(async (req: Request, res: Response) => {
+  const { status } = req.body;
+  const result = await orderServices.updateOrderStatus(req.params.id, status);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Order status updated successfully",
+    data: result,
+  });
+});
+
+/**
+ * Delete order (soft delete)
+ */
+const deleteOrder = catchAsync(async (req: Request, res: Response) => {
+  await orderServices.deleteOrder(req.params.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Order deleted successfully",
+  });
+});
+
+export const orderControllers = {
+  createOrder,
+  cancelOrder,
+  returnOrder,
+  getAllOrders,
+  getOrderById,
+  getUserOrders,
+  updateOrderStatus,
+  deleteOrder,
+};

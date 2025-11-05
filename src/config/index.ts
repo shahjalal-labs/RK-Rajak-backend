@@ -27,6 +27,13 @@ export default {
     stripe_secret: process.env.STRIPE_SK,
     webhook_secret: process.env.STRIPE_WEBHOOK_SECRET,
   },
+  cashfree: {
+    app_id: process.env.CASHFREE_APP_ID,
+    secret_key: process.env.CASHFREE_SECRET_KEY,
+    api_version: process.env.CASHFREE_API_VERSION || "2023-08-01",
+    environment: process.env.CASHFREE_ENV || "sandbox", // "sandbox" or "production"
+    webhook_secret: process.env.CASHFREE_WEBHOOK_SECRET,
+  },
   do_space: {
     endpoints: process.env.DO_SPACE_ENDPOINT,
     access_key: process.env.DO_SPACE_ACCESS_KEY,
