@@ -7,6 +7,7 @@ export default {
   env: process.env.NODE_ENV,
   port: process.env.PORT,
   backend_base_url: process.env.BACKEND_BASE_URL,
+  frontend_base_url: process.env.FRONTEND_BASE_URL || "http://localhost:3000", // Frontend URL
   super_admin_password: process.env.SUPER_ADMIN_PASSWORD,
   bcrypt_salt_rounds: process.env.BCRYPT_SALT_ROUNDS,
   jwt: {

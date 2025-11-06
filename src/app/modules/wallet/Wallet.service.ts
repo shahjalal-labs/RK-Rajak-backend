@@ -3,30 +3,9 @@ import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 const prisma = new PrismaClient();
 
-const rechargeBalance = async (userId: string , payload : {amount : number}) => {
-  const existingWallet = await prisma.wallet.findFirst({ where: { userId } })!;
-  const { amount } = payload;
+// NOTE: Wallet recharge is now handled by Payment module using Cashfree gateway
+// Use POST /payment/wallet/recharge endpoint for recharging wallet
 
-  //! TODO :----- // make it using payment gateway later 
-
-  //iam sure evryone has wallet 
-  existingWallet!.balance += amount;
-  await prisma.wallet.update({
-    where: { id: existingWallet!.id },
-    data: { balance: existingWallet!.balance },
-  });
-
-  // save it in wallet transactions 
-  await prisma.walletTransaction.create({
-    data: {
-      walletId: existingWallet!.id,
-      amount: amount,
-      type: "Credit",
-    },
-  });
-
-  return existingWallet;
-};
 const getAllWallets = async () => {
   return await prisma.wallet.findMany();
 };
@@ -57,7 +36,6 @@ const getWalletById = async (id: string) => {
 };
 
 export const WalletServices = {
-  rechargeBalance,
   getAllWallets,
   getWalletById,
 };

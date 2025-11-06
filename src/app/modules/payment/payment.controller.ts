@@ -4,11 +4,53 @@ import sendResponse from "../../../shared/sendResponse";
 import { PaymentServices } from "./payment.service";
 
 /**
- * Cashfree webhook handler
- * This endpoint receives payment status updates from Cashfree
+ * Create wallet recharge
  */
-const cashfreeWebhook = catchAsync(async (req: Request, res: Response) => {
-  const result = await PaymentServices.handleCashfreeWebhook(req.body, req.headers);
+const createWalletRecharge = catchAsync(async (req: Request, res: Response) => {
+  const result = await PaymentServices.createWalletRecharge(req.body);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Wallet recharge initiated successfully",
+    data: result,
+  });
+});
+
+/**
+ * Create dues payment
+ */
+const createDuesPayment = catchAsync(async (req: Request, res: Response) => {
+  const result = await PaymentServices.createDuesPayment(req.body);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Dues payment initiated successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get user dues
+ */
+const getUserDues = catchAsync(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const result = await PaymentServices.getUserDues(userId);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "User dues retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Wallet recharge webhook handler
+ */
+const walletRechargeWebhook = catchAsync(async (req: Request, res: Response) => {
+  const result = await PaymentServices.handleWalletRechargeWebhook(req.body, req.headers);
 
   sendResponse(res, {
     success: true,
@@ -19,37 +61,23 @@ const cashfreeWebhook = catchAsync(async (req: Request, res: Response) => {
 });
 
 /**
- * Verify payment status manually (for frontend polling)
+ * Dues payment webhook handler
  */
-const verifyPayment = catchAsync(async (req: Request, res: Response) => {
-  const { orderId } = req.params;
-  const result = await PaymentServices.verifyPaymentStatus(orderId);
+const duesPaymentWebhook = catchAsync(async (req: Request, res: Response) => {
+  const result = await PaymentServices.handleDuesPaymentWebhook(req.body, req.headers);
 
   sendResponse(res, {
     success: true,
     statusCode: 200,
-    message: "Payment status verified",
-    data: result,
-  });
-});
-
-/**
- * Get payment details
- */
-const getPaymentDetails = catchAsync(async (req: Request, res: Response) => {
-  const { orderId } = req.params;
-  const result = await PaymentServices.getPaymentDetails(orderId);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Payment details retrieved successfully",
+    message: "Webhook processed successfully",
     data: result,
   });
 });
 
 export const PaymentControllers = {
-  cashfreeWebhook,
-  verifyPayment,
-  getPaymentDetails,
+  createWalletRecharge,
+  createDuesPayment,
+  getUserDues,
+  walletRechargeWebhook,
+  duesPaymentWebhook,
 };

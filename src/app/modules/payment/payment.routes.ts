@@ -1,23 +1,33 @@
 import express from "express";
 import { PaymentControllers } from "./payment.controller";
 import auth from "../../middlewares/auth";
+import { UserRole } from "@prisma/client";
 
 const router = express.Router();
 
-/**
- * Cashfree webhook endpoint (No auth required - called by Cashfree)
- * This must match the webhook URL configured in Cashfree dashboard
- */
-router.post("/webhook/cashfree", PaymentControllers.cashfreeWebhook);
+// Wallet recharge
+router.post(
+  "/wallet/recharge",
+  auth(UserRole.Customer),
+  PaymentControllers.createWalletRecharge
+);
 
-/**
- * Verify payment status (Customer can check their payment)
- */
-router.get("/verify/:orderId", auth("Customer"), PaymentControllers.verifyPayment);
+// Dues payment
+router.post(
+  "/dues/payment",
+  auth(UserRole.Customer),
+  PaymentControllers.createDuesPayment
+);
 
-/**
- * Get payment details (Customer/Admin)
- */
-router.get("/:orderId", auth("Customer", "Admin", "SuperAdmin"), PaymentControllers.getPaymentDetails);
+// Get user dues
+router.get(
+  "/dues/:userId",
+  auth(UserRole.Customer, UserRole.Owner, UserRole.Driver, UserRole.SuperAdmin),
+  PaymentControllers.getUserDues
+);
+
+// Webhook endpoints (no auth required - Cashfree calls these)
+router.post("/webhook/wallet-recharge", PaymentControllers.walletRechargeWebhook);
+router.post("/webhook/dues-payment", PaymentControllers.duesPaymentWebhook);
 
 export const PaymentRoutes = router;

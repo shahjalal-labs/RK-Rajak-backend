@@ -29,6 +29,11 @@ model User {
   agentId           String?            @db.ObjectId
   threshold         Int?               @default(0)
   discount          Float?             @default(0)
+  
+  // Dues tracking
+  activeDuesCount   Int                @default(0) // Current number of unpaid credit orders
+  totalDuesAmount   Float              @default(0) // Total amount in dues
+  
   order             order[]
   shippingAddress   shippingAddress[]
   verificationUsers verificationUsers?
@@ -36,6 +41,7 @@ model User {
   Wallet            Wallet?
   Spin              Spin[]
   Review            Review[]
+  DuesPayment       DuesPayment[]
 
   @@map("users")
 }
@@ -315,14 +321,14 @@ model order {
   
   // Payment tracking
   paymentMethod     PaymentMethod?   @default(COD)
-  paymentGateway    String?          // "cashfree",
-  cashfreeOrderId   String?          // Cashfree order ID
-  paymentSessionId  String?          // Cashfree session ID
-  paymentStatus     PaymentStatus?   @default(Pending)
   
   // Wallet payment tracking
   walletAmountUsed  Float?           @default(0)
-  onlineAmountPaid  Float?           @default(0)
+  
+  // Dues/Credit tracking
+  isDues            Boolean?         @default(false)
+  duesCleared       Boolean?         @default(false)
+  duesClearedAt     DateTime?
   
   // Return tracking
   isReturned        Boolean?         @default(false)
@@ -367,8 +373,8 @@ enum OrderStatus {
 
 enum PaymentMethod {
   COD
-  Online
   Wallet
+  Credit
 }
 
 enum PaymentStatus {
@@ -422,6 +428,7 @@ model Wallet {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   walletTransactions WalletTransaction[]
+  WalletRecharge     WalletRecharge[]
 
   @@index([userId, id])
   @@map("wallets")
@@ -507,4 +514,37 @@ model DriverAssignment {
   updatedAt  DateTime @updatedAt
 
   @@map("driverAssignments")
+}
+
+/// ------ Wallet Recharge Model (for online payment) -----///
+model WalletRecharge {
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  wallet            Wallet?        @relation(fields: [walletId], references: [id])
+  walletId          String?        @db.ObjectId
+  amount            Float
+  paymentGateway    String         @default("cashfree")
+  cashfreeOrderId   String?        @unique
+  paymentSessionId  String?
+  paymentStatus     PaymentStatus  @default(Pending)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@map("walletRecharges")
+}
+
+/// ------ Dues Payment Model (for clearing dues) -----///
+model DuesPayment {
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  user              User?          @relation(fields: [userId], references: [id])
+  userId            String?        @db.ObjectId
+  orderIds          String[]       // Array of order IDs being cleared
+  amount            Float          // Total amount being paid
+  paymentGateway    String         @default("cashfree")
+  cashfreeOrderId   String?        @unique
+  paymentSessionId  String?
+  paymentStatus     PaymentStatus  @default(Pending)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@map("duesPayments")
 }

@@ -9,38 +9,77 @@ const prisma = new PrismaClient();
  */
 export const mergeDailyOrders = async () => {
   try {
+    console.log("Starting daily order merge...");
 
-      console.log("Starting daily order merge...");
-      
-      // Get yesterday's date range
-      const today = new Date();
-
-    // for testing purpose i need to set the time like 5 minutes  instead of midnight
-    // today.setMinutes(today.getMinutes() + 5);    
-    today.setHours(0, 0, 0, 0);
+    // Get date range
+    const now = new Date();
     
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    // FOR TESTING: Get orders from last 10 minutes (to account for timezone and timing issues)
+    const startTime = new Date(now);
+    startTime.setMinutes(startTime.getMinutes() - 10);
+    
+    const endTime = new Date(now);
 
-    const endOfYesterday = new Date(today);
-    endOfYesterday.setMilliseconds(-1);
+    console.log(`Searching for orders between ${startTime.toISOString()} and ${endTime.toISOString()}`);
+    console.log(`Local time: ${now.toLocaleString()}`);
 
-    // Fetch all orders from yesterday without mainOrderId
-    const orders = await prisma.order.findMany({
+    // First, check all orders in the time range (without mainOrderId filter)
+    const allOrdersInRange = await prisma.order.findMany({
       where: {
         createdAt: {
-          gte: yesterday,
-          lte: endOfYesterday,
+          gte: startTime,
+          lte: endTime,
         },
-        mainOrderId: null,
+      },
+      select: {
+        id: true,
+        orderId: true,
+        createdAt: true,
+        userId: true,
+        totalAmount: true,
+        mainOrderId: true,
+      },
+    });
+
+    console.log(`Total orders in time range (including already merged): ${allOrdersInRange.length}`);
+    if (allOrdersInRange.length > 0) {
+      console.log("All orders:", allOrdersInRange.map(o => ({
+        orderId: o.orderId,
+        createdAt: o.createdAt.toISOString(),
+        mainOrderId: o.mainOrderId,
+        hasMainOrder: !!o.mainOrderId
+      })));
+    }
+
+    // Fetch all orders from the time range
+    const allOrders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: startTime,
+          lte: endTime,
+        },
       },
       include: {
         products: true,
       },
     });
 
+    // Filter out orders that already have mainOrderId (Prisma MongoDB null filter issue)
+    const orders = allOrders.filter(order => !order.mainOrderId);
+
+    console.log(`Found ${orders.length} orders to merge (after mainOrderId filter)`);
+    
+    if (orders.length > 0) {
+      console.log("Orders to merge:", orders.map(o => ({
+        id: o.orderId,
+        createdAt: o.createdAt,
+        userId: o.userId,
+        amount: o.totalAmount
+      })));
+    }
+
     if (orders.length === 0) {
-      console.log("No orders to merge for yesterday");
+      console.log("No orders to merge for the given time range");
       return;
     }
 
@@ -55,17 +94,16 @@ export const mergeDailyOrders = async () => {
 
     // Create MainOrder for each user
     for (const [userId, userOrders] of Object.entries(ordersByUser)) {
-      const totalAmount = userOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+      const totalAmount = userOrders.reduce(
+        (sum, order) => sum + order.totalAmount,
+        0
+      );
       const totalReturnedAmount = userOrders.reduce(
         (sum, order) => sum + (order.totalReturnedAmount || 0),
         0
       );
       const totalWalletUsed = userOrders.reduce(
         (sum, order) => sum + (order.walletAmountUsed || 0),
-        0
-      );
-      const totalOnlinePaid = userOrders.reduce(
-        (sum, order) => sum + (order.onlineAmountPaid || 0),
         0
       );
 
@@ -88,8 +126,7 @@ export const mergeDailyOrders = async () => {
             pendingAmount,
             totalReturnedAmount,
             totalWalletUsed,
-            totalOnlinePaid,
-            orderDate: yesterday,
+            orderDate: new Date(), // Use current date for testing
           },
         });
 
@@ -123,7 +160,7 @@ export const mergeDailyOrders = async () => {
 export const scheduleDailyOrderMerge = () => {
   // Run at 12:00 AM every day (0 0 * * *)
   // for testing purpose i need to set the time like 5 minutes  instead of midnight
-  console.log("start the por corn job")
+  console.log("start the por corn job");
   cron.schedule("*/5 * * * *", async () => {
     console.log("✅ Hitting the cron job");
     await mergeDailyOrders();

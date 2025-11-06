@@ -40,7 +40,6 @@
     "bull-board": "^1.7.2",
     "bullmq": "^5.58.5",
     "cashfree-pg": "^5.1.0",
-    "cashfree-pg-sdk-nodejs": "^2.0.2",
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",

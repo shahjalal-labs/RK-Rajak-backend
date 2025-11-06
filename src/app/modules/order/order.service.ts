@@ -1,9 +1,7 @@
-import { PrismaClient, PaymentMethod, PaymentStatus, OrderStatus } from "@prisma/client";
+import { PrismaClient, PaymentMethod, OrderStatus } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { ICreateOrderPayload, IReturnOrderPayload, ICancelOrderPayload } from "./order.interface";
-import { createCashfreeOrder, initiateCashfreeRefund } from "../../../helpers/cashfree";
-import config from "../../../config";
 
 const prisma = new PrismaClient();
 
@@ -14,167 +12,6 @@ const generateOrderId = (): string => {
   return `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
 };
 
-/**
- * Place order via COD
- */
-// const placeOrderCOD = async (payload: ICreateOrderPayload) => {
-//   const { userId, products, shippingAddressId,  } = payload;
-//   console.log({userId , products, shippingAddressId});
-//   // Validate user  
-//   const user = await prisma.user.findUnique({ where: { id: userId } });
-//   if (!user) {
-//     throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-//   }
-//   // first we need to check the product is available in db , then we need to check is variation is available in that product  after that evry product variation has availableQuantity and also maxOrderQuantity and minOrderQuantity then need to fecth the data and calculate the total price accordingly
-//   const productIds = products.map((p) => p.productId);
-//   const productVariations = await prisma.productVariation.findMany({
-//     where: {
-//       productId: { in: productIds },
-//       id: { in: products.map((p) => p.variationId).filter((id): id is string => id !== undefined) },
-//     },
-//     include: {
-//       product: true,
-//     },
-//   });
-
-//   // Check if all products and variations are available
-//   for (const p of products) {
-//     const variation = productVariations.find((v) => v.id === p.variationId);
-//     if (!variation) {
-//       throw new ApiError(httpStatus.NOT_FOUND, `Variation not found for product ${p.productId}`);
-//     }
-//     if (variation.availableQuantity < p.quantity) {
-//       throw new ApiError(httpStatus.BAD_REQUEST, `Insufficient quantity for product ${p.productId}`);
-//     }
-//   }
-
-//   // Calculate total amount  accordingly there vairation prices 
-//   const totalAmount = productVariations.reduce((sum, v) => {
-//     const product = products.find((p) => p.variationId === v.id);
-//     return sum + (product ? Number(product.price) * Number(product.quantity) : 0);
-//   }, 0);
-
-//   console.log({ totalAmount }); // console is NAN
-
-//   // Create order with transaction
-//   const order = await prisma.order.create({
-//     data: {
-//       orderId: generateOrderId(),
-//       userId,
-//       totalAmount,
-//       shippingAddressId,
-//       branchId: user.branchId,
-//       paymentMethod: PaymentMethod.COD,
-//       paymentStatus: PaymentStatus.Pending,
-//       isPaid: false,
-//       status: OrderStatus.Pending,
-//       products: {
-//         create: products.map((p) => ({
-//           productId: p.productId,
-//           quantity: p.quantity,
-//           price: p.price,
-//         })),
-//       },
-//     },
-//     include: {
-//       products: {
-//         include: {
-//           product: true,
-//         },
-//       },
-//       shippingAddress: true,
-//     },
-//   });
-
-//   return order;
-// };
-
-
-// const placeOrderCOD = async (payload: ICreateOrderPayload) => {
-//   const { userId, products, shippingAddressId } = payload;
-
-//   // 🧩 Validate user
-//   const user = await prisma.user.findUnique({ where: { id: userId } });
-//   if (!user) {
-//     throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-//   }
-
-//   // 🧩 Collect all variationIds
-//   const variationIds = products.map((p) => p.variationId);
-//   if (variationIds.some((id) => !id)) {
-//     throw new ApiError(httpStatus.BAD_REQUEST, "Every product must include a variationId");
-//   }
-
-//   // 🧩 Fetch all variations with product info
-//   const productVariations = await prisma.productVariation.findMany({
-//     where: { id: { in: variationIds as string[] } },
-//     include: { product: true },
-//   });
-
-//   // 🧩 Validate product & variation availability
-//   for (const p of products) {
-//     const variation = productVariations.find((v) => v.id === p.variationId);
-//     if (!variation) {
-//       throw new ApiError(httpStatus.NOT_FOUND, `Variation not found for product ${p.productId}`);
-//     }
-
-//     if (variation.availableQuantity < p.quantity) {
-//       throw new ApiError(
-//         httpStatus.BAD_REQUEST,
-//         `Insufficient quantity for product ${variation.product.name}`
-//       );
-//     }
-
-//     // optional: check min/max order quantity
-//     if (variation.minOrderQuantity && p.quantity < variation.minOrderQuantity) {
-//       throw new ApiError(
-//         httpStatus.BAD_REQUEST,
-//         `Minimum order quantity for ${variation.product.name} is ${variation.minOrderQuantity}`
-//       );
-//     }
-//     if (variation.maxOrderQuantity && p.quantity > variation.maxOrderQuantity) {
-//       throw new ApiError(
-//         httpStatus.BAD_REQUEST,
-//         `Maximum order quantity for ${variation.product.name} is ${variation.maxOrderQuantity}`
-//       );
-//     }
-//   }
-
-//   // 🧩 Calculate total amount using variation prices
-//   const totalAmount = products.reduce((sum, p) => {
-//     const variation = productVariations.find((v) => v.id === p.variationId);
-//     return sum + Number(variation?.price) * Number(p.quantity);
-//   }, 0);
-
-//   // 🧩 Create order
-//   const order = await prisma.order.create({
-//     data: {
-//       orderId: generateOrderId(),
-//       userId,
-//       totalAmount,
-//       shippingAddressId,
-//       branchId: user.branchId,
-//       paymentMethod: PaymentMethod.COD,
-//       paymentStatus: PaymentStatus.Pending,
-//       isPaid: false,
-//       status: OrderStatus.Pending,
-//       products: {
-//         create: products.map((p) => ({
-//           productId: p.productId,
-//           variationId: p.variationId,
-//           quantity: p.quantity,
-//           price: productVariations.find((v) => v.id === p.variationId)?.price ?? 0,
-//         })),
-//       },
-//     },
-//     include: {
-//       products: { include: { product: true, variation: true } },
-//       shippingAddress: true,
-//     },
-//   });
-
-//   return order;
-// };
 
 const placeOrderCOD = async (payload: ICreateOrderPayload) => {
   const { userId, products, shippingAddressId } = payload;
@@ -251,7 +88,6 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       shippingAddressId,
       branchId: user.branchId,
       paymentMethod: PaymentMethod.COD,
-      paymentStatus: PaymentStatus.Pending,
       isPaid: false,
       status: OrderStatus.Pending,
       products: {
@@ -284,81 +120,12 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
 
 /**
- * Place order via Online Payment (Cashfree)
- */
-const placeOrderOnline = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId, branchId } = payload;
-
-  // Validate user
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-  }
-
-  // Calculate total amount
-  const totalAmount = products.reduce((sum, p) => sum + p.price * p.quantity, 0);
-
-  const orderId = generateOrderId();
-
-  // TODO: Create Cashfree payment order
-  // const cashfreeOrder = await createCashfreeOrder({
-  //   orderId,
-  //   amount: totalAmount,
-  //   customerName: user.fullName || user.phone,
-  //   customerPhone: user.phone,
-  //   customerEmail: user.email,
-  //   returnUrl: `${config.backend_base_url}/api/order/verify-payment`,
-  // });
-
-  // Create order in database (payment pending)
-  const order = await prisma.order.create({
-    data: {
-      orderId,
-      userId,
-      totalAmount,
-      shippingAddressId,
-      branchId,
-      paymentMethod: PaymentMethod.Online,
-      paymentStatus: PaymentStatus.Pending,
-      paymentGateway: "cashfree",
-      // cashfreeOrderId: cashfreeOrder.order_id,
-      // paymentSessionId: cashfreeOrder.payment_session_id,
-      onlineAmountPaid: 0, // Will be updated after payment success
-      isPaid: false,
-      status: OrderStatus.Pending,
-      products: {
-        create: products.map((p) => ({
-          productId: p.productId,
-          quantity: p.quantity,
-          price: p.price,
-        })),
-      },
-    },
-    include: {
-      products: {
-        include: {
-          product: true,
-        },
-      },
-      shippingAddress: true,
-    },
-  });
-
-  return {
-    order,
-    // paymentSessionId: cashfreeOrder.payment_session_id,
-    // cashfreeOrderId: cashfreeOrder.order_id,
-    message: "TODO: Implement Cashfree payment integration. Redirect user to payment link.",
-  };
-};
-
-/**
  * Place order via Wallet
  */
 const placeOrderWallet = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId, branchId } = payload;
+  const { userId, products, shippingAddressId } = payload;
 
-  // Validate user
+  // ✅ Validate user
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { Wallet: true },
@@ -372,9 +139,62 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Wallet not found for user");
   }
 
-  // Calculate total amount
-  const totalAmount = products.reduce((sum, p) => sum + p.price * p.quantity, 0);
+  // ✅ Fetch all products (with variations)
+  const productIds = products.map((p) => p.productId);
+  const dbProducts = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    include: {
+      productVariation: true,
+    },
+  });
 
+  // ✅ Validate each product and variation
+  let totalAmount = 0;
+
+  for (const p of products) {
+    // Find product in DB
+    const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
+    if (!dbProduct) {
+      throw new ApiError(httpStatus.NOT_FOUND, `Product not found: ${p.productId}`);
+    }
+
+    // Variation must exist
+    const variation = dbProduct.productVariation.find(
+      (v) => v.id === p.variationId
+    );
+    if (!variation) {
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        `Variation not found for product: ${dbProduct.name}`
+      );
+    }
+
+    // Check available quantity
+    if (variation.availableQuantity < p.quantity) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Insufficient quantity for ${dbProduct.name}`
+      );
+    }
+
+    // Check min/max order quantity
+    if (variation.minOrderQuantity && p.quantity < variation.minOrderQuantity) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Minimum order quantity for ${dbProduct.name} is ${variation.minOrderQuantity}`
+      );
+    }
+    if (variation.maxOrderQuantity && p.quantity > variation.maxOrderQuantity) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Maximum order quantity for ${dbProduct.name} is ${variation.maxOrderQuantity}`
+      );
+    }
+
+    // Calculate total based on sellingPrice
+    totalAmount += variation.sellingPrice * p.quantity;
+  }
+  console.log({totalAmount});
   // Check wallet balance
   if (user.Wallet.balance < totalAmount) {
     throw new ApiError(
@@ -402,17 +222,23 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         userId,
         totalAmount,
         shippingAddressId,
-        branchId,
+        branchId: user.branchId,
         paymentMethod: PaymentMethod.Wallet,
-        paymentStatus: PaymentStatus.Success,
         walletAmountUsed: totalAmount,
         isPaid: true,
         status: OrderStatus.Pending,
         products: {
           create: products.map((p) => ({
-            productId: p.productId,
+            product: {
+              connect: { id: p.productId },
+            },
+            variationId: p.variationId,
             quantity: p.quantity,
-            price: p.price,
+            price:
+              dbProducts
+                .find((prod) => prod.id === p.productId)
+                ?.productVariation.find((v) => v.id === p.variationId)
+                ?.sellingPrice || 0,
           })),
         },
       },
@@ -451,8 +277,6 @@ const createOrder = async (payload: ICreateOrderPayload) => {
   switch (payload.paymentMethod) {
     case "COD":
       return await placeOrderCOD(payload);
-    case "Online":
-      return await placeOrderOnline(payload);
     case "Wallet":
       return await placeOrderWallet(payload);
     default:
@@ -603,25 +427,8 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
           status: "Success",
         },
       });
-    } else if (order.paymentMethod === PaymentMethod.Online && order.isPaid && totalCancelAmount > 0) {
-      // TODO: Initiate online refund via Cashfree
-      // const refundId = `REFUND${Date.now()}`;
-      // await initiateCashfreeRefund({
-      //   orderId: order.cashfreeOrderId!,
-      //   refundId,
-      //   refundAmount: totalCancelAmount,
-      //   refundNote: `${isFullCancellation ? "Full" : "Partial"} cancellation of order ${order.orderId}`,
-      // });
-
-      // Update order with refund info
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus: allProductsCancelled ? PaymentStatus.Refunded : PaymentStatus.PartiallyRefunded,
-        },
-      });
     }
-    // COD orders don't need refund
+    // COD and Credit orders don't need refund
   });
 
   return {
@@ -751,22 +558,6 @@ const returnOrder = async (payload: IReturnOrderPayload) => {
           description: `Refund for returned items from order ${order.orderId}`,
           orderId: order.id,
           status: "Success",
-        },
-      });
-    } else if (order.paymentMethod === PaymentMethod.Online && order.isPaid && totalReturnAmount > 0) {
-      // TODO: Initiate partial/full refund via Cashfree
-      // const refundId = `REFUND${Date.now()}`;
-      // await initiateCashfreeRefund({
-      //   orderId: order.cashfreeOrderId!,
-      //   refundId,
-      //   refundAmount: totalReturnAmount,
-      //   refundNote: `Return for order ${order.orderId}`,
-      // });
-
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus: allProductsReturned ? PaymentStatus.Refunded : PaymentStatus.PartiallyRefunded,
         },
       });
     }
@@ -901,7 +692,6 @@ const deleteOrder = async (id: string) => {
 export const orderServices = {
   createOrder,
   placeOrderCOD,
-  placeOrderOnline,
   placeOrderWallet,
   cancelOrder,
   returnOrder,
