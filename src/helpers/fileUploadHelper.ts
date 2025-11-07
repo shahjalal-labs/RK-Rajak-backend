@@ -38,6 +38,8 @@ const uploadMultiple = upload.fields([
   { name: "productImages", maxCount: 5 },
   { name: "shopPhoto", maxCount: 1 },
   { name: "buyerPhoto", maxCount: 1 },
+  { name: "verticalBanner", maxCount: 1 },
+  { name: "horizontalBanner", maxCount: 4 }, // Changed to 4 for horizontal banners
 ]);
 
 export const fileUploader = {

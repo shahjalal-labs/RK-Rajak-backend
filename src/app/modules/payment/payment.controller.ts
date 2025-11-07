@@ -7,7 +7,7 @@ import { PaymentServices } from "./payment.service";
  * Create wallet recharge
  */
 const createWalletRecharge = catchAsync(async (req: Request, res: Response) => {
-  const result = await PaymentServices.createWalletRecharge(req.body);
+  const result = await PaymentServices.createWalletRecharge(req.body , req.user.id);
 
   sendResponse(res, {
     success: true,
@@ -21,7 +21,7 @@ const createWalletRecharge = catchAsync(async (req: Request, res: Response) => {
  * Create dues payment
  */
 const createDuesPayment = catchAsync(async (req: Request, res: Response) => {
-  const result = await PaymentServices.createDuesPayment(req.body);
+  const result = await PaymentServices.createDuesPayment(req.body , req.user.id);
 
   sendResponse(res, {
     success: true,

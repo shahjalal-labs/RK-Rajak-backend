@@ -13,6 +13,9 @@ import { WalletRoutes } from "../modules/wallet/Wallet.routes";
 import { spinRoutes } from "../modules/spin/spin.routes";
 import { orderRoutes } from "../modules/order/order.routes";
 import { PaymentRoutes } from "../modules/payment/payment.routes";
+import { bannerRoutes } from "../modules/banner/banner.routes";
+import { cartValueRoutes } from "../modules/cartvalue/cartValue.routes";
+import { handalingChargeRoutes } from "../modules/handalingcharge/handalingCharge.routes";
 
 const router = express.Router();
 
@@ -72,6 +75,18 @@ const moduleRoutes = [
   {
     path: "/payment",
     route: PaymentRoutes,
+  },
+  {
+    path: "/banner",
+    route: bannerRoutes,
+  },
+  {
+    path: "/cartValue",
+    route: cartValueRoutes,
+  },
+  {
+    path: "/handalingCharge",
+    route: handalingChargeRoutes,
   },
 ];
 

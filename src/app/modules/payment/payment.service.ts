@@ -14,8 +14,11 @@ const generatePaymentId = () => {
 /**
  * Create wallet recharge payment
  */
-const createWalletRecharge = async (payload: { userId: string; amount: number }) => {
-  const { userId, amount } = payload;
+const createWalletRecharge = async (
+  payload: { amount: number },
+  userId: string
+) => {
+  const { amount } = payload;
 
   if (amount <= 0) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Amount must be greater than 0");
@@ -73,16 +76,34 @@ const createWalletRecharge = async (payload: { userId: string; amount: number })
 /**
  * Create dues payment
  */
-const createDuesPayment = async (payload: { userId: string; orderIds: string[]; amount: number }) => {
-  const { userId, orderIds, amount } = payload;
-
-  if (amount <= 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Amount must be greater than 0");
-  }
+const createDuesPayment = async (payload: {
+  orderIds: string[];
+} , userId: string) => {
+  const { orderIds } = payload;
 
   if (!orderIds || orderIds.length === 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "At least one order must be selected");
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "At least one order must be selected"
+    );
   }
+
+  // need to fecth orders and calculate total dues amount
+  const ordersDetials = await Promise.all(
+    orderIds.map(async (orderId) => {
+      const order = await prisma.mainOrder.findUnique({
+        where: { id: orderId },
+      });
+      return order;
+    })
+  );
+
+  const amount = ordersDetials.reduce((sum, order) => {
+    if (order) {
+      return sum + order.totalDuesAmount;
+    }
+    return sum;
+  }, 0);
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -103,13 +124,19 @@ const createDuesPayment = async (payload: { userId: string; orderIds: string[]; 
   });
 
   if (orders.length !== orderIds.length) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Some orders not found or already cleared");
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Some orders not found or already cleared"
+    );
   }
 
   const totalDues = orders.reduce((sum, order) => sum + order.totalAmount, 0);
 
   if (amount !== totalDues) {
-    throw new ApiError(httpStatus.BAD_REQUEST, `Payment amount doesn't match total dues`);
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Payment amount doesn't match total dues`
+    );
   }
 
   const paymentId = generatePaymentId();
@@ -139,7 +166,7 @@ const createDuesPayment = async (payload: { userId: string; orderIds: string[]; 
     duesPayment,
     paymentSessionId: cashfreeOrder.payment_session_id,
     cashfreeOrderId: cashfreeOrder.order_id,
-    orders: orders.map(o => ({ orderId: o.orderId, amount: o.totalAmount })),
+    orders: orders.map((o) => ({ orderId: o.orderId, amount: o.totalAmount })),
     message: "Use payment_session_id on frontend with Cashfree Checkout SDK",
   };
 };
@@ -190,13 +217,18 @@ const getUserDues = async (userId: string) => {
 /**
  * Verify webhook signature
  */
-const verifyWebhookSignature = (rawBody: string | Buffer, headers: any): boolean => {
+const verifyWebhookSignature = (
+  rawBody: string | Buffer,
+  headers: any
+): boolean => {
   const signature = headers["x-webhook-signature"];
   const timestamp = headers["x-webhook-timestamp"];
 
   if (!signature || !timestamp) return false;
 
-  const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
+  const bodyString = Buffer.isBuffer(rawBody)
+    ? rawBody.toString("utf8")
+    : rawBody;
   const signedPayload = `${timestamp}${bodyString}`;
   const expectedSignature = crypto
     .createHmac("sha256", config.cashfree.webhook_secret!)
@@ -210,7 +242,9 @@ const verifyWebhookSignature = (rawBody: string | Buffer, headers: any): boolean
  * Handle wallet recharge webhook
  */
 const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
-  const payload = Buffer.isBuffer(rawBody) ? JSON.parse(rawBody.toString('utf8')) : rawBody;
+  const payload = Buffer.isBuffer(rawBody)
+    ? JSON.parse(rawBody.toString("utf8"))
+    : rawBody;
   const isValid = verifyWebhookSignature(rawBody, headers);
 
   if (!isValid) {
@@ -263,7 +297,9 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
  * Handle dues payment webhook
  */
 const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
-  const payload = Buffer.isBuffer(rawBody) ? JSON.parse(rawBody.toString('utf8')) : rawBody;
+  const payload = Buffer.isBuffer(rawBody)
+    ? JSON.parse(rawBody.toString("utf8"))
+    : rawBody;
   const isValid = verifyWebhookSignature(rawBody, headers);
 
   if (!isValid) {

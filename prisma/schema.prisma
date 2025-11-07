@@ -8,32 +8,32 @@ generator client {
 }
 
 model User {
-  id                String             @id @default(auto()) @map("_id") @db.ObjectId
+  id                String     @id @default(auto()) @map("_id") @db.ObjectId
   fullName          String?
-  phone             String             @unique
+  phone             String     @unique
   address           String?
   email             String?
-  isProfileComplete Boolean            @default(false)
-  isVerifyed        Boolean            @default(false)
-  buyerRating       Float?             @default(0)
+  isProfileComplete Boolean    @default(false)
+  isVerifyed        Boolean    @default(false)
+  buyerRating       Float?     @default(0)
   fcmToken          String?
-  profileImage      String?            @default("https://i.ibb.co.com/nrs3FjM/images.png")
+  profileImage      String?    @default("https://i.ibb.co.com/nrs3FjM/images.png")
   shopOpeningTime   String?
   role              UserRole
-  status            UserStatus         @default(Active)
-  referralCode      String?            @unique
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  branch            branch?            @relation(fields: [branchId], references: [id])
-  branchId          String?            @db.ObjectId
-  agentId           String?            @db.ObjectId
-  threshold         Int?               @default(0)
-  discount          Float?             @default(0)
-  
+  status            UserStatus @default(Active)
+  referralCode      String?    @unique
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  branch            branch?    @relation(fields: [branchId], references: [id])
+  branchId          String?    @db.ObjectId
+  agentId           String?    @db.ObjectId
+  threshold         Int?       @default(0)
+  discount          Float?     @default(0)
+
   // Dues tracking
-  activeDuesCount   Int                @default(0) // Current number of unpaid credit orders
-  totalDuesAmount   Float              @default(0) // Total amount in dues
-  
+  activeDuesCount Int   @default(0) // Current number of unpaid credit orders
+  totalDuesAmount Float @default(0) // Total amount in dues
+
   order             order[]
   shippingAddress   shippingAddress[]
   verificationUsers verificationUsers?
@@ -45,6 +45,7 @@ model User {
 
   @@map("users")
 }
+
 model PendingUser {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   phone     String   @unique
@@ -55,6 +56,7 @@ model PendingUser {
 
   @@map("pendingUsers")
 }
+
 model Otp {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   phone     String   @unique
@@ -87,6 +89,7 @@ enum UserRole {
   Owner
   Driver
 }
+
 model UserLocation {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @unique @db.ObjectId
@@ -98,6 +101,7 @@ model UserLocation {
 
   @@map("user_locations")
 }
+
 model shippingAddress {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   user      User?    @relation(fields: [userId], references: [id])
@@ -113,6 +117,7 @@ model shippingAddress {
 
   @@map("shippingAddresses")
 }
+
 model verificationUsers {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   user       User?    @relation(fields: [userId], references: [id])
@@ -140,7 +145,7 @@ model branch {
   closingTime       String
   verticalBanner    verticalBanner[]
   horizontalBanner  horizontalBanner[]
-  handlaningCharge  handlaningCharge[]
+  handalingCharge  handalingCharge[]
   cartValue         cartValue[]
   User              User[]
   order             order[]
@@ -175,7 +180,7 @@ model livePhotoCategory {
   livePhoto livePhoto[]
 }
 
-model handlaningCharge {
+model handalingCharge {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   charge    Float
   condition String
@@ -184,7 +189,7 @@ model handlaningCharge {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("handlaningCharges")
+  @@map("handalingCharges")
 }
 
 model cartValue {
@@ -197,6 +202,8 @@ model cartValue {
 
   @@map("cartValues")
 }
+
+// ---------------------------------  Banner Models -------------------------///
 
 model verticalBanner {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -238,7 +245,7 @@ model horizontalBannerSlider {
   @@map("horizontalBannerSliders")
 }
 
-//-//--------------- Product and Order Models -----//
+//-//-------------------------------------- Product and Order Models --------------------//
 
 model product {
   id         String          @id @default(auto()) @map("_id") @db.ObjectId
@@ -305,6 +312,7 @@ model productSubcategory {
   @@map("productSubcategories")
 }
 
+// ---------------------------------  Order Models -------------------------///`
 model order {
   id                String           @id @default(auto()) @map("_id") @db.ObjectId
   orderId           String           @unique
@@ -318,29 +326,29 @@ model order {
   shippingAddress   shippingAddress? @relation(fields: [shippingAddressId], references: [id])
   branchId          String?          @db.ObjectId
   branch            branch?          @relation(fields: [branchId], references: [id])
-  
+
   // Payment tracking
-  paymentMethod     PaymentMethod?   @default(COD)
-  
+  paymentMethod PaymentMethod? @default(COD)
+
   // Wallet payment tracking
-  walletAmountUsed  Float?           @default(0)
-  
+  walletAmountUsed Float? @default(0)
+
   // Dues/Credit tracking
-  isDues            Boolean?         @default(false)
-  duesCleared       Boolean?         @default(false)
-  duesClearedAt     DateTime?
-  
+  isDues        Boolean?  @default(false)
+  duesCleared   Boolean?  @default(false)
+  duesClearedAt DateTime?
+
   // Return tracking
-  isReturned        Boolean?         @default(false)
-  isPartialReturn   Boolean?         @default(false)
-  totalReturnedAmount Float?         @default(0)
-  
+  isReturned          Boolean? @default(false)
+  isPartialReturn     Boolean? @default(false)
+  totalReturnedAmount Float?   @default(0)
+
   // MainOrder relation
-  mainOrderId       String?          @db.ObjectId
-  mainOrder         MainOrder?       @relation(fields: [mainOrderId], references: [id])
-  
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  mainOrderId String?    @db.ObjectId
+  mainOrder   MainOrder? @relation(fields: [mainOrderId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("orders")
 }
@@ -372,9 +380,11 @@ enum OrderStatus {
 }
 
 enum PaymentMethod {
-  COD
-  Wallet
-  Credit
+  COD // cash on delivery
+  Wallet // wallet amount used
+  Credit // delivery boy assign as credit and user clear dues later
+  QrCode // delivery boy show scanner and collects payment
+  Online // after clearing dues
 }
 
 enum PaymentStatus {
@@ -388,17 +398,18 @@ enum PaymentStatus {
 /// ------ Main Order Model (Daily Aggregation) -----///
 
 model MainOrder {
-  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId               String   @db.ObjectId
-  orders               order[]
-  totalAmount          Float
-  pendingAmount        Float    @default(0) // COD + unpaid amounts
-  totalReturnedAmount  Float    @default(0)
-  totalWalletUsed      Float    @default(0)
-  totalOnlinePaid      Float    @default(0)
-  orderDate            DateTime // Date when orders were placed
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String   @db.ObjectId
+  orders              order[]
+  totalAmount         Float
+  pendingAmount       Float    @default(0) // COD + unpaid amounts
+  totalReturnedAmount Float    @default(0)
+  totalWalletUsed     Float    @default(0)
+  totalDuesAmount     Float    @default(0)
+  isDuesCleared       Boolean  @default(false)
+  orderDate           DateTime // Date when orders were placed
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([userId, orderDate])
   @@map("mainOrders")
@@ -440,8 +451,8 @@ model WalletTransaction {
   walletId    String?         @db.ObjectId
   amount      Float
   type        TransactionType
-  description String?         // e.g., "Order payment", "Refund for order #123"
-  orderId     String?         // Track which order this transaction is for
+  description String? // e.g., "Order payment", "Refund for order #123"
+  orderId     String? // Track which order this transaction is for
   status      String?         @default("Success") // "Success", "Pending", "Failed"
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
@@ -453,6 +464,40 @@ enum TransactionType {
   Credit
   Debit
 }
+
+model WalletRecharge {
+  id               String        @id @default(auto()) @map("_id") @db.ObjectId
+  wallet           Wallet?       @relation(fields: [walletId], references: [id])
+  walletId         String?       @db.ObjectId
+  amount           Float
+  paymentGateway   String        @default("cashfree")
+  cashfreeOrderId  String?       @unique
+  paymentSessionId String?
+  paymentStatus    PaymentStatus @default(Pending)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@map("walletRecharges")
+}
+
+/// ------ Dues Payment Model (for clearing dues) -----///
+model DuesPayment {
+  id               String        @id @default(auto()) @map("_id") @db.ObjectId
+  user             User?         @relation(fields: [userId], references: [id])
+  userId           String?       @db.ObjectId
+  orderIds         String[] // Array of order IDs being cleared
+  amount           Float // Total amount being paid
+  paymentGateway   String        @default("cashfree")
+  cashfreeOrderId  String?       @unique
+  paymentSessionId String?
+  paymentStatus    PaymentStatus @default(Pending)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@map("duesPayments")
+}
+
+// -------------------------------- Spin Models -------------------------///
 
 model Spin {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -478,7 +523,7 @@ model spinValue {
   @@map("spinValues")
 }
 
-/// --- --------------- Contact and Notification Models -----//
+/// --- ------------------------------- Contact and Notification Models --------//
 model contact {
   id        String @id @default(auto()) @map("_id") @db.ObjectId
   firstName String
@@ -490,6 +535,7 @@ model contact {
   updatedAt DateTime @updatedAt
 }
 
+// ---------------------------------  Notification Models -------------------------///
 model Notification {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   receiverId String?  @db.ObjectId
@@ -503,7 +549,7 @@ model Notification {
   @@map("notifications")
 }
 
-// assign delivery driver to order
+//-------------------------------------- assign delivery driver to order---------------------///
 
 model DriverAssignment {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -514,37 +560,4 @@ model DriverAssignment {
   updatedAt  DateTime @updatedAt
 
   @@map("driverAssignments")
-}
-
-/// ------ Wallet Recharge Model (for online payment) -----///
-model WalletRecharge {
-  id                String         @id @default(auto()) @map("_id") @db.ObjectId
-  wallet            Wallet?        @relation(fields: [walletId], references: [id])
-  walletId          String?        @db.ObjectId
-  amount            Float
-  paymentGateway    String         @default("cashfree")
-  cashfreeOrderId   String?        @unique
-  paymentSessionId  String?
-  paymentStatus     PaymentStatus  @default(Pending)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-
-  @@map("walletRecharges")
-}
-
-/// ------ Dues Payment Model (for clearing dues) -----///
-model DuesPayment {
-  id                String         @id @default(auto()) @map("_id") @db.ObjectId
-  user              User?          @relation(fields: [userId], references: [id])
-  userId            String?        @db.ObjectId
-  orderIds          String[]       // Array of order IDs being cleared
-  amount            Float          // Total amount being paid
-  paymentGateway    String         @default("cashfree")
-  cashfreeOrderId   String?        @unique
-  paymentSessionId  String?
-  paymentStatus     PaymentStatus  @default(Pending)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-
-  @@map("duesPayments")
 }
