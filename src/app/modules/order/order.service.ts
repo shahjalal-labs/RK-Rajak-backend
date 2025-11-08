@@ -1,7 +1,11 @@
-import { PrismaClient, PaymentMethod, OrderStatus } from "@prisma/client";
+import { PrismaClient, PaymentMethod, OrderStatus, MainOrderStatus } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import { ICreateOrderPayload, IReturnOrderPayload, ICancelOrderPayload } from "./order.interface";
+import {
+  ICreateOrderPayload,
+  IReturnOrderPayload,
+  ICancelOrderPayload,
+} from "./order.interface";
 
 const prisma = new PrismaClient();
 
@@ -12,6 +16,111 @@ const generateOrderId = (): string => {
   return `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
 };
 
+/**
+ * Get or create MainOrder for today for a user
+ */
+const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(today);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // Try to find existing ACTIVE MainOrder for today (not closed)
+  let mainOrder = await tx.mainOrder.findFirst({
+    where: {
+      userId,
+      orderDate: {
+        gte: today,
+        lte: endOfDay,
+      },
+    },
+  });
+
+  // Create new MainOrder if doesn't exist
+  if (!mainOrder) {
+    mainOrder = await tx.mainOrder.create({
+      data: {
+        userId,
+        totalAmount: 0,
+        pendingAmount: 0,
+        totalReturnedAmount: 0,
+        totalWalletUsed: 0,
+        totalDuesAmount: 0,
+        isDuesCleared: true,
+        orderDate: today,
+      },
+    });
+  }
+
+  return mainOrder;
+};
+
+/**
+ * Recalculate MainOrder totals from all its orders
+ */
+const recalculateMainOrder = async (mainOrderId: string, tx: any = prisma) => {
+  // Get all orders in this MainOrder
+  const orders = await tx.order.findMany({
+    where: { mainOrderId },
+  });
+
+  if (orders.length === 0) {
+    return;
+  }
+
+  // Calculate totals
+  const totalAmount = orders.reduce(
+    (sum: number, order: any) => sum + order.totalAmount,
+    0
+  );
+  const totalReturnedAmount = orders.reduce(
+    (sum: number, order: any) => sum + (order.totalReturnedAmount || 0),
+    0
+  );
+  const totalWalletUsed = orders.reduce(
+    (sum: number, order: any) => sum + (order.walletAmountUsed || 0),
+    0
+  );
+
+  // Calculate pending amount (COD orders that aren't fully returned)
+  const pendingAmount = orders.reduce((sum: number, order: any) => {
+    if (
+      order.paymentMethod === "COD" &&
+      order.status !== "Cancelled" &&
+      order.status !== "FullyReturned"
+    ) {
+      return sum + (order.totalAmount - (order.totalReturnedAmount || 0));
+    }
+    return sum;
+  }, 0);
+
+  // Calculate dues amount (Credit orders that aren't cleared)
+  const totalDuesAmount = orders.reduce((sum: number, order: any) => {
+    if (order.isDues && !order.duesCleared) {
+      return sum + (order.totalAmount - (order.totalReturnedAmount || 0));
+    }
+    return sum;
+  }, 0);
+
+  // Check if all dues are cleared
+  const isDuesCleared = !orders.some(
+    (order: any) => order.isDues && !order.duesCleared
+  );
+
+  // Update MainOrder
+  await tx.mainOrder.update({
+    where: { id: mainOrderId },
+    data: {
+      totalAmount,
+      pendingAmount,
+      totalReturnedAmount,
+      totalWalletUsed,
+      totalDuesAmount,
+      isDuesCleared,
+    },
+  });
+};
 
 const placeOrderCOD = async (payload: ICreateOrderPayload) => {
   const { userId, products, shippingAddressId } = payload;
@@ -38,7 +147,10 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     // Find product in DB
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
     if (!dbProduct) {
-      throw new ApiError(httpStatus.NOT_FOUND, `Product not found: ${p.productId}`);
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        `Product not found: ${p.productId}`
+      );
     }
 
     // Variation must exist
@@ -77,47 +189,59 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     // Calculate total based on sellingPrice
     totalAmount += variation.sellingPrice * p.quantity;
   }
-  console.log({totalAmount})
+  console.log({ totalAmount });
 
-  // ✅ Create order
-  const order = await prisma.order.create({
-    data: {
-      orderId: generateOrderId(),
-      userId,
-      totalAmount,
-      shippingAddressId,
-      branchId: user.branchId,
-      paymentMethod: PaymentMethod.COD,
-      isPaid: false,
-      status: OrderStatus.Pending,
-      products: {
-        create: products.map((p) => ({
-          product: {
-            connect: { id: p.productId },
-          },
-          variationId: p.variationId,
-          quantity: p.quantity,
-          price:
-            dbProducts
-              .find((prod) => prod.id === p.productId)
-              ?.productVariation.find((v) => v.id === p.variationId)
-              ?.sellingPrice || 0,
-        })),
-      },
-    },
-    include: {
-      products: {
-        include: {
-          product: true,
+  // ✅ Create order and merge into MainOrder in transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Get or create today's MainOrder
+    const mainOrder = await getOrCreateTodayMainOrder(userId, tx);
+
+    // Create order linked to MainOrder
+    const order = await tx.order.create({
+      data: {
+        orderId: generateOrderId(),
+        userId,
+        totalAmount,
+        shippingAddressId,
+        branchId: user.branchId,
+        paymentMethod: PaymentMethod.COD,
+        isPaid: false,
+        status: OrderStatus.Pending,
+        mainOrderId: mainOrder.id,
+        products: {
+          create: products.map((p) => ({
+            product: {
+              connect: { id: p.productId },
+            },
+            variationId: p.variationId,
+            quantity: p.quantity,
+            price:
+              dbProducts
+                .find((prod) => prod.id === p.productId)
+                ?.productVariation.find((v) => v.id === p.variationId)
+                ?.sellingPrice || 0,
+          })),
         },
       },
-      shippingAddress: true,
-    },
+      include: {
+        products: {
+          include: {
+            product: true,
+          },
+        },
+        shippingAddress: true,
+        mainOrder: true,
+      },
+    });
+
+    // Recalculate MainOrder totals
+    await recalculateMainOrder(mainOrder.id, tx);
+
+    return order;
   });
 
-  return order;
+  return result;
 };
-
 
 /**
  * Place order via Wallet
@@ -155,7 +279,10 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     // Find product in DB
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
     if (!dbProduct) {
-      throw new ApiError(httpStatus.NOT_FOUND, `Product not found: ${p.productId}`);
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        `Product not found: ${p.productId}`
+      );
     }
 
     // Variation must exist
@@ -194,7 +321,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     // Calculate total based on sellingPrice
     totalAmount += variation.sellingPrice * p.quantity;
   }
-  console.log({totalAmount});
+  console.log({ totalAmount });
   // Check wallet balance
   if (user.Wallet.balance < totalAmount) {
     throw new ApiError(
@@ -205,6 +332,9 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
 
   // Use transaction to ensure atomicity
   const result = await prisma.$transaction(async (tx) => {
+    // Get or create today's MainOrder
+    const mainOrder = await getOrCreateTodayMainOrder(userId, tx);
+
     // Deduct wallet balance
     const updatedWallet = await tx.wallet.update({
       where: { id: user.Wallet!.id },
@@ -215,7 +345,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       },
     });
 
-    // Create order
+    // Create order linked to MainOrder
     const order = await tx.order.create({
       data: {
         orderId: generateOrderId(),
@@ -227,6 +357,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         walletAmountUsed: totalAmount,
         isPaid: true,
         status: OrderStatus.Pending,
+        mainOrderId: mainOrder.id,
         products: {
           create: products.map((p) => ({
             product: {
@@ -249,6 +380,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
           },
         },
         shippingAddress: true,
+        mainOrder: true,
       },
     });
 
@@ -263,6 +395,9 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         status: "Success",
       },
     });
+
+    // Recalculate MainOrder totals
+    await recalculateMainOrder(mainOrder.id, tx);
 
     return { order, wallet: updatedWallet };
   });
@@ -288,6 +423,7 @@ const createOrder = async (payload: ICreateOrderPayload) => {
  * Cancel order (full or partial product cancellation)
  */
 
+//!@TODO: Refactor common logic between cancelOrder and returnOrder -- Cancel ONLY The ADMIN and SUPERADMIN
 const cancelOrder = async (payload: ICancelOrderPayload) => {
   const { orderId, userId, products: cancelProducts } = payload;
 
@@ -319,7 +455,10 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
     );
   }
 
-  if (order.status === OrderStatus.Cancelled || order.status === OrderStatus.FullyReturned) {
+  if (
+    order.status === OrderStatus.Cancelled ||
+    order.status === OrderStatus.FullyReturned
+  ) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       `Order is already ${order.status.toLowerCase()}`
@@ -335,7 +474,7 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
   if (isFullCancellation) {
     // Full order cancellation
     totalCancelAmount = order.totalAmount - (order.totalReturnedAmount || 0);
-    
+
     // Mark all products as cancelled
     cancelUpdates = order.products.map((op) => ({
       orderProductId: op.id,
@@ -346,12 +485,18 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
   } else {
     // Partial product cancellation
     cancelUpdates = cancelProducts!.map((cp) => {
-      const orderProduct = order.products.find((op) => op.id === cp.orderProductId);
+      const orderProduct = order.products.find(
+        (op) => op.id === cp.orderProductId
+      );
       if (!orderProduct) {
-        throw new ApiError(httpStatus.NOT_FOUND, `Order product ${cp.orderProductId} not found`);
+        throw new ApiError(
+          httpStatus.NOT_FOUND,
+          `Order product ${cp.orderProductId} not found`
+        );
       }
 
-      const availableQuantity = orderProduct.quantity - orderProduct.returnedQuantity;
+      const availableQuantity =
+        orderProduct.quantity - orderProduct.returnedQuantity;
       if (cp.cancelQuantity > availableQuantity) {
         throw new ApiError(
           httpStatus.BAD_REQUEST,
@@ -366,19 +511,25 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
         orderProductId: cp.orderProductId,
         cancelQuantity: cp.cancelQuantity,
         newReturnedQuantity: orderProduct.returnedQuantity + cp.cancelQuantity,
-        isFullyCancelled: orderProduct.returnedQuantity + cp.cancelQuantity === orderProduct.quantity,
+        isFullyCancelled:
+          orderProduct.returnedQuantity + cp.cancelQuantity ===
+          orderProduct.quantity,
       };
     });
   }
 
   // Check if all products are now cancelled
-  const allProductsCancelled = isFullCancellation || order.products.every((op) => {
-    const cancelUpdate = cancelUpdates.find((cu) => cu.orderProductId === op.id);
-    if (cancelUpdate) {
-      return cancelUpdate.isFullyCancelled;
-    }
-    return op.returnedQuantity === op.quantity;
-  });
+  const allProductsCancelled =
+    isFullCancellation ||
+    order.products.every((op) => {
+      const cancelUpdate = cancelUpdates.find(
+        (cu) => cu.orderProductId === op.id
+      );
+      if (cancelUpdate) {
+        return cancelUpdate.isFullyCancelled;
+      }
+      return op.returnedQuantity === op.quantity;
+    });
 
   // Process cancellation with transaction
   await prisma.$transaction(async (tx) => {
@@ -394,13 +545,14 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
     }
 
     // Update order
-    await tx.order.update({
+    const updatedOrder = await tx.order.update({
       where: { id: orderId },
       data: {
         isReturned: true,
         isPartialReturn: !allProductsCancelled,
-        totalReturnedAmount: (order.totalReturnedAmount || 0) + totalCancelAmount,
-        status: allProductsCancelled ? OrderStatus.Cancelled : OrderStatus.PartiallyReturned,
+        totalReturnedAmount:
+          (order.totalReturnedAmount || 0) + totalCancelAmount,
+        // status: allProductsCancelled ? OrderStatus.Cancelled : OrderStatus.PartiallyReturned,
       },
     });
 
@@ -422,17 +574,26 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
           walletId: order.user!.Wallet!.id,
           amount: totalCancelAmount,
           type: "Credit",
-          description: `Refund for ${isFullCancellation ? "cancelled" : "partially cancelled"} order ${order.orderId}`,
+          description: `Refund for ${
+            isFullCancellation ? "cancelled" : "partially cancelled"
+          } order ${order.orderId}`,
           orderId: order.id,
           status: "Success",
         },
       });
     }
     // COD and Credit orders don't need refund
+
+    // Recalculate MainOrder totals if order is linked to MainOrder
+    if (updatedOrder.mainOrderId) {
+      await recalculateMainOrder(updatedOrder.mainOrderId, tx);
+    }
   });
 
   return {
-    message: `Order ${isFullCancellation ? "fully" : "partially"} cancelled successfully`,
+    message: `Order ${
+      isFullCancellation ? "fully" : "partially"
+    } cancelled successfully`,
     cancelledAmount: totalCancelAmount,
   };
 };
@@ -440,6 +601,7 @@ const cancelOrder = async (payload: ICancelOrderPayload) => {
 /**
  * Return order (partial or full)
  */
+//!@ TODO  : Return order By The Delivery Boy
 const returnOrder = async (payload: IReturnOrderPayload) => {
   const { orderId, userId, products: returnProducts } = payload;
 
@@ -476,12 +638,18 @@ const returnOrder = async (payload: IReturnOrderPayload) => {
   let isFullReturn = true;
 
   const returnUpdates = returnProducts.map((rp) => {
-    const orderProduct = order.products.find((op) => op.id === rp.orderProductId);
+    const orderProduct = order.products.find(
+      (op) => op.id === rp.orderProductId
+    );
     if (!orderProduct) {
-      throw new ApiError(httpStatus.NOT_FOUND, `Order product ${rp.orderProductId} not found`);
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        `Order product ${rp.orderProductId} not found`
+      );
     }
 
-    const availableQuantity = orderProduct.quantity - orderProduct.returnedQuantity;
+    const availableQuantity =
+      orderProduct.quantity - orderProduct.returnedQuantity;
     if (rp.returnQuantity > availableQuantity) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
@@ -489,11 +657,14 @@ const returnOrder = async (payload: IReturnOrderPayload) => {
       );
     }
 
-    const returnAmount = (orderProduct.price * rp.returnQuantity);
+    const returnAmount = orderProduct.price * rp.returnQuantity;
     totalReturnAmount += returnAmount;
 
     // Check if partial return
-    if (orderProduct.returnedQuantity + rp.returnQuantity < orderProduct.quantity) {
+    if (
+      orderProduct.returnedQuantity + rp.returnQuantity <
+      orderProduct.quantity
+    ) {
       isFullReturn = false;
     }
 
@@ -501,13 +672,17 @@ const returnOrder = async (payload: IReturnOrderPayload) => {
       orderProductId: rp.orderProductId,
       returnQuantity: rp.returnQuantity,
       newReturnedQuantity: orderProduct.returnedQuantity + rp.returnQuantity,
-      isFullyReturned: orderProduct.returnedQuantity + rp.returnQuantity === orderProduct.quantity,
+      isFullyReturned:
+        orderProduct.returnedQuantity + rp.returnQuantity ===
+        orderProduct.quantity,
     };
   });
 
   // Check if all products are fully returned
   const allProductsReturned = order.products.every((op) => {
-    const returnUpdate = returnUpdates.find((ru) => ru.orderProductId === op.id);
+    const returnUpdate = returnUpdates.find(
+      (ru) => ru.orderProductId === op.id
+    );
     if (returnUpdate) {
       return returnUpdate.isFullyReturned;
     }
@@ -528,13 +703,14 @@ const returnOrder = async (payload: IReturnOrderPayload) => {
     }
 
     // Update order
-    await tx.order.update({
+    const updatedOrder = await tx.order.update({
       where: { id: orderId },
       data: {
         isReturned: true,
         isPartialReturn: !allProductsReturned,
-        totalReturnedAmount: (order.totalReturnedAmount || 0) + totalReturnAmount,
-        status: allProductsReturned ? OrderStatus.FullyReturned : OrderStatus.PartiallyReturned,
+        totalReturnedAmount:
+          (order.totalReturnedAmount || 0) + totalReturnAmount,
+        // status: allProductsReturned ? OrderStatus.FullyReturned : OrderStatus.PartiallyReturned,
       },
     });
 
@@ -562,10 +738,17 @@ const returnOrder = async (payload: IReturnOrderPayload) => {
       });
     }
     // COD returns don't process refund (handled separately in cash)
+
+    // Recalculate MainOrder totals if order is linked to MainOrder
+    if (updatedOrder.mainOrderId) {
+      await recalculateMainOrder(updatedOrder.mainOrderId, tx);
+    }
   });
 
   return {
-    message: `Order ${allProductsReturned ? "fully" : "partially"} returned successfully`,
+    message: `Order ${
+      allProductsReturned ? "fully" : "partially"
+    } returned successfully`,
     totalReturnAmount,
   };
 };
@@ -689,6 +872,152 @@ const deleteOrder = async (id: string) => {
   });
 };
 
+/**
+ * Get all MainOrders (for admin)
+ */
+const getAllMainOrders = async () => {
+  return await prisma.mainOrder.findMany({
+    include: {
+      orders: {
+        include: {
+          products: {
+            include: {
+              product: true,
+            },
+          },
+          shippingAddress: true,
+          branch: true,
+        },
+      },
+    },
+    orderBy: {
+      orderDate: "desc",
+    },
+  });
+};
+
+/**
+ * Get MainOrder by ID
+ */
+const getMainOrderById = async (id: string) => {
+  const mainOrder = await prisma.mainOrder.findUnique({
+    where: { id },
+    include: {
+      orders: {
+        include: {
+          products: {
+            include: {
+              product: true,
+            },
+          },
+          shippingAddress: true,
+          branch: true,
+        },
+      },
+    },
+  });
+
+  if (!mainOrder) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Main order not found");
+  }
+
+  return mainOrder;
+};
+
+/**
+ * Get user's MainOrders
+ */
+const getUserMainOrders = async (userId: string, queryParams: any) => {
+  const { status } = queryParams;
+  let where: any = { userId };
+
+  if (status === "Active") {
+    where = {
+      userId,
+      // if active then send  Pending Processing onTheway both data
+      status: {
+        in: [MainOrderStatus.Pending, MainOrderStatus.Processing, MainOrderStatus.onTheway],
+      },
+    };
+  }
+  if (status === "Completed") {
+    where = {
+      userId,
+      status: {
+        in : [MainOrderStatus.Delivered, MainOrderStatus.deliveredWithPartiallyReturned,],
+      },
+  }
+}
+
+  if(status === "Cancelled"){
+    where = {
+      userId,
+      status: MainOrderStatus.Cancelled,
+    };
+  }
+
+  if(status === "Returned"){
+    where = {
+      userId,
+      status: {
+        in : [MainOrderStatus.FullyReturned, MainOrderStatus.deliveredWithPartiallyReturned],
+      }
+    };
+  }
+
+  return await prisma.mainOrder.findMany({
+    where,
+    include: {
+      orders: {
+        include: {
+          products: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      orderDate: "desc",
+    },
+  });
+};
+
+/**
+ * Get today's MainOrder for a user
+ */
+const getTodayMainOrder = async (userId: string) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(today);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  return await prisma.mainOrder.findFirst({
+    where: {
+      userId,
+      orderDate: {
+        gte: today,
+        lte: endOfDay,
+      },
+    },
+    include: {
+      orders: {
+        include: {
+          products: {
+            include: {
+              product: true,
+            },
+          },
+          shippingAddress: true,
+          branch: true,
+        },
+      },
+    },
+  });
+};
+
 export const orderServices = {
   createOrder,
   placeOrderCOD,
@@ -700,4 +1029,9 @@ export const orderServices = {
   getUserOrders,
   updateOrderStatus,
   deleteOrder,
+  // MainOrder methods
+  getAllMainOrders,
+  getMainOrderById,
+  getUserMainOrders,
+  getTodayMainOrder,
 };

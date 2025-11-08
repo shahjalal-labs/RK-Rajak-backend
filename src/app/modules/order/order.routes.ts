@@ -3,6 +3,7 @@ import { orderControllers } from "./order.controller";
 import auth from "../../middlewares/auth";
 import validateRequest from "../../middlewares/validateRequest";
 import { OrderValidation } from "./order.validation";
+import { UserRole } from "@prisma/client";
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ router.post(
 // Cancel order
 router.post(
   "/cancel",
-  auth("Customer"),
+  auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
   validateRequest(OrderValidation.cancelOrderSchema),
   orderControllers.cancelOrder
 );
@@ -25,19 +26,22 @@ router.post(
 // Return order (partial or full)
 router.post(
   "/return",
-  auth("Customer"),
+  auth(UserRole.Driver),
   validateRequest(OrderValidation.returnOrderSchema),
   orderControllers.returnOrder
 );
 
 // Get user's orders
 router.get("/my-orders", auth("Customer"), orderControllers.getUserOrders);
-
 // Get all orders (Admin)
 router.get("/", auth("Owner", "SuperAdmin"), orderControllers.getAllOrders);
 
 // Get order by ID
-router.get("/:id", auth("Customer", "Admin", "SuperAdmin"), orderControllers.getOrderById);
+router.get(
+  "/:id",
+  auth("Customer", "Admin", "SuperAdmin"),
+  orderControllers.getOrderById
+);
 
 // Update order status (Admin)
 router.patch(
@@ -48,6 +52,36 @@ router.patch(
 );
 
 // Delete order (Admin)
-router.delete("/:id", auth("Admin", "SuperAdmin"), orderControllers.deleteOrder);
+router.delete(
+  "/:id",
+  auth("Admin", "SuperAdmin"),
+  orderControllers.deleteOrder
+);
+
+// ========== MainOrder Routes ==========
+
+// Get today's main order (Customer)
+router.get("/main/today", auth("Customer"), orderControllers.getTodayMainOrder);
+
+// Get user's main orders (Customer)
+router.get(
+  "/main/my-orders",
+  auth("Customer"),
+  orderControllers.getUserMainOrders
+);
+
+// Get all main orders (Admin)
+router.get(
+  "/main",
+  auth("Owner", "SuperAdmin"),
+  orderControllers.getAllMainOrders
+);
+
+// Get main order by ID
+router.get(
+  "/main/:id",
+  auth("Customer", "Admin", "SuperAdmin"),
+  orderControllers.getMainOrderById
+);
 
 export const orderRoutes = router;

@@ -129,6 +129,61 @@ const deleteOrder = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * Get all MainOrders (for admin)
+ */
+const getAllMainOrders = catchAsync(async (_req: Request, res: Response) => {
+  const result = await orderServices.getAllMainOrders();
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "All main orders retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get MainOrder by ID
+ */
+const getMainOrderById = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getMainOrderById(req.params.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Main order retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get user's MainOrders
+ */
+const getUserMainOrders = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user.id;
+  const queryParams = req.query;
+  const result = await orderServices.getUserMainOrders(userId , queryParams);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "User main orders retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get today's MainOrder for logged-in user
+ */
+const getTodayMainOrder = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const result = await orderServices.getTodayMainOrder(userId);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: result ? "Today's main order retrieved successfully" : "No orders placed today",
+    data: result,
+  });
+});
+
 export const orderControllers = {
   createOrder,
   cancelOrder,
@@ -138,4 +193,9 @@ export const orderControllers = {
   getUserOrders,
   updateOrderStatus,
   deleteOrder,
+  // MainOrder controllers
+  getAllMainOrders,
+  getMainOrderById,
+  getUserMainOrders,
+  getTodayMainOrder,
 };
