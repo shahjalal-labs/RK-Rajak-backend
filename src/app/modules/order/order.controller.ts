@@ -154,6 +154,18 @@ const getMainOrderById = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 });
+const getMyCustomerOrders = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getMyCustomerOrders(
+    req.user.id,
+    req.query
+  );
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Agent Cusotmer orders retrieved successfully",
+    data: result,
+  });
+});
 
 /**
  * Get user's MainOrders
@@ -161,7 +173,7 @@ const getMainOrderById = catchAsync(async (req: Request, res: Response) => {
 const getUserMainOrders = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user.id;
   const queryParams = req.query;
-  const result = await orderServices.getUserMainOrders(userId , queryParams);
+  const result = await orderServices.getUserMainOrders(userId, queryParams);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -179,7 +191,9 @@ const getTodayMainOrder = catchAsync(async (req: Request, res: Response) => {
   sendResponse(res, {
     success: true,
     statusCode: 200,
-    message: result ? "Today's main order retrieved successfully" : "No orders placed today",
+    message: result
+      ? "Today's main order retrieved successfully"
+      : "No orders placed today",
     data: result,
   });
 });
@@ -198,4 +212,5 @@ export const orderControllers = {
   getMainOrderById,
   getUserMainOrders,
   getTodayMainOrder,
+  getMyCustomerOrders,
 };

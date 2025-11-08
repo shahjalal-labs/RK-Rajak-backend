@@ -12,12 +12,13 @@ export const createOrderSchema = z.object({
   products: z
     .array(orderProductSchema)
     .min(1, "At least one product is required"),
-  shippingAddressId: z.string({ required_error: "Shipping address is required" }),
+  shippingAddressId: z.string({
+    required_error: "Shipping address is required",
+  }),
   paymentMethod: z.enum(["COD", "Online", "Wallet"], {
     required_error: "Payment method is required",
   }),
 });
-
 
 // Cancel order schema (supports partial or full cancellation)
 export const cancelOrderSchema = z.object({
@@ -26,13 +27,17 @@ export const cancelOrderSchema = z.object({
   products: z
     .array(
       z.object({
-        orderProductId: z.string({ required_error: "Order product ID is required" }),
-        cancelQuantity: z.number().int().positive("Cancel quantity must be positive"),
+        orderProductId: z.string({
+          required_error: "Order product ID is required",
+        }),
+        cancelQuantity: z
+          .number()
+          .int()
+          .positive("Cancel quantity must be positive"),
       })
     )
     .optional(), // If not provided, cancel entire order
 });
-
 
 // Return order schema
 export const returnOrderSchema = z.object({
@@ -40,8 +45,13 @@ export const returnOrderSchema = z.object({
   products: z
     .array(
       z.object({
-        orderProductId: z.string({ required_error: "Order product ID is required" }),
-        returnQuantity: z.number().int().positive("Return quantity must be positive"),
+        orderProductId: z.string({
+          required_error: "Order product ID is required",
+        }),
+        returnQuantity: z
+          .number()
+          .int()
+          .positive("Return quantity must be positive"),
       })
     )
     .min(1, "At least one product must be returned"),
@@ -50,8 +60,31 @@ export const returnOrderSchema = z.object({
 
 // Update order status schema
 export const updateOrderStatusSchema = z.object({
-  status: z.enum(["Pending", "onTheway", "Delivered", "Cancelled", "PartiallyReturned", "FullyReturned"], {
-    required_error: "Status is required",
+  status: z.enum(
+    [
+      "Pending",
+      "onTheway",
+      "Delivered",
+      "Cancelled",
+      "PartiallyReturned",
+      "FullyReturned",
+    ],
+    {
+      required_error: "Status is required",
+    }
+  ),
+});
+
+const createOrderByAgentForCustomerSchema = z.object({
+  customerId: z.string({ required_error: "Customer ID is required" }),
+  products: z
+    .array(orderProductSchema)
+    .min(1, "At least one product is required"),
+  shippingAddressId: z.string({
+    required_error: "Shipping address is required",
+  }),
+  paymentMethod: z.enum(["COD"], {
+    required_error: "Payment method is required",
   }),
 });
 
@@ -60,4 +93,5 @@ export const OrderValidation = {
   cancelOrderSchema,
   returnOrderSchema,
   updateOrderStatusSchema,
+  createOrderByAgentForCustomerSchema,
 };

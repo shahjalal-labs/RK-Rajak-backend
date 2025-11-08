@@ -1,4 +1,9 @@
-import { PrismaClient, PaymentMethod, OrderStatus, MainOrderStatus } from "@prisma/client";
+import {
+  PrismaClient,
+  PaymentMethod,
+  OrderStatus,
+  MainOrderStatus,
+} from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import {
@@ -21,11 +26,10 @@ const generateOrderId = (): string => {
  */
 const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
   const today = new Date();
+  const now = new Date();
   today.setHours(0, 0, 0, 0);
-
   const endOfDay = new Date(today);
   endOfDay.setHours(23, 59, 59, 999);
-
   // Try to find existing ACTIVE MainOrder for today (not closed)
   let mainOrder = await tx.mainOrder.findFirst({
     where: {
@@ -48,7 +52,7 @@ const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
         totalWalletUsed: 0,
         totalDuesAmount: 0,
         isDuesCleared: true,
-        orderDate: today,
+        orderDate: now,
       },
     });
   }
@@ -936,7 +940,11 @@ const getUserMainOrders = async (userId: string, queryParams: any) => {
       userId,
       // if active then send  Pending Processing onTheway both data
       status: {
-        in: [MainOrderStatus.Pending, MainOrderStatus.Processing, MainOrderStatus.onTheway],
+        in: [
+          MainOrderStatus.Pending,
+          MainOrderStatus.Processing,
+          MainOrderStatus.onTheway,
+        ],
       },
     };
   }
@@ -944,24 +952,30 @@ const getUserMainOrders = async (userId: string, queryParams: any) => {
     where = {
       userId,
       status: {
-        in : [MainOrderStatus.Delivered, MainOrderStatus.deliveredWithPartiallyReturned,],
+        in: [
+          MainOrderStatus.Delivered,
+          MainOrderStatus.deliveredWithPartiallyReturned,
+        ],
       },
+    };
   }
-}
 
-  if(status === "Cancelled"){
+  if (status === "Cancelled") {
     where = {
       userId,
       status: MainOrderStatus.Cancelled,
     };
   }
 
-  if(status === "Returned"){
+  if (status === "Returned") {
     where = {
       userId,
       status: {
-        in : [MainOrderStatus.FullyReturned, MainOrderStatus.deliveredWithPartiallyReturned],
-      }
+        in: [
+          MainOrderStatus.FullyReturned,
+          MainOrderStatus.deliveredWithPartiallyReturned,
+        ],
+      },
     };
   }
 
@@ -982,6 +996,92 @@ const getUserMainOrders = async (userId: string, queryParams: any) => {
       orderDate: "desc",
     },
   });
+};
+
+//@ --------------// Agent Customers Orders ---------------------
+
+const getMyCustomerOrders = async (userId: string, queryParams: any) => {
+  const { startDate, endDate } = queryParams;
+  console.log(startDate, endDate);
+
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  // Fetch all customers for this agent
+  const customers = await prisma.user.findMany({
+    where: { agentId: userId },
+    select: { id: true },
+  });
+
+  const customerIds = customers.map((c) => c.id);
+
+  if (customerIds.length === 0) {
+    // No customers found for this agent
+    return [];
+  }
+
+  const where: any = {
+    userId: { in: customerIds },
+  };
+  
+  // Apply date filters if provided
+  if (startDate && endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    // assign end date as like midnight of the end date
+    end.setHours(23, 59, 59, 999);
+    
+    // Validate dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid date format. Please provide valid dates.");
+    }
+    
+    where.orderDate = {
+      gte: start,
+      lte: end,
+    };
+  } else if (startDate) {
+    const start = new Date(startDate);
+    
+    if (isNaN(start.getTime())) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid start date format. Please provide a valid date.");
+    }
+    
+    where.orderDate = {
+      gte: start,
+    };
+  } else if (endDate) {
+    const end = new Date(endDate);
+    
+    if (isNaN(end.getTime())) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid end date format. Please provide a valid date.");
+    }
+    
+    where.orderDate = {
+      lte: end,
+    };
+  }
+  console.log(where)
+
+  // Fetch main orders with nested orders + products
+  const orders = await prisma.mainOrder.findMany({
+    where,
+    include: {
+      orders: {
+        include: {
+          products: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { orderDate: "desc" },
+  });
+
+  return orders;
 };
 
 /**
@@ -1034,4 +1134,5 @@ export const orderServices = {
   getMainOrderById,
   getUserMainOrders,
   getTodayMainOrder,
+  getMyCustomerOrders,
 };

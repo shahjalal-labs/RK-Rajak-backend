@@ -222,7 +222,6 @@ const getSingleUserIntoDB = async (id: string) => {
     include :{
       order : true,
       shippingAddress : true,
-      Wallet : true,
       UserLocation : true,
     }
   });

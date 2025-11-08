@@ -63,6 +63,7 @@ router.delete(
 // Get today's main order (Customer)
 router.get("/main/today", auth("Customer"), orderControllers.getTodayMainOrder);
 
+router.get("/main/my-customer-orders", auth(UserRole.Agent), orderControllers.getMyCustomerOrders);
 // Get user's main orders (Customer)
 router.get(
   "/main/my-orders",
@@ -80,8 +81,10 @@ router.get(
 // Get main order by ID
 router.get(
   "/main/:id",
-  auth("Customer", "Admin", "SuperAdmin"),
+  auth(),
   orderControllers.getMainOrderById
 );
+
+router.post("/place-order-for-agent-customer", auth(UserRole.Agent), validateRequest(OrderValidation.createOrderByAgentForCustomerSchema), orderControllers.createOrder);
 
 export const orderRoutes = router;
