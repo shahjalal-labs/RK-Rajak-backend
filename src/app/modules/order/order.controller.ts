@@ -193,6 +193,19 @@ const getUserMainOrders = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getAllDispatchOrdersByBranchId = catchAsync(async (req: Request, res: Response) => {
+  const queryParams = req.query;
+  const branchId = req.params.branchId;
+  queryParams.branchId = branchId;
+  const result = await orderServices.getAllDispatchOrdersByBranchId(queryParams);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "All dispatch orders retrieved successfully",
+    data: result,
+  });
+});
+
 /**
  * Get today's MainOrder for logged-in user
  */
@@ -224,5 +237,6 @@ export const orderControllers = {
   getUserMainOrders,
   getTodayMainOrder,
   getMyCustomerOrders,
-  createOrderByAgentForCustomer
+  createOrderByAgentForCustomer,
+  getAllDispatchOrdersByBranchId
 };

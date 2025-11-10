@@ -402,6 +402,7 @@ model MainOrder {
   isClosed            Boolean         @default(false) // True after midnight cutoff
   orderDate           DateTime // Date when orders were placed
   closedAt            DateTime? // When the order was closed (midnight)
+  deliveryDate        DateTime? // When the order was delivered
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 
@@ -416,6 +417,7 @@ enum OrderStatus {
   onTheway
   Delivered
   Cancelled
+  deliveredWithPartiallyCancelled
   deliveredWithPartiallyReturned
   FullyReturned
 }
@@ -426,6 +428,7 @@ enum MainOrderStatus {
   onTheway
   Delivered
   Cancelled
+  deliveredWithPartiallyCancelled
   deliveredWithPartiallyReturned
   FullyReturned
 }

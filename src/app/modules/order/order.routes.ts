@@ -59,8 +59,6 @@ router.delete(
 );
 
 // ========== MainOrder Routes ==========
-
-// Get today's main order (Customer)
 router.get("/main/today", auth("Customer"), orderControllers.getTodayMainOrder);
 
 router.get("/main/my-customer-orders", auth(UserRole.Agent), orderControllers.getMyCustomerOrders);
@@ -73,9 +71,14 @@ router.get(
 
 // Get all main orders (Admin)
 router.get(
-  "/main",
-  auth("Owner", "SuperAdmin"),
+  "/all-orders/for-owners",
+  auth(UserRole.SuperAdmin, UserRole.Owner),
   orderControllers.getAllMainOrders
+);
+router.get(
+  "/all-dispatch/for-admin/:branchId",
+  auth(UserRole.Admin),
+  orderControllers.getAllDispatchOrdersByBranchId
 );
 
 // Get main order by ID

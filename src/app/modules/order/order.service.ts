@@ -1043,16 +1043,33 @@ const deleteOrder = async (id: string) => {
  */
 const getAllMainOrders = async () => {
   return await prisma.mainOrder.findMany({
-    include: {
+    select: {
+      id: true,
+      totalAmount: true,
+      pendingAmount: true,
+      totalDuesAmount: true,
+      totalWalletUsed: true,
+      totalReturnedAmount: true,
+      isDuesCleared: true,
+      status: true,
+      orderDate: true,
+      deliveryDate: true,
+      createdAt: true,
+      updatedAt: true,
       orders: {
-        include: {
-          products: {
-            include: {
-              product: true,
+        select: {
+          id: true,
+          orderId: true,
+          totalAmount: true,
+          status: true,
+          paymentMethod: true,
+          isDues: true,
+          branch: {
+            select: {
+              id: true,
+              name: true,
             },
           },
-          shippingAddress: true,
-          branch: true,
         },
       },
     },
@@ -1289,6 +1306,57 @@ const getTodayMainOrder = async (userId: string) => {
   });
 };
 
+const getAllDispatchOrdersByBranchId = async (queryParams: any) => {
+  const { branchId, categoryId, dateTime } = queryParams;
+
+  const isBranchExist = await prisma.branch.findUnique({
+    where: { id: branchId },
+  });
+  if (!isBranchExist) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
+  }
+
+  const where: any = {};
+  where.branchId = branchId;
+  where.status = OrderStatus.Pending;
+
+  // TODO : filter by categoryId
+
+  // TODO : filter by dateTime and also - need to return orders product variations like all mango in one object in that day , all pinapple in one object in that day etc. dont send individual order products and others sensitive data couse they are dispatchers person.
+
+  const allDispatchOrders = await prisma.mainOrder.findMany({
+    where,
+    select: {
+      id: true,
+      orderDate: true,
+      orders: {
+        select: {
+          id: true,
+          products: {
+            select: {
+              id: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+              variationId: true,
+              
+            },
+          },
+        },
+      },
+    },
+  });
+};
+
 export const orderServices = {
   createOrder,
   placeOrderCOD,
@@ -1307,4 +1375,5 @@ export const orderServices = {
   getTodayMainOrder,
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
+  getAllDispatchOrdersByBranchId,
 };
