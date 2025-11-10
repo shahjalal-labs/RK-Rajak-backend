@@ -389,27 +389,29 @@ enum PaymentStatus {
 /// ------ Main Order Model (Daily Aggregation) -----///
 
 model MainOrder {
-  id                  String          @id @default(auto()) @map("_id") @db.ObjectId
-  userId              String          @db.ObjectId
+  id                  String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String  @db.ObjectId
   orders              order[]
   totalAmount         Float
-  pendingAmount       Float           @default(0) // COD + unpaid amounts
-  totalReturnedAmount Float           @default(0)
-  totalWalletUsed     Float           @default(0)
-  totalDuesAmount     Float           @default(0)
-  isDuesCleared       Boolean         @default(false)
-  status              MainOrderStatus @default(Pending) // Overall status of the main order
-  isClosed            Boolean         @default(false) // True after midnight cutoff
-  orderDate           DateTime // Date when orders were placed
-  closedAt            DateTime? // When the order was closed (midnight)
-  deliveryDate        DateTime? // When the order was delivered
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  pendingAmount       Float   @default(0) // COD + unpaid amounts
+  totalReturnedAmount Float   @default(0)
+  totalWalletUsed     Float   @default(0)
+  totalDuesAmount     Float   @default(0)
+  isDuesCleared       Boolean @default(false)
+
+  status       MainOrderStatus @default(Pending) // Overall status of the main order
+  isClosed     Boolean         @default(false) // True after midnight cutoff
+  orderDate    DateTime // Date when orders were placed
+  closedAt     DateTime? // When the order was closed (midnight)
+  deliveryDate DateTime? // When the order was delivered
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   @@index([userId, orderDate])
   @@index([isClosed, orderDate])
   @@map("mainOrders")
 }
+
 
 enum OrderStatus {
   Pending

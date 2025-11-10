@@ -1308,7 +1308,10 @@ const getTodayMainOrder = async (userId: string) => {
 
 const getAllDispatchOrdersByBranchId = async (queryParams: any) => {
   const { branchId, categoryId, dateTime } = queryParams;
-
+  let date = new Date(dateTime);
+  if (!dateTime) {
+    date = new Date();
+  }
   const isBranchExist = await prisma.branch.findUnique({
     where: { id: branchId },
   });
@@ -1324,37 +1327,40 @@ const getAllDispatchOrdersByBranchId = async (queryParams: any) => {
 
   // TODO : filter by dateTime and also - need to return orders product variations like all mango in one object in that day , all pinapple in one object in that day etc. dont send individual order products and others sensitive data couse they are dispatchers person.
 
-  const allDispatchOrders = await prisma.mainOrder.findMany({
-    where,
-    select: {
-      id: true,
-      orderDate: true,
-      orders: {
-        select: {
-          id: true,
-          products: {
-            select: {
-              id: true,
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  category: {
-                    select: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                },
-              },
-              variationId: true,
-              
-            },
-          },
-        },
-      },
-    },
-  });
+  // first get all main orders product - then group by product and variation and calculate total quantity and total waight for each product like mango 18 kg , mango 20 kg etc.
+
+
+  // const allDispatchOrders = await prisma.mainOrder.findMany({
+  //   where,
+  //   select: {
+  //     id: true,
+  //     orderDate: true,
+  //     orders: {
+  //       select: {
+  //         id: true,
+  //         products: {
+  //           select: {
+  //             id: true,
+  //             product: {
+  //               select: {
+  //                 id: true,
+  //                 name: true,
+  //                 category: {
+  //                   select: {
+  //                     id: true,
+  //                     name: true,
+  //                   },
+  //                 },
+  //               },
+  //             },
+  //             variationId: true,
+
+  //           },
+  //         },
+  //       },
+  //     },
+  //   },
+  // });
 };
 
 export const orderServices = {
