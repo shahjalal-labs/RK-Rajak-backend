@@ -85,6 +85,6 @@ router.get(
   orderControllers.getMainOrderById
 );
 
-router.post("/place-order-for-agent-customer", auth(UserRole.Agent), validateRequest(OrderValidation.createOrderByAgentForCustomerSchema), orderControllers.createOrder);
+router.post("/bulk-order-by-agent", auth(UserRole.Agent), validateRequest(OrderValidation.createOrderByAgentForCustomerSchema), orderControllers.createOrderByAgentForCustomer);
 
 export const orderRoutes = router;

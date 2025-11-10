@@ -12,6 +12,14 @@ export interface ICreateOrderPayload {
   branchId: string;
   paymentMethod: "COD" | "Online" | "Wallet";
 }
+export interface ICreateOrderPayloadByAgentForCustomer {
+  userId: string;
+  customerId: string;
+  products: IOrderProduct[];
+  shippingAddressId: string;
+  branchId: string;
+  paymentMethod: "COD";
+}
 
 export interface IReturnOrderPayload {
   orderId: string;

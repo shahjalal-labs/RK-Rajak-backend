@@ -6,6 +6,12 @@ const orderProductSchema = z.object({
   variationId: z.string({ required_error: "Variation ID is required" }),
   quantity: z.number().int().positive("Quantity must be positive"),
 });
+const orderProductSchemaForAgent = z.object({
+  productId: z.string({ required_error: "Product ID is required" }),
+  variationId: z.string({ required_error: "Variation ID is required" }),
+  quantity: z.number().int().positive("Quantity must be positive"),
+  price : z.number().positive("Price must be positive"),
+});
 
 // Create order schema
 export const createOrderSchema = z.object({
@@ -78,14 +84,12 @@ export const updateOrderStatusSchema = z.object({
 const createOrderByAgentForCustomerSchema = z.object({
   customerId: z.string({ required_error: "Customer ID is required" }),
   products: z
-    .array(orderProductSchema)
+    .array(orderProductSchemaForAgent)
     .min(1, "At least one product is required"),
   shippingAddressId: z.string({
     required_error: "Shipping address is required",
   }),
-  paymentMethod: z.enum(["COD"], {
-    required_error: "Payment method is required",
-  }),
+  paymentMethod: z.enum(["COD"], {invalid_type_error: "Only COD is allowed"}),
 });
 
 export const OrderValidation = {

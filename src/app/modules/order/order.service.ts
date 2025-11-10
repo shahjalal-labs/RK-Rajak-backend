@@ -10,6 +10,7 @@ import {
   ICreateOrderPayload,
   IReturnOrderPayload,
   ICancelOrderPayload,
+  ICreateOrderPayloadByAgentForCustomer,
 } from "./order.interface";
 
 const prisma = new PrismaClient();
@@ -208,6 +209,167 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         totalAmount,
         shippingAddressId,
         branchId: user.branchId,
+        paymentMethod: PaymentMethod.COD,
+        isPaid: false,
+        status: OrderStatus.Pending,
+        mainOrderId: mainOrder.id,
+        products: {
+          create: products.map((p) => ({
+            product: {
+              connect: { id: p.productId },
+            },
+            variationId: p.variationId,
+            quantity: p.quantity,
+            price:
+              dbProducts
+                .find((prod) => prod.id === p.productId)
+                ?.productVariation.find((v) => v.id === p.variationId)
+                ?.sellingPrice || 0,
+          })),
+        },
+      },
+      include: {
+        products: {
+          include: {
+            product: true,
+          },
+        },
+        shippingAddress: true,
+        mainOrder: true,
+      },
+    });
+
+    // Recalculate MainOrder totals
+    await recalculateMainOrder(mainOrder.id, tx);
+
+    return order;
+  });
+
+  return result;
+};
+const createOrderByAgentForCustomer = async (
+  payload: ICreateOrderPayloadByAgentForCustomer
+) => {
+  const { userId, customerId, products, shippingAddressId } = payload;
+
+  // ✅ Validate user
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  // is customer exist
+  const isCustomerExist = await prisma.user.findUnique({
+    where: { id: customerId },
+  });
+  if (!isCustomerExist) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Customer not found");
+  }
+  // check is customer exist but not for this agent customer  - 1 fetch this agent all customers and check is exist
+  const isCustomerForThisAgent = await prisma.user.findFirst({
+    where: {
+      id: customerId,
+      agentId: userId,
+    },
+  });
+  if (!isCustomerForThisAgent) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      "This customer does not belong to you"
+    );
+  }
+
+  // is customer exist but there shipping address not exist
+  const isShippingExist = await prisma.shippingAddress.findUnique({
+    where: {
+      id: shippingAddressId,
+    },
+  });
+  if (!isShippingExist) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Shipping address not found");
+  }
+  // is shipping address belong to customer
+  const isShippingBelongToCustomer = isShippingExist.userId === customerId;
+  if (!isShippingBelongToCustomer) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Shipping address does not belong to customer"
+    );
+  }
+
+  // ✅ Fetch all products (with variations)
+  const productIds = products.map((p) => p.productId);
+  const dbProducts = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    include: {
+      productVariation: true,
+    },
+  });
+
+  // ✅ Validate each product and variation
+  let totalAmount = 0;
+
+  for (const p of products) {
+    // Find product in DB
+    const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
+    if (!dbProduct) {
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        `Product not found: ${p.productId}`
+      );
+    }
+
+    // Variation must exist
+    const variation = dbProduct.productVariation.find(
+      (v) => v.id === p.variationId
+    );
+    if (!variation) {
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        `Variation not found for product: ${dbProduct.name}`
+      );
+    }
+
+    // Check available quantity
+    if (variation.availableQuantity < p.quantity) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Insufficient quantity for ${dbProduct.name}`
+      );
+    }
+
+    // Check min/max order quantity
+    if (variation.minOrderQuantity && p.quantity < variation.minOrderQuantity) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Minimum order quantity for ${dbProduct.name} is ${variation.minOrderQuantity}`
+      );
+    }
+    if (variation.maxOrderQuantity && p.quantity > variation.maxOrderQuantity) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Maximum order quantity for ${dbProduct.name} is ${variation.maxOrderQuantity}`
+      );
+    }
+
+    // Calculate total based on price who comes from payload
+    totalAmount += p.price;
+  }
+  console.log({ totalAmount });
+
+  // ✅ Create order and merge into MainOrder in transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Get or create today's MainOrder
+    const mainOrder = await getOrCreateTodayMainOrder(customerId, tx);
+
+    // Create order linked to MainOrder
+    const order = await tx.order.create({
+      data: {
+        orderId: generateOrderId(),
+        userId: customerId,
+        totalAmount,
+        shippingAddressId,
+        branchId: isCustomerExist.branchId,
         paymentMethod: PaymentMethod.COD,
         isPaid: false,
         status: OrderStatus.Pending,
@@ -1024,45 +1186,54 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
   const where: any = {
     userId: { in: customerIds },
   };
-  
+
   // Apply date filters if provided
   if (startDate && endDate) {
     const start = new Date(startDate);
     const end = new Date(endDate);
     // assign end date as like midnight of the end date
     end.setHours(23, 59, 59, 999);
-    
+
     // Validate dates
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid date format. Please provide valid dates.");
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Invalid date format. Please provide valid dates."
+      );
     }
-    
+
     where.orderDate = {
       gte: start,
       lte: end,
     };
   } else if (startDate) {
     const start = new Date(startDate);
-    
+
     if (isNaN(start.getTime())) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid start date format. Please provide a valid date.");
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Invalid start date format. Please provide a valid date."
+      );
     }
-    
+
     where.orderDate = {
       gte: start,
     };
   } else if (endDate) {
     const end = new Date(endDate);
-    
+
     if (isNaN(end.getTime())) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid end date format. Please provide a valid date.");
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Invalid end date format. Please provide a valid date."
+      );
     }
-    
+
     where.orderDate = {
       lte: end,
     };
   }
-  console.log(where)
+  console.log(where);
 
   // Fetch main orders with nested orders + products
   const orders = await prisma.mainOrder.findMany({
@@ -1135,4 +1306,5 @@ export const orderServices = {
   getUserMainOrders,
   getTodayMainOrder,
   getMyCustomerOrders,
+  createOrderByAgentForCustomer,
 };
