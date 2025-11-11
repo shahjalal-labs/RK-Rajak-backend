@@ -194,9 +194,11 @@ const getUserMainOrders = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getAllDispatchOrdersByBranchId = catchAsync(async (req: Request, res: Response) => {
-  const queryParams = req.query;
   const branchId = req.params.branchId;
-  queryParams.branchId = branchId;
+  const queryParams = {
+    ...req.query,
+    branchId
+  } as any;
   const result = await orderServices.getAllDispatchOrdersByBranchId(queryParams);
   sendResponse(res, {
     success: true,

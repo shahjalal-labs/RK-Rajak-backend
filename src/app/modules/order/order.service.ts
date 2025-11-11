@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
+import { branch, product } from "@prisma/client";
 import {
   ICreateOrderPayload,
   IReturnOrderPayload,
@@ -1306,12 +1307,151 @@ const getTodayMainOrder = async (userId: string) => {
   });
 };
 
-const getAllDispatchOrdersByBranchId = async (queryParams: any) => {
+// const getAllDispatchOrdersByBranchId = async (queryParams: any) => {
+//   const { branchId, categoryId, dateTime } = queryParams;
+
+//   //  Handle date
+//   let date = dateTime ? new Date(dateTime) : new Date();
+//   const startOfDay = new Date(date);
+//   startOfDay.setHours(0, 0, 0, 0);
+//   const endOfDay = new Date(date);
+//   endOfDay.setHours(23, 59, 59, 999);
+
+//   //  Validate branch existence
+//   const isBranchExist = await prisma.branch.findUnique({
+//     where: { id: branchId },
+//   });
+//   if (!isBranchExist) {
+//     throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
+//   }
+
+//   //  Base condition
+//   const where: any = {
+//     status: OrderStatus.Pending,
+//     orders: {
+//       some: {
+//         branchId: branchId,
+//       },
+//     },
+//     orderDate: {
+//       gte: startOfDay,
+//       lte: endOfDay,
+//     },
+//   };
+
+//   //  Filter by category if provided
+//   if (categoryId) {
+//     console.log("hit the category");
+//     where.orders = {
+//       some: {
+//         products: {
+//           some: {
+//             product: {
+//               categoryId: categoryId,
+//             },
+//           },
+//         },
+//       },
+//     };
+//   }
+
+//   console.log({ where });
+
+//  // 1️⃣  Fetch all main orders and products
+//   const allMainOrders = await prisma.mainOrder.findMany({
+//   where,
+//   select: {
+//     id: true,
+//     orders: {
+//       select: {
+//         products: {
+//           select: {
+//             id: true,
+//             quantity: true,
+//             variationId: true,
+//             productId: true,
+//             product: {
+//               select: {
+//                 id: true,
+//                 name: true,
+//                 categoryId: true,
+//                 category: {
+//                   select: { id: true, name: true },
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       },
+//     },
+//   },
+// });
+
+// // 2️⃣ Get only the products -
+// const allProducts = allMainOrders.flatMap((mainOrder) =>
+//   mainOrder.orders.flatMap((order) => order.products)
+// );
+
+// // 3️⃣ Get variations for each product
+// const productsWithWeights = await Promise.all(
+//   allProducts.map(async (item) => {
+//     let variationWeight = 0;
+
+//     if (item.variationId) {
+//       const variation = await prisma.productVariation.findUnique({
+//         where: { id: item.variationId },
+//         select: { id: true, weight: true },
+//       });
+
+//       variationWeight = variation?.weight || 0;
+//     }
+
+//     return {
+//       productId: item?.product?.id,
+//       productName: item?.product?.name,
+//       variationId: item.variationId || null,
+//       quantity: item.quantity,
+//       variationWeight,
+//       totalWeight: item.quantity * variationWeight,
+//       categoryId : item?.product?.categoryId || null,
+//       categoryName: item?.product?.category?.name || "Unknown",
+//     };
+//   })
+// );
+
+// return productsWithWeights;
+// };
+
+
+interface DispatchQueryParams {
+  branchId: string;
+  dateTime?: string;
+  categoryId?: string;
+}
+
+interface ProductMerged {
+  productId: string;
+  productName: string;
+  totalQuantity: number;
+  totalWeight: number;
+  orders: { orderId: string; variationId: string | null; quantity: number; weight: number }[];
+  categoryId: string | null;
+  categoryName: string;
+}
+
+export const getAllDispatchOrdersByBranchId = async (
+  queryParams: DispatchQueryParams
+) => {
   const { branchId, categoryId, dateTime } = queryParams;
-  let date = new Date(dateTime);
-  if (!dateTime) {
-    date = new Date();
-  }
+
+  // 1️⃣ Handle date
+  const date = dateTime ? new Date(dateTime) : new Date();
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // 2️⃣ Validate branch existence
   const isBranchExist = await prisma.branch.findUnique({
     where: { id: branchId },
   });
@@ -1319,49 +1459,139 @@ const getAllDispatchOrdersByBranchId = async (queryParams: any) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
   }
 
-  const where: any = {};
-  where.branchId = branchId;
-  where.status = OrderStatus.Pending;
+  // 3️⃣ Base condition
+  const where: any = {
+    status: OrderStatus.Pending,
+    orders: {
+      some: {
+        branchId: branchId,
+      },
+    },
+    orderDate: {
+      gte: startOfDay,
+      lte: endOfDay,
+    },
+  };
 
-  // TODO : filter by categoryId
+  // Optional category filter
+  if (categoryId) {
+    where.orders = {
+      some: {
+        products: {
+          some: {
+            product: { categoryId },
+          },
+        },
+      },
+    };
+  }
 
-  // TODO : filter by dateTime and also - need to return orders product variations like all mango in one object in that day , all pinapple in one object in that day etc. dont send individual order products and others sensitive data couse they are dispatchers person.
+  // 4️⃣ Fetch all main orders with products
+  const allMainOrders = await prisma.mainOrder.findMany({
+    where,
+    select: {
+      id: true, // mainOrderId (optional)
+      orders: {
+        select: {
+          id: true, // orderId
+          products: {
+            select: {
+              id: true,
+              quantity: true,
+              variationId: true,
+              productId: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  categoryId: true,
+                  category: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
 
-  // first get all main orders product - then group by product and variation and calculate total quantity and total waight for each product like mango 18 kg , mango 20 kg etc.
+  // 5️⃣ Flatten all products + keep orderId
+const allProducts = allMainOrders.flatMap((mainOrder) =>
+  mainOrder.orders.flatMap((order) =>
+    order.products.map((product) => ({
+      orderId: order.id,
+      productId: product.product?.id,
+      productName: product.product?.name,
+      variationId: product.variationId || null,
+      quantity: product.quantity,
+      categoryId: product.product?.categoryId || null,
+      categoryName: product.product?.category?.name || "Unknown",
+    }))
+  )
+);
 
 
-  // const allDispatchOrders = await prisma.mainOrder.findMany({
-  //   where,
-  //   select: {
-  //     id: true,
-  //     orderDate: true,
-  //     orders: {
-  //       select: {
-  //         id: true,
-  //         products: {
-  //           select: {
-  //             id: true,
-  //             product: {
-  //               select: {
-  //                 id: true,
-  //                 name: true,
-  //                 category: {
-  //                   select: {
-  //                     id: true,
-  //                     name: true,
-  //                   },
-  //                 },
-  //               },
-  //             },
-  //             variationId: true,
+  // 6️⃣ Batch fetch variations
+const variationIds = allProducts
+  .map((p) => p.variationId)
+  .filter(Boolean) as string[];
 
-  //           },
-  //         },
-  //       },
-  //     },
-  //   },
-  // });
+const variations = await prisma.productVariation.findMany({
+  where: { id: { in: variationIds } },
+  select: { id: true, weight: true },
+});
+
+const variationMap = new Map(variations.map((v) => [v.id, v.weight]));
+
+
+  // 7️⃣ Add weight to each product
+const productsWithWeights = allProducts.map((item) => {
+  const weight = item.variationId ? variationMap.get(item.variationId) || 0 : 0;
+  return {
+    ...item,
+    variationWeight: weight,
+    totalWeight: item.quantity * weight,
+  };
+});
+
+const mergedByProduct: ProductMerged[] = Object.values(
+  productsWithWeights.reduce((acc: any, item) => {
+    const key = item.productId || ''; // Merge by productId only
+
+    if (!key || !acc[key]) {
+      acc[key] = {
+        productId: item.productId,
+        productName: item.productName,
+        totalQuantity: 0,
+        totalWeight: 0,
+        totalOrders: 0,
+        orders: [], // track all orders + variationId + quantity + weight
+        categoryId: item.categoryId,
+        categoryName: item.categoryName,
+      };
+    }
+
+    acc[key].totalQuantity += item.quantity;
+    acc[key].totalWeight += item.totalWeight;
+    // total main orders not subOrders
+    acc[key].totalOrders = allMainOrders.length;
+    acc[key].orders.push({
+      orderId: item.orderId,
+      variationId: item.variationId,
+      quantity: item.quantity,
+      weight: item.variationWeight,
+    });
+
+    return acc;
+  }, {})
+);
+
+  //  Return final response
+  return mergedByProduct;
+  
 };
+
+
 
 export const orderServices = {
   createOrder,
