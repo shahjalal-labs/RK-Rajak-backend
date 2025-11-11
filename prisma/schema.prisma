@@ -389,15 +389,17 @@ enum PaymentStatus {
 /// ------ Main Order Model (Daily Aggregation) -----///
 
 model MainOrder {
-  id                  String  @id @default(auto()) @map("_id") @db.ObjectId
-  userId              String  @db.ObjectId
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String    @db.ObjectId
   orders              order[]
   totalAmount         Float
-  pendingAmount       Float   @default(0) // COD + unpaid amounts
-  totalReturnedAmount Float   @default(0)
-  totalWalletUsed     Float   @default(0)
-  totalDuesAmount     Float   @default(0)
-  isDuesCleared       Boolean @default(false)
+  pendingAmount       Float     @default(0) // COD + unpaid amounts
+  totalReturnedAmount Float     @default(0)
+  totalWalletUsed     Float     @default(0)
+  totalDuesAmount     Float     @default(0)
+  isDuesCleared       Boolean   @default(false)
+  canceledBy          UserRole? // Who cancelled the main order
+  confirmedBy         UserRole? // Who confirmed the main order
 
   status       MainOrderStatus @default(Pending) // Overall status of the main order
   isClosed     Boolean         @default(false) // True after midnight cutoff
@@ -411,7 +413,6 @@ model MainOrder {
   @@index([isClosed, orderDate])
   @@map("mainOrders")
 }
-
 
 enum OrderStatus {
   Pending
@@ -433,6 +434,20 @@ enum MainOrderStatus {
   deliveredWithPartiallyCancelled
   deliveredWithPartiallyReturned
   FullyReturned
+}
+
+/// ----------------------------- /// Assign main orders to delivery Driver // under one driver assign multiple main orders -----------------///
+
+model DriverAssignment {
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  driverId     String           @db.ObjectId
+  mainOrderId  String           @db.ObjectId
+  assignedAt   DateTime         @default(now())
+  deliveryDate DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@map("driverAssignments")
 }
 
 /// ------ Buyer  Review Model -----///
@@ -570,14 +585,3 @@ model Notification {
 }
 
 //-------------------------------------- assign delivery driver to order---------------------///
-
-model DriverAssignment {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  driverId   String   @db.ObjectId
-  orderId    String   @db.ObjectId
-  assignedAt DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@map("driverAssignments")
-}

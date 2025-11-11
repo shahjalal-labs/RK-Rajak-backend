@@ -3,6 +3,7 @@ import {
   PaymentMethod,
   OrderStatus,
   MainOrderStatus,
+  UserRole,
 } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
@@ -12,6 +13,7 @@ import {
   IReturnOrderPayload,
   ICancelOrderPayload,
   ICreateOrderPayloadByAgentForCustomer,
+  AssignOrdersPayload,
 } from "./order.interface";
 
 const prisma = new PrismaClient();
@@ -1422,7 +1424,6 @@ const getTodayMainOrder = async (userId: string) => {
 // return productsWithWeights;
 // };
 
-
 interface DispatchQueryParams {
   branchId: string;
   dateTime?: string;
@@ -1434,7 +1435,12 @@ interface ProductMerged {
   productName: string;
   totalQuantity: number;
   totalWeight: number;
-  orders: { orderId: string; variationId: string | null; quantity: number; weight: number }[];
+  orders: {
+    orderId: string;
+    variationId: string | null;
+    quantity: number;
+    weight: number;
+  }[];
   categoryId: string | null;
   categoryName: string;
 }
@@ -1461,7 +1467,11 @@ export const getAllDispatchOrdersByBranchId = async (
 
   // 3️⃣ Base condition
   const where: any = {
-    status: OrderStatus.Pending,
+    OR: [
+      { status: OrderStatus.Pending },
+      { canceledBy: UserRole.Admin },
+      { confirmedBy: UserRole.Admin },
+    ],
     orders: {
       some: {
         branchId: branchId,
@@ -1516,82 +1526,119 @@ export const getAllDispatchOrdersByBranchId = async (
   });
 
   // 5️⃣ Flatten all products + keep orderId
-const allProducts = allMainOrders.flatMap((mainOrder) =>
-  mainOrder.orders.flatMap((order) =>
-    order.products.map((product) => ({
-      orderId: order.id,
-      productId: product.product?.id,
-      productName: product.product?.name,
-      variationId: product.variationId || null,
-      quantity: product.quantity,
-      categoryId: product.product?.categoryId || null,
-      categoryName: product.product?.category?.name || "Unknown",
-    }))
-  )
-);
-
+  const allProducts = allMainOrders.flatMap((mainOrder) =>
+    mainOrder.orders.flatMap((order) =>
+      order.products.map((product) => ({
+        orderId: order.id,
+        productId: product.product?.id,
+        productName: product.product?.name,
+        variationId: product.variationId || null,
+        quantity: product.quantity,
+        categoryId: product.product?.categoryId || null,
+        categoryName: product.product?.category?.name || "Unknown",
+      }))
+    )
+  );
 
   // 6️⃣ Batch fetch variations
-const variationIds = allProducts
-  .map((p) => p.variationId)
-  .filter(Boolean) as string[];
+  const variationIds = allProducts
+    .map((p) => p.variationId)
+    .filter(Boolean) as string[];
 
-const variations = await prisma.productVariation.findMany({
-  where: { id: { in: variationIds } },
-  select: { id: true, weight: true },
-});
+  const variations = await prisma.productVariation.findMany({
+    where: { id: { in: variationIds } },
+    select: { id: true, weight: true },
+  });
 
-const variationMap = new Map(variations.map((v) => [v.id, v.weight]));
-
+  const variationMap = new Map(variations.map((v) => [v.id, v.weight]));
 
   // 7️⃣ Add weight to each product
-const productsWithWeights = allProducts.map((item) => {
-  const weight = item.variationId ? variationMap.get(item.variationId) || 0 : 0;
-  return {
-    ...item,
-    variationWeight: weight,
-    totalWeight: item.quantity * weight,
-  };
-});
+  const productsWithWeights = allProducts.map((item) => {
+    const weight = item.variationId
+      ? variationMap.get(item.variationId) || 0
+      : 0;
+    return {
+      ...item,
+      variationWeight: weight,
+      totalWeight: item.quantity * weight,
+    };
+  });
 
-const mergedByProduct: ProductMerged[] = Object.values(
-  productsWithWeights.reduce((acc: any, item) => {
-    const key = item.productId || ''; // Merge by productId only
+  const mergedByProduct: ProductMerged[] = Object.values(
+    productsWithWeights.reduce((acc: any, item) => {
+      const key = item.productId || ""; // Merge by productId only
 
-    if (!key || !acc[key]) {
-      acc[key] = {
-        productId: item.productId,
-        productName: item.productName,
-        totalQuantity: 0,
-        totalWeight: 0,
-        totalOrders: 0,
-        orders: [], // track all orders + variationId + quantity + weight
-        categoryId: item.categoryId,
-        categoryName: item.categoryName,
-      };
-    }
+      if (!key || !acc[key]) {
+        acc[key] = {
+          productId: item.productId,
+          productName: item.productName,
+          totalQuantity: 0,
+          totalWeight: 0,
+          totalOrders: 0,
+          orders: [], // track all orders + variationId + quantity + weight
+          categoryId: item.categoryId,
+          categoryName: item.categoryName,
+        };
+      }
 
-    acc[key].totalQuantity += item.quantity;
-    acc[key].totalWeight += item.totalWeight;
-    // total main orders not subOrders
-    acc[key].totalOrders = allMainOrders.length;
-    acc[key].orders.push({
-      orderId: item.orderId,
-      variationId: item.variationId,
-      quantity: item.quantity,
-      weight: item.variationWeight,
-    });
+      acc[key].totalQuantity += item.quantity;
+      acc[key].totalWeight += item.totalWeight;
+      // total main orders not subOrders
+      acc[key].totalOrders = allMainOrders.length;
+      acc[key].orders.push({
+        orderId: item.orderId,
+        variationId: item.variationId,
+        quantity: item.quantity,
+        weight: item.variationWeight,
+      });
 
-    return acc;
-  }, {})
-);
+      return acc;
+    }, {})
+  );
 
   //  Return final response
   return mergedByProduct;
-  
 };
 
 
+/// ----------------------- /// Assign orders to delivery Driver -----------------///
+
+const assignOrdersDeliveryToDriver = async (payload : AssignOrdersPayload ) => {
+  const { mainOrdersIds, driverId } = payload;
+
+  const isDriverExist = await prisma.user.findFirst({
+    where :{
+      role : UserRole.Driver,
+      id: driverId,
+    }
+  })
+  if(!isDriverExist){
+    throw new ApiError(httpStatus.NOT_FOUND, "Driver not found . please send a valid driverId");
+  }
+
+  console.log({mainOrdersIds , driverId})
+  // Logic to assign orders to the driver
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.driverAssignment.updateMany({
+      where: {
+        id: { in: mainOrdersIds },
+      },
+      data: {
+        driverId: driverId,
+      },
+    });
+    await tx.mainOrder.updateMany({
+      where :{
+        id : { in: mainOrdersIds }
+      },
+      data :{
+        status : MainOrderStatus.onTheway
+      }
+    })
+  })
+  return result ;
+}
 
 export const orderServices = {
   createOrder,
@@ -1612,4 +1659,5 @@ export const orderServices = {
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
   getAllDispatchOrdersByBranchId,
+  assignOrdersDeliveryToDriver
 };

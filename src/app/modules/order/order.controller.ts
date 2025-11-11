@@ -17,17 +17,22 @@ const createOrder = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 });
-const createOrderByAgentForCustomer = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user.id; // Assuming auth middleware adds user to request
-  const result = await orderServices.createOrderByAgentForCustomer({ ...req.body, userId });
+const createOrderByAgentForCustomer = catchAsync(
+  async (req: Request, res: Response) => {
+    const userId = req.user.id; // Assuming auth middleware adds user to request
+    const result = await orderServices.createOrderByAgentForCustomer({
+      ...req.body,
+      userId,
+    });
 
-  sendResponse(res, {
-    success: true,
-    statusCode: 201,
-    message: "Order created successfully",
-    data: result,
-  });
-});
+    sendResponse(res, {
+      success: true,
+      statusCode: 201,
+      message: "Order created successfully",
+      data: result,
+    });
+  }
+);
 
 /**
  * Cancel order
@@ -193,20 +198,24 @@ const getUserMainOrders = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const getAllDispatchOrdersByBranchId = catchAsync(async (req: Request, res: Response) => {
-  const branchId = req.params.branchId;
-  const queryParams = {
-    ...req.query,
-    branchId
-  } as any;
-  const result = await orderServices.getAllDispatchOrdersByBranchId(queryParams);
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "All dispatch orders retrieved successfully",
-    data: result,
-  });
-});
+const getAllDispatchOrdersByBranchId = catchAsync(
+  async (req: Request, res: Response) => {
+    const branchId = req.params.branchId;
+    const queryParams = {
+      ...req.query,
+      branchId,
+    } as any;
+    const result = await orderServices.getAllDispatchOrdersByBranchId(
+      queryParams
+    );
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "All dispatch orders retrieved successfully",
+      data: result,
+    });
+  }
+);
 
 /**
  * Get today's MainOrder for logged-in user
@@ -224,6 +233,19 @@ const getTodayMainOrder = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+///------------------- Assign Delivery to Driver -----------------///
+const assignOrdersDeliveryToDriver = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.assignOrdersDeliveryToDriver(req.body);
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "Delivery assigned to driver successfully",
+      data: result,
+    });
+  }
+);
+
 export const orderControllers = {
   createOrder,
   cancelOrder,
@@ -240,5 +262,6 @@ export const orderControllers = {
   getTodayMainOrder,
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
-  getAllDispatchOrdersByBranchId
+  getAllDispatchOrdersByBranchId,
+  assignOrdersDeliveryToDriver,
 };

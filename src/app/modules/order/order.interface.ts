@@ -40,3 +40,9 @@ export interface ICancelOrderPayload {
     cancelQuantity: number;
   }[]; // If provided, cancel specific products; if not, cancel entire order
 }
+
+
+export type AssignOrdersPayload = {
+  mainOrdersIds: string[];
+  driverId: string;
+}

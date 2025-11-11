@@ -6,6 +6,7 @@ import { uploadInSpace } from "../../../shared/UploadHelper";
 import httpStatus from "http-status";
 import { getDistance } from "./auth.helpers";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { sendOTPViaTwilio } from "../../../helpers/twilioHelper";
 
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
@@ -37,6 +38,15 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
       },
     });
 
+    // Send OTP via Twilio
+    try {
+      await sendOTPViaTwilio(payload.phone, otp);
+      console.log(`📱 OTP sent to new user: ${payload.phone}`);
+    } catch (error) {
+      console.error("Failed to send OTP via Twilio:", error);
+      // Don't throw error - allow fallback to manual OTP entry
+    }
+
     return { phone: payload.phone, otp, status: "new" };
   }
   if (user.status === "Blocked") {
@@ -66,6 +76,15 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
       expiresAt: new Date(expiresAt),
     },
   });
+
+  // Send OTP via Twilio
+  try {
+    await sendOTPViaTwilio(payload.phone, otp);
+    console.log(`📱 OTP sent to existing user: ${payload.phone}`);
+  } catch (error) {
+    console.error("Failed to send OTP via Twilio:", error);
+    // Don't throw error - allow fallback to manual OTP entry
+  }
 
   return { phone: payload.phone, otp, status: "existing" };
 };
@@ -108,6 +127,15 @@ const authLoginIntoDB = async (payload: {
       expiresAt: new Date(expiresAt),
     },
   });
+
+  // Send OTP via Twilio
+  try {
+    await sendOTPViaTwilio(payload.phone, otp);
+    console.log(`📱 OTP sent to ${user.role}: ${payload.phone}`);
+  } catch (error) {
+    console.error("Failed to send OTP via Twilio:", error);
+    // Don't throw error - allow fallback to manual OTP entry
+  }
 
   return { phone: payload.phone, otp };
 };

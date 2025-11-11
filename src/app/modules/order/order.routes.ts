@@ -61,7 +61,11 @@ router.delete(
 // ========== MainOrder Routes ==========
 router.get("/main/today", auth("Customer"), orderControllers.getTodayMainOrder);
 
-router.get("/main/my-customer-orders", auth(UserRole.Agent), orderControllers.getMyCustomerOrders);
+router.get(
+  "/main/my-customer-orders",
+  auth(UserRole.Agent),
+  orderControllers.getMyCustomerOrders
+);
 // Get user's main orders (Customer)
 router.get(
   "/main/my-orders",
@@ -82,12 +86,29 @@ router.get(
 );
 
 // Get main order by ID
-router.get(
-  "/main/:id",
-  auth(),
-  orderControllers.getMainOrderById
+router.get("/main/:id", auth(), orderControllers.getMainOrderById);
+
+router.post(
+  "/bulk-order-by-agent",
+  auth(UserRole.Agent),
+  validateRequest(OrderValidation.createOrderByAgentForCustomerSchema),
+  orderControllers.createOrderByAgentForCustomer
 );
 
-router.post("/bulk-order-by-agent", auth(UserRole.Agent), validateRequest(OrderValidation.createOrderByAgentForCustomerSchema), orderControllers.createOrderByAgentForCustomer);
+router.put(
+  "/main/accept-orders/:mainOrderId",
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  // validateRequest(OrderValidation.acceptMainOrdersSchema),
+  // orderControllers.acceptMainOrdersByOwner
+);
+
+router.put(
+  "/main/reject-orders/:mainOrderId",
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  // validateRequest(OrderValidation.rejectMainOrdersSchema),
+  // orderControllers.rejectMainOrdersByOwner
+);
+
+router.post("/assign-delivery-to-driver/:mainOrderId",auth(UserRole.SuperAdmin), orderControllers.assignOrdersDeliveryToDriver);
 
 export const orderRoutes = router;
