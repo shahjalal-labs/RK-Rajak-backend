@@ -245,6 +245,19 @@ const assignOrdersDeliveryToDriver = catchAsync(
     });
   }
 );
+const getMyAssignedOrders = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.getMyAssignedOrders(req.user.id , req.query);
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "My assigned orders retrieved successfully",
+      data: result,
+    });
+  }
+);
+
+
 
 export const orderControllers = {
   createOrder,
@@ -264,4 +277,7 @@ export const orderControllers = {
   createOrderByAgentForCustomer,
   getAllDispatchOrdersByBranchId,
   assignOrdersDeliveryToDriver,
+
+  // driver -- APIs
+  getMyAssignedOrders
 };

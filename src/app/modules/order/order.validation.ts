@@ -10,7 +10,7 @@ const orderProductSchemaForAgent = z.object({
   productId: z.string({ required_error: "Product ID is required" }),
   variationId: z.string({ required_error: "Variation ID is required" }),
   quantity: z.number().int().positive("Quantity must be positive"),
-  price : z.number().positive("Price must be positive"),
+  price: z.number().positive("Price must be positive"),
 });
 
 // Create order schema
@@ -89,7 +89,14 @@ const createOrderByAgentForCustomerSchema = z.object({
   shippingAddressId: z.string({
     required_error: "Shipping address is required",
   }),
-  paymentMethod: z.enum(["COD"], {invalid_type_error: "Only COD is allowed"}),
+  paymentMethod: z.enum(["COD"], { invalid_type_error: "Only COD is allowed" }),
+});
+
+const orderAssignToDriverSchema = z.object({
+  mainOrdersIds: z
+    .array(z.string().nonempty("Main Order ID cannot be empty"))
+    .min(1, "At least one Main Order ID is required"),
+  driverId: z.string({ required_error: "Driver ID is required" }),
 });
 
 export const OrderValidation = {
@@ -98,4 +105,5 @@ export const OrderValidation = {
   returnOrderSchema,
   updateOrderStatusSchema,
   createOrderByAgentForCustomerSchema,
+  orderAssignToDriverSchema
 };

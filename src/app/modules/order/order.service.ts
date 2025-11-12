@@ -15,6 +15,7 @@ import {
   ICreateOrderPayloadByAgentForCustomer,
   AssignOrdersPayload,
 } from "./order.interface";
+import { JwtPayload } from "jsonwebtoken";
 
 const prisma = new PrismaClient();
 
@@ -1600,45 +1601,137 @@ export const getAllDispatchOrdersByBranchId = async (
   return mergedByProduct;
 };
 
-
 /// ----------------------- /// Assign orders to delivery Driver -----------------///
 
-const assignOrdersDeliveryToDriver = async (payload : AssignOrdersPayload ) => {
+const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   const { mainOrdersIds, driverId } = payload;
 
   const isDriverExist = await prisma.user.findFirst({
-    where :{
-      role : UserRole.Driver,
+    where: {
+      role: UserRole.Driver,
       id: driverId,
-    }
-  })
-  if(!isDriverExist){
-    throw new ApiError(httpStatus.NOT_FOUND, "Driver not found . please send a valid driverId");
+    },
+  });
+  if (!isDriverExist) {
+    throw new ApiError(
+      httpStatus.NOT_FOUND,
+      "Driver not found . please send a valid driverId"
+    );
   }
 
-  console.log({mainOrdersIds , driverId})
-  // Logic to assign orders to the driver
+  console.log({ mainOrdersIds, driverId });
 
-  const result = await prisma.$transaction(async (tx) => {
-    await tx.driverAssignment.updateMany({
-      where: {
-        id: { in: mainOrdersIds },
-      },
-      data: {
-        driverId: driverId,
-      },
+  // Validate main orders existence and also is already assigned or not
+  // Fetch all orders in one query
+  const existingOrders = await prisma.mainOrder.findMany({
+    where: { id: { in: mainOrdersIds } },
+    include: { driverAssignments: true },
+  });
+
+  // if some orders are not found
+  if (existingOrders.length !== mainOrdersIds.length) {
+    throw new ApiError(
+      httpStatus.NOT_FOUND,
+      "Some provided order IDs do not exist"
+    );
+  }
+
+  // check if any order is already assigned and also return the name which one is already assigned
+  const alreadyAssigned = existingOrders.filter(
+    (order) => order.driverAssignments && order.driverAssignments.length > 0
+  );
+
+  if (alreadyAssigned.length > 0) {
+    const assignedIds = alreadyAssigned.map((o) => o.id).join(", ");
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `These orders are already assigned to driver: ${assignedIds}`
+    );
+  }
+  // Logic to assign orders to the driver
+  await prisma.$transaction(async (tx) => {
+    const updatedAssignments = await tx.driverAssignment.createMany({
+      data: mainOrdersIds.map((orderId) => ({
+        mainOrderId: orderId,
+        driverId,
+      })),
     });
-    await tx.mainOrder.updateMany({
-      where :{
-        id : { in: mainOrdersIds }
+
+    const updatedMainOrders = await tx.mainOrder.updateMany({
+      where: { id: { in: mainOrdersIds } },
+      data: { status: MainOrderStatus.onTheway },
+    });
+
+    return { updatedAssignments, updatedMainOrders };
+  });
+
+  return;
+};
+
+const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
+  const driverId = user.id;
+
+  let where: any = { driverId };
+
+  // if (queryParams.status) {
+  //   where.mainOrder = { status: queryParams.status };
+  // }
+
+  const driverOrders = await prisma.driverAssignment.findMany({
+    where,
+    select: {
+      id: true,
+      deliveryDate: true,
+      assignedAt: true,
+      createdAt: true,
+      mainOrderId: true,
+      mainOrder: {
+        select: {
+          id: true,
+          totalAmount: true,
+          pendingAmount: true,
+          orderDate: true,
+          status: true,
+          userId: true,
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              email: true,
+              buyerRating: true,
+              isVerifyed: true,
+              profileImage: true,
+              address: true,
+              Review : true
+            },
+          },
+          orders: {
+            select: {
+              id: true,
+              orderId: true,
+              totalAmount: true,
+              isPaid: true,
+              shippingAddress: {
+                select: {
+                  id: true,
+                  shopName: true,
+                  landmark: true,
+                  address: true,
+                  latitude: true,
+                  longitude: true,
+                },
+              },
+              products: true,
+            },
+          },
+        },
       },
-      data :{
-        status : MainOrderStatus.onTheway
-      }
-    })
-  })
-  return result ;
-}
+    },
+  });
+
+  return driverOrders;
+};
 
 export const orderServices = {
   createOrder,
@@ -1659,5 +1752,8 @@ export const orderServices = {
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
   getAllDispatchOrdersByBranchId,
-  assignOrdersDeliveryToDriver
+  assignOrdersDeliveryToDriver,
+
+  // Driver APIs
+  getMyAssignedOrders,
 };

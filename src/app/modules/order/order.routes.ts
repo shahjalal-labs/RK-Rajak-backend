@@ -59,6 +59,13 @@ router.delete(
 );
 
 // ========== MainOrder Routes ==========
+
+router.get(
+  "/main/driver-my-assigned-orders",
+  auth(UserRole.Driver),
+  orderControllers.getMyAssignedOrders
+);
+
 router.get("/main/today", auth("Customer"), orderControllers.getTodayMainOrder);
 
 router.get(
@@ -97,18 +104,23 @@ router.post(
 
 router.put(
   "/main/accept-orders/:mainOrderId",
-  auth(UserRole.Owner, UserRole.SuperAdmin),
+  auth(UserRole.Owner, UserRole.SuperAdmin)
   // validateRequest(OrderValidation.acceptMainOrdersSchema),
   // orderControllers.acceptMainOrdersByOwner
 );
 
 router.put(
   "/main/reject-orders/:mainOrderId",
-  auth(UserRole.Owner, UserRole.SuperAdmin),
+  auth(UserRole.Owner, UserRole.SuperAdmin)
   // validateRequest(OrderValidation.rejectMainOrdersSchema),
   // orderControllers.rejectMainOrdersByOwner
 );
 
-router.post("/assign-delivery-to-driver/:mainOrderId",auth(UserRole.SuperAdmin), orderControllers.assignOrdersDeliveryToDriver);
+router.post(
+  "/assign-delivery-to-driver",
+  auth(UserRole.SuperAdmin),
+  validateRequest(OrderValidation.orderAssignToDriverSchema),
+  orderControllers.assignOrdersDeliveryToDriver
+);
 
 export const orderRoutes = router;
