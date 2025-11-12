@@ -4,7 +4,7 @@ import config from "../config";
 // Validate Twilio credentials
 const validateTwilioConfig = () => {
   const { twilio_account_sid, twilio_auth_token, twilio_phone_number } = config.twilio;
-  
+    console.log({twilio_account_sid , twilio_auth_token , twilio_phone_number})
   if (!twilio_account_sid || !twilio_auth_token || !twilio_phone_number) {
     console.error("❌ Twilio configuration missing!");
     console.error("Please check your .env file for:");
