@@ -205,7 +205,6 @@ model cartValue {
 }
 
 // ---------------------------------  Banner Models -------------------------///
-
 model verticalBanner {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   title     String
@@ -263,6 +262,7 @@ model product {
   updatedAt        DateTime           @updatedAt
   orderProduct     orderProduct[]
   productVariation productVariation[]
+  mainOrderProduct mainOrderProduct[]
 
   @@map("products")
 }
@@ -362,9 +362,12 @@ model orderProduct {
   productId        String?  @db.ObjectId
   variationId      String?  @db.ObjectId
   quantity         Int
+  weight           Float    @default(0)  // Total weight for this product
+  pricePerKg       Float    @default(0)  // Price per kg
   price            Float
   returnedQuantity Int      @default(0)
   isReturned       Boolean  @default(false)
+  status           OrderProductStatus @default(Active)  // Product lifecycle status
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -385,6 +388,14 @@ enum PaymentStatus {
   Failed
   Refunded
   PartiallyRefunded
+}
+
+enum OrderProductStatus {
+  Active
+  Accepted
+  Rejected
+  Returned
+  Cancelled
 }
 
 /// ------ Main Order Model (Daily Aggregation) -----///
@@ -412,9 +423,39 @@ model MainOrder {
   updatedAt         DateTime           @updatedAt
   driverAssignments DriverAssignment[]
 
-  @@index([userId, orderDate])
+  @@unique([userId, orderDate])
   @@index([isClosed, orderDate])
   @@map("mainOrders")
+}
+
+model mainOrderProduct {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId   String   @db.ObjectId  // product id for individual day aggregation . like how many orders placed for a product on that date  and also this is dynamic collection
+  product     product? @relation(fields: [productId], references: [id])
+  totalOrders Int
+  totalQuantity Int @default(0)  // Real-time aggregated quantity
+  totalWeight Float
+  totalPrice  Float @default(0)  // Real-time aggregated price
+  acceptedWeight Float @default(0)  // Weight of accepted products
+  rejectedWeight Float @default(0)  // Weight of rejected products
+  returnWeight Float @default(0)  // Weight of returned products
+  orderIds    String[] @db.ObjectId  // must be main orders associated with this product on that date
+  orderDate   DateTime
+  status      mainOrderProductsStatus @default(Pending)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, orderDate])
+  @@map("mainOrderProducts")
+}
+
+
+enum mainOrderProductsStatus {
+  Pending
+  Partial
+  Accepted
+  Rejected
+  Cancelled
 }
 
 enum OrderStatus {
@@ -574,6 +615,23 @@ model contact {
   updatedAt DateTime @updatedAt
 }
 
+/// ------ Order Change Log Model (Audit Trail) -----///
+model OrderChangeLog {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId        String   @db.ObjectId
+  productId      String?  @db.ObjectId
+  changeType     String   // "add" | "update" | "cancel" | "return" | "reject"
+  quantityChange Int?     // Change in quantity (can be negative)
+  weightChange   Float?   // Change in weight (can be negative)
+  priceChange    Float?   // Change in price (can be negative)
+  description    String?  // Additional context
+  changedBy      UserRole? // Who made the change
+  createdAt      DateTime @default(now())
+
+  @@index([orderId, createdAt])
+  @@map("orderChangeLogs")
+}
+
 // ---------------------------------  Notification Models -------------------------///
 model Notification {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -587,5 +645,3 @@ model Notification {
 
   @@map("notifications")
 }
-
-//-------------------------------------- assign delivery driver to order---------------------///

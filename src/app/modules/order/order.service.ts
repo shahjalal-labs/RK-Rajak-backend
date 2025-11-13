@@ -16,6 +16,15 @@ import {
   AssignOrdersPayload,
 } from "./order.interface";
 import { JwtPayload } from "jsonwebtoken";
+import {
+  getOrCreateDailyMainOrder,
+  recalculateDailyOrderTotals,
+  updateDailyProductSummary,
+  normalizeDateToStartOfDay,
+  rejectOrderProduct,
+  returnOrderProduct,
+  cancelFullOrderByDriver,
+} from "./order.helpers";
 
 const prisma = new PrismaClient();
 
@@ -27,108 +36,39 @@ const generateOrderId = (): string => {
 };
 
 /**
- * Get or create MainOrder for today for a user
+ * Legacy function - kept for backward compatibility
+ * New code should use updateDailyProductSummary from helpers
  */
-const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
-  const today = new Date();
-  const now = new Date();
-  today.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(today);
-  endOfDay.setHours(23, 59, 59, 999);
-  // Try to find existing ACTIVE MainOrder for today (not closed)
-  let mainOrder = await tx.mainOrder.findFirst({
-    where: {
-      userId,
-      orderDate: {
-        gte: today,
-        lte: endOfDay,
-      },
-    },
-  });
-
-  // Create new MainOrder if doesn't exist
-  if (!mainOrder) {
-    mainOrder = await tx.mainOrder.create({
-      data: {
-        userId,
-        totalAmount: 0,
-        pendingAmount: 0,
-        totalReturnedAmount: 0,
-        totalWalletUsed: 0,
-        totalDuesAmount: 0,
-        isDuesCleared: true,
-        orderDate: now,
-      },
-    });
-  }
-
-  return mainOrder;
+const createOrUpdateMainOrderProduct = async (
+  products: any[],
+  mainOrderId: string,
+  orderDate: Date,
+  tx: any = prisma
+) => {
+  // Delegate to new daily summary updater
+  await updateDailyProductSummary(
+    products,
+    mainOrderId,
+    orderDate,
+    "add",
+    tx
+  );
 };
 
 /**
- * Recalculate MainOrder totals from all its orders
+ * Legacy function - kept for backward compatibility
+ * New code should use getOrCreateDailyMainOrder from helpers
+ */
+const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
+  return await getOrCreateDailyMainOrder(userId, tx);
+};
+
+/**
+ * Legacy function - kept for backward compatibility
+ * New code should use recalculateDailyOrderTotals from helpers
  */
 const recalculateMainOrder = async (mainOrderId: string, tx: any = prisma) => {
-  // Get all orders in this MainOrder
-  const orders = await tx.order.findMany({
-    where: { mainOrderId },
-  });
-
-  if (orders.length === 0) {
-    return;
-  }
-
-  // Calculate totals
-  const totalAmount = orders.reduce(
-    (sum: number, order: any) => sum + order.totalAmount,
-    0
-  );
-  const totalReturnedAmount = orders.reduce(
-    (sum: number, order: any) => sum + (order.totalReturnedAmount || 0),
-    0
-  );
-  const totalWalletUsed = orders.reduce(
-    (sum: number, order: any) => sum + (order.walletAmountUsed || 0),
-    0
-  );
-
-  // Calculate pending amount (COD orders that aren't fully returned)
-  const pendingAmount = orders.reduce((sum: number, order: any) => {
-    if (
-      order.paymentMethod === "COD" &&
-      order.status !== "Cancelled" &&
-      order.status !== "FullyReturned"
-    ) {
-      return sum + (order.totalAmount - (order.totalReturnedAmount || 0));
-    }
-    return sum;
-  }, 0);
-
-  // Calculate dues amount (Credit orders that aren't cleared)
-  const totalDuesAmount = orders.reduce((sum: number, order: any) => {
-    if (order.isDues && !order.duesCleared) {
-      return sum + (order.totalAmount - (order.totalReturnedAmount || 0));
-    }
-    return sum;
-  }, 0);
-
-  // Check if all dues are cleared
-  const isDuesCleared = !orders.some(
-    (order: any) => order.isDues && !order.duesCleared
-  );
-
-  // Update MainOrder
-  await tx.mainOrder.update({
-    where: { id: mainOrderId },
-    data: {
-      totalAmount,
-      pendingAmount,
-      totalReturnedAmount,
-      totalWalletUsed,
-      totalDuesAmount,
-      isDuesCleared,
-    },
-  });
+  return await recalculateDailyOrderTotals(mainOrderId, tx);
 };
 
 const placeOrderCOD = async (payload: ICreateOrderPayload) => {
@@ -200,10 +140,10 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
   }
   console.log({ totalAmount });
 
-  // ✅ Create order and merge into MainOrder in transaction
+  // ✅ Create order and merge into MainOrder in transaction (DAILY ORDER SYSTEM)
   const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's MainOrder
-    const mainOrder = await getOrCreateTodayMainOrder(userId, tx);
+    // Get or create today's MainOrder (enforces one-per-user-per-day)
+    const mainOrder = await getOrCreateDailyMainOrder(userId, tx);
 
     // Create order linked to MainOrder
     const order = await tx.order.create({
@@ -218,18 +158,22 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         status: OrderStatus.Pending,
         mainOrderId: mainOrder.id,
         products: {
-          create: products.map((p) => ({
-            product: {
-              connect: { id: p.productId },
-            },
-            variationId: p.variationId,
-            quantity: p.quantity,
-            price:
-              dbProducts
-                .find((prod) => prod.id === p.productId)
-                ?.productVariation.find((v) => v.id === p.variationId)
-                ?.sellingPrice || 0,
-          })),
+          create: products.map((p) => {
+            const variation = dbProducts
+              .find((prod) => prod.id === p.productId)
+              ?.productVariation.find((v) => v.id === p.variationId);
+            return {
+              product: {
+                connect: { id: p.productId },
+              },
+              variationId: p.variationId,
+              quantity: p.quantity,
+              weight: (variation?.weight || 0) * p.quantity,
+              pricePerKg: variation?.sellingPrice || 0,
+              price: (variation?.sellingPrice || 0) * p.quantity,
+              status: "Active" as any, // OrderProductStatus.Active - will work after prisma generate
+            };
+          }),
         },
       },
       include: {
@@ -243,8 +187,27 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       },
     });
 
+    // Update daily product summary in REAL-TIME
+    await updateDailyProductSummary(
+      products,
+      mainOrder.id,
+      mainOrder.orderDate,
+      "add",
+      tx
+    );
+
     // Recalculate MainOrder totals
-    await recalculateMainOrder(mainOrder.id, tx);
+    await recalculateDailyOrderTotals(mainOrder.id, tx);
+
+    // Log the change (uncomment after running: bunx prisma generate)
+    // await tx.orderChangeLog.create({
+    //   data: {
+    //     orderId: order.id,
+    //     changeType: "add",
+    //     description: `COD order created with ${products.length} products`,
+    //     changedBy: UserRole.Customer,
+    //   },
+    // });
 
     return order;
   });
@@ -407,6 +370,14 @@ const createOrderByAgentForCustomer = async (
     // Recalculate MainOrder totals
     await recalculateMainOrder(mainOrder.id, tx);
 
+    // Create/update mainOrderProduct for dispatch tracking
+    await createOrUpdateMainOrderProduct(
+      products,
+      mainOrder.id,
+      order.createdAt,
+      tx
+    );
+
     return order;
   });
 
@@ -568,6 +539,14 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
 
     // Recalculate MainOrder totals
     await recalculateMainOrder(mainOrder.id, tx);
+
+    // Create/update mainOrderProduct for dispatch tracking
+    await createOrUpdateMainOrderProduct(
+      products,
+      mainOrder.id,
+      order.createdAt,
+      tx
+    );
 
     return { order, wallet: updatedWallet };
   });
@@ -1045,8 +1024,15 @@ const deleteOrder = async (id: string) => {
 /**
  * Get all MainOrders (for admin)
  */
-const getAllMainOrders = async () => {
+const getAllMainOrders = async (branchId: string) => {
   return await prisma.mainOrder.findMany({
+    where: {
+      orders: {
+        every: {
+          branchId: branchId,
+        },
+      },
+    },
     select: {
       id: true,
       totalAmount: true,
@@ -1310,121 +1296,6 @@ const getTodayMainOrder = async (userId: string) => {
   });
 };
 
-// const getAllDispatchOrdersByBranchId = async (queryParams: any) => {
-//   const { branchId, categoryId, dateTime } = queryParams;
-
-//   //  Handle date
-//   let date = dateTime ? new Date(dateTime) : new Date();
-//   const startOfDay = new Date(date);
-//   startOfDay.setHours(0, 0, 0, 0);
-//   const endOfDay = new Date(date);
-//   endOfDay.setHours(23, 59, 59, 999);
-
-//   //  Validate branch existence
-//   const isBranchExist = await prisma.branch.findUnique({
-//     where: { id: branchId },
-//   });
-//   if (!isBranchExist) {
-//     throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
-//   }
-
-//   //  Base condition
-//   const where: any = {
-//     status: OrderStatus.Pending,
-//     orders: {
-//       some: {
-//         branchId: branchId,
-//       },
-//     },
-//     orderDate: {
-//       gte: startOfDay,
-//       lte: endOfDay,
-//     },
-//   };
-
-//   //  Filter by category if provided
-//   if (categoryId) {
-//     console.log("hit the category");
-//     where.orders = {
-//       some: {
-//         products: {
-//           some: {
-//             product: {
-//               categoryId: categoryId,
-//             },
-//           },
-//         },
-//       },
-//     };
-//   }
-
-//   console.log({ where });
-
-//  // 1️⃣  Fetch all main orders and products
-//   const allMainOrders = await prisma.mainOrder.findMany({
-//   where,
-//   select: {
-//     id: true,
-//     orders: {
-//       select: {
-//         products: {
-//           select: {
-//             id: true,
-//             quantity: true,
-//             variationId: true,
-//             productId: true,
-//             product: {
-//               select: {
-//                 id: true,
-//                 name: true,
-//                 categoryId: true,
-//                 category: {
-//                   select: { id: true, name: true },
-//                 },
-//               },
-//             },
-//           },
-//         },
-//       },
-//     },
-//   },
-// });
-
-// // 2️⃣ Get only the products -
-// const allProducts = allMainOrders.flatMap((mainOrder) =>
-//   mainOrder.orders.flatMap((order) => order.products)
-// );
-
-// // 3️⃣ Get variations for each product
-// const productsWithWeights = await Promise.all(
-//   allProducts.map(async (item) => {
-//     let variationWeight = 0;
-
-//     if (item.variationId) {
-//       const variation = await prisma.productVariation.findUnique({
-//         where: { id: item.variationId },
-//         select: { id: true, weight: true },
-//       });
-
-//       variationWeight = variation?.weight || 0;
-//     }
-
-//     return {
-//       productId: item?.product?.id,
-//       productName: item?.product?.name,
-//       variationId: item.variationId || null,
-//       quantity: item.quantity,
-//       variationWeight,
-//       totalWeight: item.quantity * variationWeight,
-//       categoryId : item?.product?.categoryId || null,
-//       categoryName: item?.product?.category?.name || "Unknown",
-//     };
-//   })
-// );
-
-// return productsWithWeights;
-// };
-
 interface DispatchQueryParams {
   branchId: string;
   dateTime?: string;
@@ -1446,7 +1317,363 @@ interface ProductMerged {
   categoryName: string;
 }
 
+/**
+ * Get all dispatch orders by branch ID using mainOrderProduct
+ */
 export const getAllDispatchOrdersByBranchId = async (
+  queryParams: DispatchQueryParams
+) => {
+  const { branchId, categoryId, dateTime } = queryParams;
+
+  // Handle date
+  let date = dateTime ? new Date(dateTime) : new Date();
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // Validate branch existence
+  const isBranchExist = await prisma.branch.findUnique({
+    where: { id: branchId },
+  });
+  if (!isBranchExist) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
+  }
+
+  // Build where condition
+  const where: any = {
+    orderDate: {
+      gte: startOfDay,
+      lte: endOfDay,
+    },
+    status: "Pending", // Only show pending dispatches
+  };
+
+  // Add category filter if provided
+  if (categoryId) {
+    where.product = {
+      categoryId: categoryId,
+      branchId: branchId,
+    };
+  } else {
+    where.product = {
+      branchId: branchId,
+    };
+  }
+
+  // Fetch mainOrderProducts with product details
+  const dispatchOrders = await prisma.mainOrderProduct.findMany({
+    where,
+    include: {
+      product: {
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          productVariation: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  // Collect all unique mainOrderIds
+  const allMainOrderIds = new Set<string>();
+  dispatchOrders.forEach((item) => {
+    item.orderIds.forEach((id) => allMainOrderIds.add(id));
+  });
+
+  // Fetch all MainOrders for this dispatch
+  const mainOrders = await prisma.mainOrder.findMany({
+    where: {
+      id: { in: Array.from(allMainOrderIds) },
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          address: true,
+        },
+      },
+      orders: {
+        include: {
+          shippingAddress: true,
+          products: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  images: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Create a map for quick MainOrder lookup
+  const mainOrderMap = new Map(mainOrders.map((order) => [order.id, order]));
+
+  // Format response with MainOrder details
+  const formattedData = dispatchOrders.map((item) => {
+    // Get all MainOrders for this product
+    const relatedMainOrders = item.orderIds
+      .map((orderId) => mainOrderMap.get(orderId))
+      .filter((order) => order !== undefined);
+
+    return {
+      id: item.id,
+      productId: item.productId,
+      productName: item.product?.name || "Unknown",
+      productImage: item.product?.images?.[0] || null,
+      categoryId: item.product?.categoryId || null,
+      categoryName: item.product?.category?.name || "Unknown",
+      totalOrders: item.totalOrders,
+      totalWeight: item.totalWeight,
+      status: item.status,
+      orderDate: item.orderDate,
+      variations: item.product?.productVariation || [],
+      // MainOrder details
+      mainOrders: relatedMainOrders.map((mainOrder) => ({
+        id: mainOrder.id,
+        userId: mainOrder.userId,
+        customer: mainOrder.user,
+        totalAmount: mainOrder.totalAmount,
+        pendingAmount: mainOrder.pendingAmount,
+        status: mainOrder.status,
+        orderDate: mainOrder.orderDate,
+        confirmedBy: mainOrder.confirmedBy,
+        canceledBy: mainOrder.canceledBy,
+        orders: mainOrder.orders.map((order) => ({
+          id: order.id,
+          orderId: order.orderId,
+          totalAmount: order.totalAmount,
+          paymentMethod: order.paymentMethod,
+          status: order.status,
+          isDues: order.isDues,
+          duesCleared: order.duesCleared,
+          walletAmountUsed: order.walletAmountUsed,
+          shippingAddress: order.shippingAddress,
+          products: order.products,
+        })),
+      })),
+    };
+  });
+
+  return formattedData;
+};
+
+/**
+ * Accept MainOrder - Mark as confirmed
+ */
+const acceptMainOrders = async (mainOrderId: string, userId: string) => {
+  // Validate mainOrder exists
+  const mainOrder = await prisma.mainOrder.findUnique({
+    where: { id: mainOrderId },
+    include: {
+      orders: true,
+    },
+  });
+
+  if (!mainOrder) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Main order not found");
+  }
+
+  // Check if already processed
+  if (
+    mainOrder.status === "Processing" ||
+    mainOrder.status === "Cancelled" ||
+    mainOrder.status === "Delivered"
+  ) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Main order is already ${mainOrder.status.toLowerCase()}`
+    );
+  }
+
+  // Get user role
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    // Update MainOrder status
+    const updatedMainOrder = await tx.mainOrder.update({
+      where: { id: mainOrderId },
+      data: {
+        status: "Processing",
+        confirmedBy: user.role,
+      },
+    });
+
+    // Update all associated orders to Processing
+    await tx.order.updateMany({
+      where: { mainOrderId: mainOrderId },
+      data: {
+        status: "Processing",
+      },
+    });
+
+    return updatedMainOrder;
+  });
+};
+
+/**
+ * Reject/Cancel MainOrder - Mark as cancelled and update products
+ */
+const rejectMainOrders = async (mainOrderId: string, userId: string) => {
+  // Validate mainOrder exists
+  const mainOrder = await prisma.mainOrder.findUnique({
+    where: { id: mainOrderId },
+    include: {
+      orders: {
+        include: {
+          products: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!mainOrder) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Main order not found");
+  }
+
+  // Check if already cancelled
+  if (mainOrder.status === "Cancelled") {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Main order is already cancelled"
+    );
+  }
+
+  // Get user role
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return await prisma.$transaction(async (tx) => {
+    // Update MainOrder status
+    const updatedMainOrder = await tx.mainOrder.update({
+      where: { id: mainOrderId },
+      data: {
+        status: "Cancelled",
+        canceledBy: user.role,
+      },
+    });
+
+    // Update all associated orders to Cancelled
+    await tx.order.updateMany({
+      where: { mainOrderId: mainOrderId },
+      data: {
+        status: "Cancelled",
+      },
+    });
+
+    // Calculate products to update in mainOrderProduct
+    const productUpdates = new Map<
+      string,
+      { quantity: number; weight: number }
+    >();
+
+    for (const order of mainOrder.orders) {
+      for (const orderProduct of order.products) {
+        // Get variation weight
+        const variation = await tx.productVariation.findUnique({
+          where: { id: orderProduct.variationId as string },
+          select: { weight: true },
+        });
+
+        const weight = variation?.weight || 0;
+        const totalWeight = orderProduct.quantity * weight;
+
+        const existing = productUpdates.get(orderProduct.productId as string);
+        if (existing) {
+          productUpdates.set(orderProduct.productId as string, {
+            quantity: existing.quantity + orderProduct.quantity,
+            weight: existing.weight + totalWeight,
+          });
+        } else {
+          productUpdates.set(orderProduct.productId as string, {
+            quantity: orderProduct.quantity,
+            weight: totalWeight,
+          });
+        }
+      }
+    }
+
+    // Update mainOrderProduct records
+    for (const [productId, data] of productUpdates.entries()) {
+      const mainOrderProduct = await tx.mainOrderProduct.findUnique({
+        where: {
+          productId_orderDate: {
+            productId: productId,
+            orderDate: today,
+          },
+        },
+      });
+
+      if (mainOrderProduct) {
+        // Decrement totals
+        const newTotalOrders = Math.max(0, mainOrderProduct.totalOrders - 1);
+        const newTotalWeight = Math.max(
+          0,
+          mainOrderProduct.totalWeight - data.weight
+        );
+
+        // Remove mainOrderId from orderIds array
+        const updatedOrderIds = mainOrderProduct.orderIds.filter(
+          (id) => id !== mainOrderId
+        );
+
+        // If no more orders, mark as cancelled
+        const newStatus =
+          updatedOrderIds.length === 0 ? "Cancelled" : mainOrderProduct.status;
+
+        await tx.mainOrderProduct.update({
+          where: { id: mainOrderProduct.id },
+          data: {
+            totalOrders: newTotalOrders,
+            totalWeight: newTotalWeight,
+            orderIds: updatedOrderIds,
+            status: newStatus,
+          },
+        });
+      }
+    }
+
+    return updatedMainOrder;
+  });
+};
+
+// Keep old implementation as fallback
+const getAllDispatchOrdersByBranchIdOld = async (
   queryParams: DispatchQueryParams
 ) => {
   const { branchId, categoryId, dateTime } = queryParams;
@@ -1703,7 +1930,7 @@ const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
               isVerifyed: true,
               profileImage: true,
               address: true,
-              Review : true
+              Review: true,
             },
           },
           orders: {
@@ -1752,8 +1979,9 @@ export const orderServices = {
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
   getAllDispatchOrdersByBranchId,
+  acceptMainOrders,
+  rejectMainOrders,
   assignOrdersDeliveryToDriver,
-
   // Driver APIs
   getMyAssignedOrders,
 };

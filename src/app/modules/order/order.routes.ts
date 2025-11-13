@@ -82,7 +82,7 @@ router.get(
 
 // Get all main orders (Admin)
 router.get(
-  "/all-orders/for-owners",
+  "/all-orders/for-owners/:branchId",
   auth(UserRole.SuperAdmin, UserRole.Owner),
   orderControllers.getAllMainOrders
 );
@@ -104,16 +104,14 @@ router.post(
 
 router.put(
   "/main/accept-orders/:mainOrderId",
-  auth(UserRole.Owner, UserRole.SuperAdmin)
-  // validateRequest(OrderValidation.acceptMainOrdersSchema),
-  // orderControllers.acceptMainOrdersByOwner
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  orderControllers.acceptMainOrders
 );
 
 router.put(
   "/main/reject-orders/:mainOrderId",
-  auth(UserRole.Owner, UserRole.SuperAdmin)
-  // validateRequest(OrderValidation.rejectMainOrdersSchema),
-  // orderControllers.rejectMainOrdersByOwner
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  orderControllers.rejectMainOrders
 );
 
 router.post(

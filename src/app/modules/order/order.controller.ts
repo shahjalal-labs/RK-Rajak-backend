@@ -149,7 +149,8 @@ const deleteOrder = catchAsync(async (req: Request, res: Response) => {
  * Get all MainOrders (for admin)
  */
 const getAllMainOrders = catchAsync(async (_req: Request, res: Response) => {
-  const result = await orderServices.getAllMainOrders();
+  const  branchId = _req.params.branchId;
+  const result = await orderServices.getAllMainOrders(branchId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -259,6 +260,40 @@ const getMyAssignedOrders = catchAsync(
 
 
 
+/**
+ * Accept MainOrder
+ */
+const acceptMainOrders = catchAsync(async (req: Request, res: Response) => {
+  const { mainOrderId } = req.params;
+  const userId = req.user.id;
+
+  const result = await orderServices.acceptMainOrders(mainOrderId, userId);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Main order accepted successfully",
+    data: result,
+  });
+});
+
+/**
+ * Reject/Cancel MainOrder
+ */
+const rejectMainOrders = catchAsync(async (req: Request, res: Response) => {
+  const { mainOrderId } = req.params;
+  const userId = req.user.id;
+
+  const result = await orderServices.rejectMainOrders(mainOrderId, userId);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Main order rejected successfully",
+    data: result,
+  });
+});
+
 export const orderControllers = {
   createOrder,
   cancelOrder,
@@ -276,8 +311,9 @@ export const orderControllers = {
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
   getAllDispatchOrdersByBranchId,
+  acceptMainOrders,
+  rejectMainOrders,
   assignOrdersDeliveryToDriver,
-
   // driver -- APIs
   getMyAssignedOrders
 };
