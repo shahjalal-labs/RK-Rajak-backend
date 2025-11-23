@@ -375,7 +375,7 @@ model orderProduct {
 }
 
 enum PaymentMethod {
-  COD // cash on delivery
+  COD   // cash on delivery
   Wallet // wallet amount used
   Credit // delivery boy assign as credit and user clear dues later
   QrCode // delivery boy show scanner and collects payment
