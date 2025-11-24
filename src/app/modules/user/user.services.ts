@@ -220,7 +220,7 @@ const getSingleUserIntoDB = async (id: string) => {
   const user = await prisma.user.findUnique({
     where: { id },
     include :{
-      order : true,
+      dailyOrders : true,
       shippingAddress : true,
       UserLocation : true,
     }

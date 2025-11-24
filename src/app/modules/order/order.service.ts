@@ -2,12 +2,10 @@ import {
   PrismaClient,
   PaymentMethod,
   OrderStatus,
-  MainOrderStatus,
   UserRole,
 } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import { branch, product } from "@prisma/client";
 import {
   ICreateOrderPayload,
   IReturnOrderPayload,
@@ -20,10 +18,6 @@ import {
   getOrCreateDailyMainOrder,
   recalculateDailyOrderTotals,
   updateDailyProductSummary,
-  normalizeDateToStartOfDay,
-  rejectOrderProduct,
-  returnOrderProduct,
-  cancelFullOrderByDriver,
 } from "./order.helpers";
 
 const prisma = new PrismaClient();
@@ -1033,36 +1027,11 @@ const getAllMainOrders = async (branchId: string) => {
         },
       },
     },
-    select: {
-      id: true,
-      totalAmount: true,
-      pendingAmount: true,
-      totalDuesAmount: true,
-      totalWalletUsed: true,
-      totalReturnedAmount: true,
-      isDuesCleared: true,
-      status: true,
-      orderDate: true,
-      deliveryDate: true,
-      createdAt: true,
-      updatedAt: true,
-      orders: {
-        select: {
-          id: true,
-          orderId: true,
-          totalAmount: true,
-          status: true,
-          paymentMethod: true,
-          isDues: true,
-          branch: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      },
-    },
+   include :{
+      orders : true,
+      user : true,
+      driverAssignments : true
+   },
     orderBy: {
       orderDate: "desc",
     },

@@ -8,6 +8,20 @@ import path from "path";
 // DO_SPACE_SECRET_KEY="JgoBnFAbi/R/teVFdnDeY6MzDclRBO8BiUw9MOzVCAo"
 // DO_SPACE_BUCKET="freemanz"
 
+// DO_SPACE_ENDPOINT="https://nyc3.digitaloceanspaces.com"
+// DO_SPACE_ACCESS_KEY="DO002RGDJ947DJHJ9WDT"
+// DO_SPACE_SECRET_KEY="e5+/pko6Ojar51Hb8ojUKfq2HtXy+tnGKOfs3rIcEfo"
+// DO_SPACE_BUCKET="smtech-space"
+
+// const DO_CONFIG = {
+//   endpoint: "https://nyc3.digitaloceanspaces.com",
+//   region: "nyc3",
+//   credentials: {
+//     accessKeyId: "DO002RGDJ947DJHJ9WDT",
+//     secretAccessKey: "e5+/pko6Ojar51Hb8ojUKfq2HtXy+tnGKOfs3rIcEfo",
+//   },
+//   spaceName: "smtech-space",
+// };
 const DO_CONFIG = {
   endpoint: "https://nyc3.digitaloceanspaces.com",
   region: "nyc3",
@@ -17,6 +31,7 @@ const DO_CONFIG = {
   },
   spaceName: "freemanz",
 };
+
 
 const s3Config: S3ClientConfig = {
   endpoint: DO_CONFIG.endpoint,

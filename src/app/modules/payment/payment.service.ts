@@ -91,7 +91,7 @@ const createDuesPayment = async (payload: {
   // need to fecth orders and calculate total dues amount
   const ordersDetials = await Promise.all(
     orderIds.map(async (orderId) => {
-      const order = await prisma.mainOrder.findUnique({
+      const order = await prisma.dailyOrder.findUnique({
         where: { id: orderId },
       });
       return order;
@@ -100,7 +100,7 @@ const createDuesPayment = async (payload: {
 
   const amount = ordersDetials.reduce((sum, order) => {
     if (order) {
-      return sum + order.totalDuesAmount;
+      return sum + order.totalAmount;
     }
     return sum;
   }, 0);
@@ -114,7 +114,7 @@ const createDuesPayment = async (payload: {
   }
 
   // Verify all orders
-  const orders = await prisma.order.findMany({
+  const orders = await prisma.dailyOrder.findMany({
     where: {
       id: { in: orderIds },
       userId,
@@ -187,7 +187,7 @@ const getUserDues = async (userId: string) => {
     throw new ApiError(httpStatus.NOT_FOUND, "User not found");
   }
 
-  const duesOrders = await prisma.order.findMany({
+  const duesOrders = await prisma.dailyOrder.findMany({
     where: {
       userId,
       isDues: true,

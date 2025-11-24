@@ -388,7 +388,7 @@ const updateProduct = async (
 const bestSelling = async () => {
   return await prisma.product.findMany({
     where: {
-      orderProduct: {
+      orderProducts: {
         some: {
           order: {
             status: "Delivered",

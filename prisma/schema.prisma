@@ -34,15 +34,13 @@ model User {
   activeDuesCount Int   @default(0) // Current number of unpaid credit orders
   totalDuesAmount Float @default(0) // Total amount in dues
 
-  order             order[]
   shippingAddress   shippingAddress[]
   verificationUsers verificationUsers?
   UserLocation      UserLocation?
   Wallet            Wallet?
   Spin              Spin[]
   Review            Review[]
-  DuesPayment       DuesPayment[]
-  mainOrders        MainOrder[]
+  dailyOrders       DailyOrder[]
 
   @@map("users")
 }
@@ -104,17 +102,17 @@ model UserLocation {
 }
 
 model shippingAddress {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  user      User?    @relation(fields: [userId], references: [id])
-  userId    String?  @db.ObjectId
-  shopName  String
-  landmark  String
-  address   String
-  latitude  Float
-  longitude Float
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  order     order[]
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  user        User?        @relation(fields: [userId], references: [id])
+  userId      String?      @db.ObjectId
+  shopName    String
+  landmark    String
+  address     String
+  latitude    Float
+  longitude   Float
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  dailyOrders DailyOrder[]
 
   @@map("shippingAddresses")
 }
@@ -149,7 +147,6 @@ model branch {
   handalingCharge   handalingCharge[]
   cartValue         cartValue[]
   User              User[]
-  order             order[]
   product           product[]
   productCategory   productCategory[]
   livePhotoCategory livePhotoCategory[]
@@ -258,11 +255,11 @@ model product {
   categoryId String          @db.ObjectId
   category   productCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  orderProduct     orderProduct[]
-  productVariation productVariation[]
-  mainOrderProduct mainOrderProduct[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  productVariation   productVariation[]
+  orderProducts      OrderProduct[]
+  totalProductOrders totalProductOrder[]
 
   @@map("products")
 }
@@ -313,184 +310,138 @@ model productSubcategory {
   @@map("productSubcategories")
 }
 
-// ---------------------------------  Order Models -------------------------///`
-model order {
+
+
+
+//###############-########----- Order System -------------#######################
+
+// daily Order  collection for user 
+model DailyOrder {
   id                String           @id @default(auto()) @map("_id") @db.ObjectId
-  orderId           String           @unique
   user              User?            @relation(fields: [userId], references: [id])
   userId            String?          @db.ObjectId
-  products          orderProduct[]
-  totalAmount       Float
-  isPaid            Boolean?         @default(false)
+  OrderProducts     OrderProduct[] // all products in the order
+  totalAmount       Float // calculated total amount from OrderProducts
   status            OrderStatus      @default(Pending)
   shippingAddressId String?          @db.ObjectId
   shippingAddress   shippingAddress? @relation(fields: [shippingAddressId], references: [id])
+  orderDate         String? // date string for daily orders aggregation
   branchId          String?          @db.ObjectId
-  branch            branch?          @relation(fields: [branchId], references: [id])
 
   // Payment tracking
-  paymentMethod PaymentMethod? @default(COD)
+  paymentMethod PaymentMethod? // if credit and also RemainingAmount is greater than 0. then its called dues payment
 
   // Wallet payment tracking
   walletAmountUsed Float? @default(0)
+  RemainingAmount  Float  @default(0)
 
   // Dues/Credit tracking
   isDues        Boolean?  @default(false)
   duesCleared   Boolean?  @default(false)
   duesClearedAt DateTime?
 
-  // Return tracking
-  isReturned          Boolean? @default(false)
-  isPartialReturn     Boolean? @default(false)
-  totalReturnedAmount Float?   @default(0)
-
-  // MainOrder relation
-  mainOrderId String?    @db.ObjectId
-  mainOrder   MainOrder? @relation(fields: [mainOrderId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  driverAssignments DriverAssignment[]
 
   @@map("orders")
 }
 
-model orderProduct {
-  id               String   @id @default(auto()) @map("_id") @db.ObjectId
-  order            order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId          String?  @db.ObjectId
-  product          product? @relation(fields: [productId], references: [id])
-  productId        String?  @db.ObjectId
-  variationId      String?  @db.ObjectId
-  quantity         Int
-  weight           Float    @default(0)  // Total weight for this product
-  pricePerKg       Float    @default(0)  // Price per kg
-  price            Float
-  returnedQuantity Int      @default(0)
-  isReturned       Boolean  @default(false)
-  status           OrderProductStatus @default(Active)  // Product lifecycle status
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+// order products  collection for user 
 
-  @@map("orderProducts")
+model OrderProduct {
+  id                    String                  @id @default(auto()) @map("_id") @db.ObjectId
+  orderId               String?                 @db.ObjectId
+  order                 DailyOrder?             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product               product?                @relation(fields: [productId], references: [id])
+  productId             String?                 @db.ObjectId
+  totalWeight           Float                   @default(0) // Total weight for this product and its can editable in future by admin and delivery driver
+  totalPrice            Float                   @default(0) // Total price for this product and its can editable in future by admin and delivery driver
+  // cancelled and return tracking pertial or full
+  cancelledWeight       Float                   @default(0)
+  returnedWeight        Float                   @default(0)
+  // if fully cancelled or returned then need to status as cancelled or returned
+  status                OrderProductStatus      @default(Active) // Product lifecycle status
+  OrderProductVariation OrderProductVariation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, productId])
+}
+
+model OrderProductVariation {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  orderProduct   OrderProduct @relation(fields: [orderProductId], references: [id], onDelete: Cascade)
+  orderProductId String       @db.ObjectId
+  variationId    String       @db.ObjectId
+  quantity       Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// total order product collection for admin adn superadmin for one day
+
+model totalProductOrder {
+  id              String             @id @default(auto()) @map("_id") @db.ObjectId
+  productId       String             @db.ObjectId // product id for individual day aggregation . like how many orders placed for a product on that date  and also this is dynamic collection
+  product         product?           @relation(fields: [productId], references: [id])
+  totalOrders     Int
+  totalQuantity   Int                @default(0) // Real-time aggregated quantity
+  totalWeight     Float
+  totalPrice      Float              @default(0) // Real-time aggregated price
+  acceptedWeight  Float              @default(0) // Weight of accepted products
+  rejectedWeight  Float              @default(0) // Weight of rejected products
+  returnWeight    Float              @default(0) // Weight of returned products
+  orderIds        String[]           @db.ObjectId // must be main orders associated with this product on that date
+  orderDateString String // date string for daily orders aggregation
+  status          OrderProductStatus @default(Active)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([productId, orderDateString])
+  @@map("totalProductOrders")
+}
+
+enum OrderProductStatus {
+  Active // defult and also when return partial or cancelled partial
+  Confirmed // when admin or superadmin accept the order product
+  Returned // if delivery driver cancel fully then its called returned
+  Cancelled // if admin or superAdmin cancelled it called cancelled
+}
+enum OrderStatus {
+  Pending
+  Active
+  OnTheway
+  Delivered
+  Cancelled
 }
 
 enum PaymentMethod {
-  COD   // cash on delivery
+  COD // cash on delivery
   Wallet // wallet amount used
   Credit // delivery boy assign as credit and user clear dues later
   QrCode // delivery boy show scanner and collects payment
   Online // after clearing dues
 }
 
-enum PaymentStatus {
-  Pending
-  Success
-  Failed
-  Refunded
-  PartiallyRefunded
-}
-
-enum OrderProductStatus {
-  Active
-  Accepted
-  Rejected
-  Returned
-  Cancelled
-}
-
-/// ------ Main Order Model (Daily Aggregation) -----///
-
-model MainOrder {
-  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId              String    @db.ObjectId
-  user                User?     @relation(fields: [userId], references: [id])
-  orders              order[]
-  totalAmount         Float
-  pendingAmount       Float     @default(0) // COD + unpaid amounts
-  totalReturnedAmount Float     @default(0)
-  totalWalletUsed     Float     @default(0)
-  totalDuesAmount     Float     @default(0)
-  isDuesCleared       Boolean   @default(false)
-  canceledBy          UserRole? // Who cancelled the main order
-  confirmedBy         UserRole? // Who confirmed the main order
-
-  status            MainOrderStatus    @default(Pending) // Overall status of the main order
-  isClosed          Boolean            @default(false) // True after midnight cutoff
-  orderDate         DateTime // Date when orders were placed
-  closedAt          DateTime? // When the order was closed (midnight)
-  deliveryDate      DateTime? // When the order was delivered
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  driverAssignments DriverAssignment[]
-
-  @@unique([userId, orderDate])
-  @@index([isClosed, orderDate])
-  @@map("mainOrders")
-}
-
-model mainOrderProduct {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  productId   String   @db.ObjectId  // product id for individual day aggregation . like how many orders placed for a product on that date  and also this is dynamic collection
-  product     product? @relation(fields: [productId], references: [id])
-  totalOrders Int
-  totalQuantity Int @default(0)  // Real-time aggregated quantity
-  totalWeight Float
-  totalPrice  Float @default(0)  // Real-time aggregated price
-  acceptedWeight Float @default(0)  // Weight of accepted products
-  rejectedWeight Float @default(0)  // Weight of rejected products
-  returnWeight Float @default(0)  // Weight of returned products
-  orderIds    String[] @db.ObjectId  // must be main orders associated with this product on that date
-  orderDate   DateTime
-  status      mainOrderProductsStatus @default(Pending)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([productId, orderDate])
-  @@map("mainOrderProducts")
-}
 
 
-enum mainOrderProductsStatus {
-  Pending
-  Partial
-  Accepted
-  Rejected
-  Cancelled
-}
 
-enum OrderStatus {
-  Pending
-  Processing
-  onTheway
-  Delivered
-  Cancelled
-  deliveredWithPartiallyCancelled
-  deliveredWithPartiallyReturned
-  FullyReturned
-}
 
-enum MainOrderStatus {
-  Pending
-  Processing
-  onTheway
-  Delivered
-  Cancelled
-  deliveredWithPartiallyCancelled
-  deliveredWithPartiallyReturned
-  FullyReturned
-}
 
 /// ----------------------------- /// Assign main orders to delivery Driver // under one driver assign multiple main orders -----------------///
 
 model DriverAssignment {
-  id           String     @id @default(auto()) @map("_id") @db.ObjectId
-  driverId     String     @db.ObjectId
-  mainOrderId  String     @db.ObjectId
-  mainOrder    MainOrder? @relation(fields: [mainOrderId], references: [id])
-  assignedAt   DateTime   @default(now())
+  id           String      @id @default(auto()) @map("_id") @db.ObjectId
+  driverId     String      @db.ObjectId
+  dailyOrderId String      @db.ObjectId
+  dailyOrder   DailyOrder? @relation(fields: [dailyOrderId], references: [id])
+  assignedAt   DateTime    @default(now())
   deliveryDate DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   @@map("driverAssignments")
 }
@@ -545,6 +496,13 @@ enum TransactionType {
   Debit
 }
 
+enum PaymentStatus {
+  Pending
+  Completed
+  Failed
+  Refunded
+}
+
 model WalletRecharge {
   id               String        @id @default(auto()) @map("_id") @db.ObjectId
   wallet           Wallet?       @relation(fields: [walletId], references: [id])
@@ -558,23 +516,6 @@ model WalletRecharge {
   updatedAt        DateTime      @updatedAt
 
   @@map("walletRecharges")
-}
-
-/// ------ Dues Payment Model (for clearing dues) -----///
-model DuesPayment {
-  id               String        @id @default(auto()) @map("_id") @db.ObjectId
-  user             User?         @relation(fields: [userId], references: [id])
-  userId           String?       @db.ObjectId
-  orderIds         String[] // Array of order IDs being cleared
-  amount           Float // Total amount being paid
-  paymentGateway   String        @default("cashfree")
-  cashfreeOrderId  String?       @unique
-  paymentSessionId String?
-  paymentStatus    PaymentStatus @default(Pending)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-
-  @@map("duesPayments")
 }
 
 // -------------------------------- Spin Models -------------------------///
@@ -613,23 +554,6 @@ model contact {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-/// ------ Order Change Log Model (Audit Trail) -----///
-model OrderChangeLog {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  orderId        String   @db.ObjectId
-  productId      String?  @db.ObjectId
-  changeType     String   // "add" | "update" | "cancel" | "return" | "reject"
-  quantityChange Int?     // Change in quantity (can be negative)
-  weightChange   Float?   // Change in weight (can be negative)
-  priceChange    Float?   // Change in price (can be negative)
-  description    String?  // Additional context
-  changedBy      UserRole? // Who made the change
-  createdAt      DateTime @default(now())
-
-  @@index([orderId, createdAt])
-  @@map("orderChangeLogs")
 }
 
 // ---------------------------------  Notification Models -------------------------///
