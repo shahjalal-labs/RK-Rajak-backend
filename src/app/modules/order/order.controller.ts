@@ -1,91 +1,134 @@
 import { Request, Response } from "express";
-import { orderServices } from "./order.service";
-import sendResponse from "../../../shared/sendResponse";
 import catchAsync from "../../../shared/catchAsync";
+import sendResponse from "../../../shared/sendResponse";
+import { orderServices } from "./order.service";
+import httpStatus from "http-status";
 
 /**
- * Create order (handles all payment methods)
+ * Create order (handles COD and Wallet)
  */
 const createOrder = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user.id; // Assuming auth middleware adds user to request
+  const userId = req.user.id;
   const result = await orderServices.createOrder({ ...req.body, userId });
 
   sendResponse(res, {
     success: true,
-    statusCode: 201,
-    message: "Order created successfully",
+    statusCode: httpStatus.CREATED,
+    message: "Order created/updated successfully",
     data: result,
   });
 });
-const createOrderByAgentForCustomer = catchAsync(
-  async (req: Request, res: Response) => {
-    const userId = req.user.id; // Assuming auth middleware adds user to request
-    const result = await orderServices.createOrderByAgentForCustomer({
-      ...req.body,
-      userId,
-    });
-
-    sendResponse(res, {
-      success: true,
-      statusCode: 201,
-      message: "Order created successfully",
-      data: result,
-    });
-  }
-);
 
 /**
- * Cancel order
+ * Get user's daily orders
  */
-const cancelOrder = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-  const { orderId, reason } = req.body;
+const getUserDailyOrders = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user.id;
+  const result = await orderServices.getUserDailyOrders(userId, req.query);
 
-  const result = await orderServices.cancelOrder({
-    orderId,
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Daily orders retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get today's order for logged-in user
+ */
+const getTodayOrder = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user.id;
+  const result = await orderServices.getTodayOrder(userId);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: result ? "Today's order retrieved successfully" : "No order found for today",
+    data: result,
+  });
+});
+
+/**
+ * Get all daily orders (Admin/Owner)
+ */
+const getAllDailyOrders = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getAllDailyOrders(req.query);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "All daily orders retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Get daily product summary (Admin/Owner)
+ */
+const getDailySummary = catchAsync(async (req: Request, res: Response) => {
+  const { dateString } = req.query;
+  const result = await orderServices.getDailySummary(dateString as string);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Daily product summary retrieved successfully",
+    data: result,
+  });
+});
+
+/**
+ * Accept order product (Admin/Owner)
+ */
+const acceptProduct = catchAsync(async (req: Request, res: Response) => {
+  const { orderProductId } = req.params;
+  const userId = req.user.id;
+  const result = await orderServices.acceptProduct(orderProductId, userId);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Product accepted successfully",
+    data: result,
+  });
+});
+
+/**
+ * Reject order product (Admin/Owner)
+ */
+const rejectProduct = catchAsync(async (req: Request, res: Response) => {
+  const { orderProductId } = req.params;
+  const { reason } = req.body;
+  const userId = req.user.id;
+  const result = await orderServices.rejectProduct(orderProductId, userId, reason);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Product rejected successfully",
+    data: result,
+  });
+});
+
+/**
+ * Adjust product quantity (Driver)
+ */
+const adjustProductQuantity = catchAsync(async (req: Request, res: Response) => {
+  const { orderProductId } = req.params;
+  const { newWeight, reason } = req.body;
+  const userId = req.user.id;
+  const result = await orderServices.adjustProductQuantity(
+    orderProductId,
+    newWeight,
     userId,
-    reason,
-  });
+    reason
+  );
 
   sendResponse(res, {
     success: true,
-    statusCode: 200,
-    message: "Order cancelled successfully",
-    data: result,
-  });
-});
-
-/**
- * Return order (partial or full)
- */
-const returnOrder = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-  const { orderId, products, reason } = req.body;
-
-  const result = await orderServices.returnOrder({
-    orderId,
-    userId,
-    products,
-    reason,
-  });
-
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Order returned successfully",
-    data: result,
-  });
-});
-
-/**
- * Get all orders
- */
-const getAllOrders = catchAsync(async (_req: Request, res: Response) => {
-  const result = await orderServices.getAllOrders();
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "All orders retrieved successfully",
+    statusCode: httpStatus.OK,
+    message: "Product quantity adjusted successfully",
     data: result,
   });
 });
@@ -97,223 +140,20 @@ const getOrderById = catchAsync(async (req: Request, res: Response) => {
   const result = await orderServices.getOrderById(req.params.id);
   sendResponse(res, {
     success: true,
-    statusCode: 200,
+    statusCode: httpStatus.OK,
     message: "Order retrieved successfully",
-    data: result,
-  });
-});
-
-/**
- * Get user's orders
- */
-const getUserOrders = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-  const result = await orderServices.getUserOrders(userId);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "User orders retrieved successfully",
-    data: result,
-  });
-});
-
-/**
- * Update order status
- */
-const updateOrderStatus = catchAsync(async (req: Request, res: Response) => {
-  const { status } = req.body;
-  const result = await orderServices.updateOrderStatus(req.params.id, status);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Order status updated successfully",
-    data: result,
-  });
-});
-
-/**
- * Delete order (soft delete)
- */
-const deleteOrder = catchAsync(async (req: Request, res: Response) => {
-  await orderServices.deleteOrder(req.params.id);
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Order deleted successfully",
-  });
-});
-
-/**
- * Get all MainOrders (for admin)
- */
-const getAllMainOrders = catchAsync(async (_req: Request, res: Response) => {
-  const  branchId = _req.params.branchId;
-  const result = await orderServices.getAllMainOrders(branchId);
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "All main orders retrieved successfully",
-    data: result,
-  });
-});
-
-/**
- * Get MainOrder by ID
- */
-const getMainOrderById = catchAsync(async (req: Request, res: Response) => {
-  const result = await orderServices.getMainOrderById(req.params.id);
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Main order retrieved successfully",
-    data: result,
-  });
-});
-const getMyCustomerOrders = catchAsync(async (req: Request, res: Response) => {
-  const result = await orderServices.getMyCustomerOrders(
-    req.user.id,
-    req.query
-  );
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Agent Cusotmer orders retrieved successfully",
-    data: result,
-  });
-});
-
-/**
- * Get user's MainOrders
- */
-const getUserMainOrders = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user.id;
-  const queryParams = req.query;
-  const result = await orderServices.getUserMainOrders(userId, queryParams);
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "User main orders retrieved successfully",
-    data: result,
-  });
-});
-
-const getAllDispatchOrdersByBranchId = catchAsync(
-  async (req: Request, res: Response) => {
-    const branchId = req.params.branchId;
-    const queryParams = {
-      ...req.query,
-      branchId,
-    } as any;
-    const result = await orderServices.getAllDispatchOrdersByBranchId(
-      queryParams
-    );
-    sendResponse(res, {
-      success: true,
-      statusCode: 200,
-      message: "All dispatch orders retrieved successfully",
-      data: result,
-    });
-  }
-);
-
-/**
- * Get today's MainOrder for logged-in user
- */
-const getTodayMainOrder = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-  const result = await orderServices.getTodayMainOrder(userId);
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: result
-      ? "Today's main order retrieved successfully"
-      : "No orders placed today",
-    data: result,
-  });
-});
-
-///------------------- Assign Delivery to Driver -----------------///
-const assignOrdersDeliveryToDriver = catchAsync(
-  async (req: Request, res: Response) => {
-    const result = await orderServices.assignOrdersDeliveryToDriver(req.body);
-    sendResponse(res, {
-      success: true,
-      statusCode: 200,
-      message: "Delivery assigned to driver successfully",
-      data: result,
-    });
-  }
-);
-const getMyAssignedOrders = catchAsync(
-  async (req: Request, res: Response) => {
-    const result = await orderServices.getMyAssignedOrders(req.user.id , req.query);
-    sendResponse(res, {
-      success: true,
-      statusCode: 200,
-      message: "My assigned orders retrieved successfully",
-      data: result,
-    });
-  }
-);
-
-
-
-/**
- * Accept MainOrder
- */
-const acceptMainOrders = catchAsync(async (req: Request, res: Response) => {
-  const { mainOrderId } = req.params;
-  const userId = req.user.id;
-
-  const result = await orderServices.acceptMainOrders(mainOrderId, userId);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Main order accepted successfully",
-    data: result,
-  });
-});
-
-/**
- * Reject/Cancel MainOrder
- */
-const rejectMainOrders = catchAsync(async (req: Request, res: Response) => {
-  const { mainOrderId } = req.params;
-  const userId = req.user.id;
-
-  const result = await orderServices.rejectMainOrders(mainOrderId, userId);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "Main order rejected successfully",
     data: result,
   });
 });
 
 export const orderControllers = {
   createOrder,
-  cancelOrder,
-  returnOrder,
-  getAllOrders,
+  getUserDailyOrders,
+  getTodayOrder,
+  getAllDailyOrders,
+  getDailySummary,
+  acceptProduct,
+  rejectProduct,
+  adjustProductQuantity,
   getOrderById,
-  getUserOrders,
-  updateOrderStatus,
-  deleteOrder,
-  // MainOrder controllers
-  getAllMainOrders,
-  getMainOrderById,
-  getUserMainOrders,
-  getTodayMainOrder,
-  getMyCustomerOrders,
-  createOrderByAgentForCustomer,
-  getAllDispatchOrdersByBranchId,
-  acceptMainOrders,
-  rejectMainOrders,
-  assignOrdersDeliveryToDriver,
-  // driver -- APIs
-  getMyAssignedOrders
 };

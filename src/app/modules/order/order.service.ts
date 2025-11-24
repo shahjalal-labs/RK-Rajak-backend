@@ -8,73 +8,36 @@ import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import {
   ICreateOrderPayload,
-  IReturnOrderPayload,
-  ICancelOrderPayload,
-  ICreateOrderPayloadByAgentForCustomer,
-  AssignOrdersPayload,
 } from "./order.interface";
-import { JwtPayload } from "jsonwebtoken";
 import {
-  getOrCreateDailyMainOrder,
-  recalculateDailyOrderTotals,
-  updateDailyProductSummary,
+  getOrCreateDailyOrder,
+  mergeOrCreateOrderProduct,
+  updateDailyProductAggregation,
+  recalculateDailyOrderTotal,
+  getDateString,
+  acceptOrderProduct,
+  rejectOrderProduct,
+  adjustOrderProductByDriver,
+  getDailyProductSummary,
+  getDailyOrders,
 } from "./order.helpers";
 
 const prisma = new PrismaClient();
 
 /**
- * Generate unique order ID
+ * Place order with COD payment
+ * Merges products into daily order with snapshot pricing
  */
-const generateOrderId = (): string => {
-  return `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
-};
-
-/**
- * Legacy function - kept for backward compatibility
- * New code should use updateDailyProductSummary from helpers
- */
-const createOrUpdateMainOrderProduct = async (
-  products: any[],
-  mainOrderId: string,
-  orderDate: Date,
-  tx: any = prisma
-) => {
-  // Delegate to new daily summary updater
-  await updateDailyProductSummary(
-    products,
-    mainOrderId,
-    orderDate,
-    "add",
-    tx
-  );
-};
-
-/**
- * Legacy function - kept for backward compatibility
- * New code should use getOrCreateDailyMainOrder from helpers
- */
-const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
-  return await getOrCreateDailyMainOrder(userId, tx);
-};
-
-/**
- * Legacy function - kept for backward compatibility
- * New code should use recalculateDailyOrderTotals from helpers
- */
-const recalculateMainOrder = async (mainOrderId: string, tx: any = prisma) => {
-  return await recalculateDailyOrderTotals(mainOrderId, tx);
-};
-
 const placeOrderCOD = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId } = payload;
+  const { userId, products, shippingAddressId, branchId } = payload;
 
-  // ✅ Validate user
+  // Validate user
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new ApiError(httpStatus.NOT_FOUND, "User not found");
   }
 
-  // ✅ Fetch all products (with variations)
+  // Fetch all products with variations
   const productIds = products.map((p) => p.productId);
   const dbProducts = await prisma.product.findMany({
     where: { id: { in: productIds } },
@@ -83,11 +46,18 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     },
   });
 
-  // ✅ Validate each product and variation
-  let totalAmount = 0;
-
+  // Validate products and prepare with snapshot pricing
+  const validatedProducts: Array<{
+    productId: string;
+    variationId: string;
+    quantity: number;
+    product: any;
+    variation: any;
+    snapshotPricePerKg: number;
+    snapshotWeightPerUnit: number;
+  }> = [];
+  
   for (const p of products) {
-    // Find product in DB
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
     if (!dbProduct) {
       throw new ApiError(
@@ -96,7 +66,6 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       );
     }
 
-    // Variation must exist
     const variation = dbProduct.productVariation.find(
       (v) => v.id === p.variationId
     );
@@ -107,284 +76,87 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       );
     }
 
-    // Check available quantity
-    if (variation.availableQuantity < p.quantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Insufficient quantity for ${dbProduct.name}`
-      );
-    }
-
-    // Check min/max order quantity
-    if (variation.minOrderQuantity && p.quantity < variation.minOrderQuantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Minimum order quantity for ${dbProduct.name} is ${variation.minOrderQuantity}`
-      );
-    }
-    if (variation.maxOrderQuantity && p.quantity > variation.maxOrderQuantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Maximum order quantity for ${dbProduct.name} is ${variation.maxOrderQuantity}`
-      );
-    }
-
-    // Calculate total based on sellingPrice
-    totalAmount += variation.sellingPrice * p.quantity;
-  }
-  console.log({ totalAmount });
-
-  // ✅ Create order and merge into MainOrder in transaction (DAILY ORDER SYSTEM)
-  const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's MainOrder (enforces one-per-user-per-day)
-    const mainOrder = await getOrCreateDailyMainOrder(userId, tx);
-
-    // Create order linked to MainOrder
-    const order = await tx.order.create({
-      data: {
-        orderId: generateOrderId(),
-        userId,
-        totalAmount,
-        shippingAddressId,
-        branchId: user.branchId,
-        paymentMethod: PaymentMethod.COD,
-        isPaid: false,
-        status: OrderStatus.Pending,
-        mainOrderId: mainOrder.id,
-        products: {
-          create: products.map((p) => {
-            const variation = dbProducts
-              .find((prod) => prod.id === p.productId)
-              ?.productVariation.find((v) => v.id === p.variationId);
-            return {
-              product: {
-                connect: { id: p.productId },
-              },
-              variationId: p.variationId,
-              quantity: p.quantity,
-              weight: (variation?.weight || 0) * p.quantity,
-              pricePerKg: variation?.sellingPrice || 0,
-              price: (variation?.sellingPrice || 0) * p.quantity,
-              status: "Active" as any, // OrderProductStatus.Active - will work after prisma generate
-            };
-          }),
-        },
-      },
-      include: {
-        products: {
-          include: {
-            product: true,
-          },
-        },
-        shippingAddress: true,
-        mainOrder: true,
-      },
+    // Snapshot pricing - capture current price
+    validatedProducts.push({
+      productId: p.productId,
+      variationId: p.variationId,
+      quantity: p.quantity,
+      product: dbProduct,
+      variation: variation,
+      snapshotPricePerKg: variation.sellingPrice,
+      snapshotWeightPerUnit: variation.weight,
     });
+  }
 
-    // Update daily product summary in REAL-TIME
-    await updateDailyProductSummary(
-      products,
-      mainOrder.id,
-      mainOrder.orderDate,
-      "add",
+  // Execute in transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Get or create today's DailyOrder
+    const dailyOrder = await getOrCreateDailyOrder(
+      userId,
+      shippingAddressId,
+      branchId,
+      PaymentMethod.COD,
       tx
     );
 
-    // Recalculate MainOrder totals
-    await recalculateDailyOrderTotals(mainOrder.id, tx);
+    // Merge or create OrderProducts with snapshot pricing
+    const orderProducts = [];
+    for (const p of validatedProducts) {
+      const orderProduct = await mergeOrCreateOrderProduct(
+        dailyOrder.id,
+        p.productId,
+        p.variationId,
+        p.quantity,
+        p.snapshotPricePerKg,
+        p.snapshotWeightPerUnit,
+        tx
+      );
+      orderProducts.push(orderProduct);
 
-    // Log the change (uncomment after running: bunx prisma generate)
-    // await tx.orderChangeLog.create({
-    //   data: {
-    //     orderId: order.id,
-    //     changeType: "add",
-    //     description: `COD order created with ${products.length} products`,
-    //     changedBy: UserRole.Customer,
-    //   },
-    // });
-
-    return order;
-  });
-
-  return result;
-};
-const createOrderByAgentForCustomer = async (
-  payload: ICreateOrderPayloadByAgentForCustomer
-) => {
-  const { userId, customerId, products, shippingAddressId } = payload;
-
-  // ✅ Validate user
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-  }
-
-  // is customer exist
-  const isCustomerExist = await prisma.user.findUnique({
-    where: { id: customerId },
-  });
-  if (!isCustomerExist) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Customer not found");
-  }
-  // check is customer exist but not for this agent customer  - 1 fetch this agent all customers and check is exist
-  const isCustomerForThisAgent = await prisma.user.findFirst({
-    where: {
-      id: customerId,
-      agentId: userId,
-    },
-  });
-  if (!isCustomerForThisAgent) {
-    throw new ApiError(
-      httpStatus.FORBIDDEN,
-      "This customer does not belong to you"
-    );
-  }
-
-  // is customer exist but there shipping address not exist
-  const isShippingExist = await prisma.shippingAddress.findUnique({
-    where: {
-      id: shippingAddressId,
-    },
-  });
-  if (!isShippingExist) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Shipping address not found");
-  }
-  // is shipping address belong to customer
-  const isShippingBelongToCustomer = isShippingExist.userId === customerId;
-  if (!isShippingBelongToCustomer) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Shipping address does not belong to customer"
-    );
-  }
-
-  // ✅ Fetch all products (with variations)
-  const productIds = products.map((p) => p.productId);
-  const dbProducts = await prisma.product.findMany({
-    where: { id: { in: productIds } },
-    include: {
-      productVariation: true,
-    },
-  });
-
-  // ✅ Validate each product and variation
-  let totalAmount = 0;
-
-  for (const p of products) {
-    // Find product in DB
-    const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
-    if (!dbProduct) {
-      throw new ApiError(
-        httpStatus.NOT_FOUND,
-        `Product not found: ${p.productId}`
+      // Update daily product aggregation
+      const weight = p.quantity * p.snapshotWeightPerUnit;
+      const price = weight * p.snapshotPricePerKg;
+      await updateDailyProductAggregation(
+        p.productId,
+        dailyOrder.id,
+        weight,
+        price,
+        "add",
+        tx
       );
     }
 
-    // Variation must exist
-    const variation = dbProduct.productVariation.find(
-      (v) => v.id === p.variationId
-    );
-    if (!variation) {
-      throw new ApiError(
-        httpStatus.NOT_FOUND,
-        `Variation not found for product: ${dbProduct.name}`
-      );
-    }
+    // Recalculate total
+    await recalculateDailyOrderTotal(dailyOrder.id, tx);
 
-    // Check available quantity
-    if (variation.availableQuantity < p.quantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Insufficient quantity for ${dbProduct.name}`
-      );
-    }
-
-    // Check min/max order quantity
-    if (variation.minOrderQuantity && p.quantity < variation.minOrderQuantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Minimum order quantity for ${dbProduct.name} is ${variation.minOrderQuantity}`
-      );
-    }
-    if (variation.maxOrderQuantity && p.quantity > variation.maxOrderQuantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Maximum order quantity for ${dbProduct.name} is ${variation.maxOrderQuantity}`
-      );
-    }
-
-    // Calculate total based on price who comes from payload
-    totalAmount += p.price;
-  }
-  console.log({ totalAmount });
-
-  // ✅ Create order and merge into MainOrder in transaction
-  const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's MainOrder
-    const mainOrder = await getOrCreateTodayMainOrder(customerId, tx);
-
-    // Create order linked to MainOrder
-    const order = await tx.order.create({
-      data: {
-        orderId: generateOrderId(),
-        userId: customerId,
-        totalAmount,
-        shippingAddressId,
-        branchId: isCustomerExist.branchId,
-        paymentMethod: PaymentMethod.COD,
-        isPaid: false,
-        status: OrderStatus.Pending,
-        mainOrderId: mainOrder.id,
-        products: {
-          create: products.map((p) => ({
-            product: {
-              connect: { id: p.productId },
-            },
-            variationId: p.variationId,
-            quantity: p.quantity,
-            price:
-              dbProducts
-                .find((prod) => prod.id === p.productId)
-                ?.productVariation.find((v) => v.id === p.variationId)
-                ?.sellingPrice || 0,
-          })),
-        },
-      },
+    // Fetch updated order
+    const updatedOrder = await tx.dailyOrder.findUnique({
+      where: { id: dailyOrder.id },
       include: {
-        products: {
+        OrderProducts: {
           include: {
             product: true,
+            OrderProductVariation: true,
           },
         },
         shippingAddress: true,
-        mainOrder: true,
+        user: true,
       },
     });
 
-    // Recalculate MainOrder totals
-    await recalculateMainOrder(mainOrder.id, tx);
-
-    // Create/update mainOrderProduct for dispatch tracking
-    await createOrUpdateMainOrderProduct(
-      products,
-      mainOrder.id,
-      order.createdAt,
-      tx
-    );
-
-    return order;
+    return updatedOrder;
   });
 
   return result;
 };
 
 /**
- * Place order via Wallet
+ * Place order with Wallet payment
  */
 const placeOrderWallet = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId } = payload;
+  const { userId, products, shippingAddressId, branchId } = payload;
 
-  // ✅ Validate user
+  // Validate user and wallet
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { Wallet: true },
@@ -398,7 +170,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Wallet not found for user");
   }
 
-  // ✅ Fetch all products (with variations)
+  // Fetch products
   const productIds = products.map((p) => p.productId);
   const dbProducts = await prisma.product.findMany({
     where: { id: { in: productIds } },
@@ -407,11 +179,19 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     },
   });
 
-  // ✅ Validate each product and variation
-  let totalAmount = 0;
+  // Validate and calculate total
+  const validatedProducts: Array<{
+    productId: string;
+    variationId: string;
+    quantity: number;
+    product: any;
+    variation: any;
+    snapshotPricePerKg: number;
+    snapshotWeightPerUnit: number;
+  }> = [];
+  let orderTotal = 0;
 
   for (const p of products) {
-    // Find product in DB
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
     if (!dbProduct) {
       throw new ApiError(
@@ -420,7 +200,6 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       );
     }
 
-    // Variation must exist
     const variation = dbProduct.productVariation.find(
       (v) => v.id === p.variationId
     );
@@ -431,125 +210,118 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       );
     }
 
-    // Check available quantity
-    if (variation.availableQuantity < p.quantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Insufficient quantity for ${dbProduct.name}`
-      );
-    }
+    const weight = p.quantity * variation.weight;
+    const price = weight * variation.sellingPrice;
+    orderTotal += price;
 
-    // Check min/max order quantity
-    if (variation.minOrderQuantity && p.quantity < variation.minOrderQuantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Minimum order quantity for ${dbProduct.name} is ${variation.minOrderQuantity}`
-      );
-    }
-    if (variation.maxOrderQuantity && p.quantity > variation.maxOrderQuantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Maximum order quantity for ${dbProduct.name} is ${variation.maxOrderQuantity}`
-      );
-    }
-
-    // Calculate total based on sellingPrice
-    totalAmount += variation.sellingPrice * p.quantity;
+    validatedProducts.push({
+      productId: p.productId,
+      variationId: p.variationId,
+      quantity: p.quantity,
+      product: dbProduct,
+      variation: variation,
+      snapshotPricePerKg: variation.sellingPrice,
+      snapshotWeightPerUnit: variation.weight,
+    });
   }
-  console.log({ totalAmount });
+
   // Check wallet balance
-  if (user.Wallet.balance < totalAmount) {
+  if (user.Wallet.balance < orderTotal) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Insufficient wallet balance. Available: ₹${user.Wallet.balance}, Required: ₹${totalAmount}`
+      `Insufficient wallet balance. Available: ₹${user.Wallet.balance}, Required: ₹${orderTotal}`
     );
   }
 
-  // Use transaction to ensure atomicity
+  // Execute in transaction
   const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's MainOrder
-    const mainOrder = await getOrCreateTodayMainOrder(userId, tx);
-
     // Deduct wallet balance
-    const updatedWallet = await tx.wallet.update({
+    await tx.wallet.update({
       where: { id: user.Wallet!.id },
       data: {
-        balance: {
-          decrement: totalAmount,
-        },
+        balance: { decrement: orderTotal },
       },
     });
 
-    // Create order linked to MainOrder
-    const order = await tx.order.create({
+    // Get or create today's DailyOrder
+    const dailyOrder = await getOrCreateDailyOrder(
+      userId,
+      shippingAddressId,
+      branchId,
+      PaymentMethod.Wallet,
+      tx
+    );
+
+    // Update wallet amount used
+    await tx.dailyOrder.update({
+      where: { id: dailyOrder.id },
       data: {
-        orderId: generateOrderId(),
-        userId,
-        totalAmount,
-        shippingAddressId,
-        branchId: user.branchId,
-        paymentMethod: PaymentMethod.Wallet,
-        walletAmountUsed: totalAmount,
-        isPaid: true,
-        status: OrderStatus.Pending,
-        mainOrderId: mainOrder.id,
-        products: {
-          create: products.map((p) => ({
-            product: {
-              connect: { id: p.productId },
-            },
-            variationId: p.variationId,
-            quantity: p.quantity,
-            price:
-              dbProducts
-                .find((prod) => prod.id === p.productId)
-                ?.productVariation.find((v) => v.id === p.variationId)
-                ?.sellingPrice || 0,
-          })),
-        },
-      },
-      include: {
-        products: {
-          include: {
-            product: true,
-          },
-        },
-        shippingAddress: true,
-        mainOrder: true,
+        walletAmountUsed: { increment: orderTotal },
       },
     });
+
+    // Merge products
+    for (const p of validatedProducts) {
+      await mergeOrCreateOrderProduct(
+        dailyOrder.id,
+        p.productId,
+        p.variationId,
+        p.quantity,
+        p.snapshotPricePerKg,
+        p.snapshotWeightPerUnit,
+        tx
+      );
+
+      // Update aggregation
+      const weight = p.quantity * p.snapshotWeightPerUnit;
+      const price = weight * p.snapshotPricePerKg;
+      await updateDailyProductAggregation(
+        p.productId,
+        dailyOrder.id,
+        weight,
+        price,
+        "add",
+        tx
+      );
+    }
+
+    // Recalculate total
+    await recalculateDailyOrderTotal(dailyOrder.id, tx);
 
     // Record wallet transaction
     await tx.walletTransaction.create({
       data: {
         walletId: user.Wallet!.id,
-        amount: totalAmount,
+        amount: orderTotal,
         type: "Debit",
-        description: `Payment for order ${order.orderId}`,
-        orderId: order.id,
+        description: `Payment for daily order (${getDateString()})`,
         status: "Success",
       },
     });
 
-    // Recalculate MainOrder totals
-    await recalculateMainOrder(mainOrder.id, tx);
+    // Fetch updated order
+    const updatedOrder = await tx.dailyOrder.findUnique({
+      where: { id: dailyOrder.id },
+      include: {
+        OrderProducts: {
+          include: {
+            product: true,
+            OrderProductVariation: true,
+          },
+        },
+        shippingAddress: true,
+        user: true,
+      },
+    });
 
-    // Create/update mainOrderProduct for dispatch tracking
-    await createOrUpdateMainOrderProduct(
-      products,
-      mainOrder.id,
-      order.createdAt,
-      tx
-    );
-
-    return { order, wallet: updatedWallet };
+    return updatedOrder;
   });
 
   return result;
 };
 
 /**
- * Main function to place order based on payment method
+ * Main order creation function
  */
 const createOrder = async (payload: ICreateOrderPayload) => {
   switch (payload.paymentMethod) {
@@ -563,360 +335,33 @@ const createOrder = async (payload: ICreateOrderPayload) => {
 };
 
 /**
- * Cancel order (full or partial product cancellation)
+ * Get user's daily orders
  */
+const getUserDailyOrders = async (userId: string, queryParams: any) => {
+  const { status, startDate, endDate } = queryParams;
 
-//!@TODO: Refactor common logic between cancelOrder and returnOrder -- Cancel ONLY The ADMIN and SUPERADMIN
-const cancelOrder = async (payload: ICancelOrderPayload) => {
-  const { orderId, userId, products: cancelProducts } = payload;
+  const where: any = { userId };
 
-  // Find order
-  const order = await prisma.order.findFirst({
-    where: {
-      id: orderId,
-      userId,
-    },
+  if (status) {
+    where.status = status;
+  }
+
+  if (startDate || endDate) {
+    where.orderDate = {};
+    if (startDate) where.orderDate.gte = startDate;
+    if (endDate) where.orderDate.lte = endDate;
+  }
+
+  return await prisma.dailyOrder.findMany({
+    where,
     include: {
-      products: true,
-      user: {
-        include: {
-          Wallet: true,
-        },
-      },
-    },
-  });
-
-  if (!order) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
-  }
-
-  // Check if order can be cancelled
-  if (order.status === OrderStatus.Delivered) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Cannot cancel delivered order. Please use return instead."
-    );
-  }
-
-  if (
-    order.status === OrderStatus.Cancelled ||
-    order.status === OrderStatus.FullyReturned
-  ) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `Order is already ${order.status.toLowerCase()}`
-    );
-  }
-
-  // Determine if full or partial cancellation
-  const isFullCancellation = !cancelProducts || cancelProducts.length === 0;
-
-  let totalCancelAmount = 0;
-  let cancelUpdates: any[] = [];
-
-  if (isFullCancellation) {
-    // Full order cancellation
-    totalCancelAmount = order.totalAmount - (order.totalReturnedAmount || 0);
-
-    // Mark all products as cancelled
-    cancelUpdates = order.products.map((op) => ({
-      orderProductId: op.id,
-      cancelQuantity: op.quantity - op.returnedQuantity,
-      newReturnedQuantity: op.quantity,
-      isFullyCancelled: true,
-    }));
-  } else {
-    // Partial product cancellation
-    cancelUpdates = cancelProducts!.map((cp) => {
-      const orderProduct = order.products.find(
-        (op) => op.id === cp.orderProductId
-      );
-      if (!orderProduct) {
-        throw new ApiError(
-          httpStatus.NOT_FOUND,
-          `Order product ${cp.orderProductId} not found`
-        );
-      }
-
-      const availableQuantity =
-        orderProduct.quantity - orderProduct.returnedQuantity;
-      if (cp.cancelQuantity > availableQuantity) {
-        throw new ApiError(
-          httpStatus.BAD_REQUEST,
-          `Cannot cancel ${cp.cancelQuantity} units. Available: ${availableQuantity}`
-        );
-      }
-
-      const cancelAmount = orderProduct.price * cp.cancelQuantity;
-      totalCancelAmount += cancelAmount;
-
-      return {
-        orderProductId: cp.orderProductId,
-        cancelQuantity: cp.cancelQuantity,
-        newReturnedQuantity: orderProduct.returnedQuantity + cp.cancelQuantity,
-        isFullyCancelled:
-          orderProduct.returnedQuantity + cp.cancelQuantity ===
-          orderProduct.quantity,
-      };
-    });
-  }
-
-  // Check if all products are now cancelled
-  const allProductsCancelled =
-    isFullCancellation ||
-    order.products.every((op) => {
-      const cancelUpdate = cancelUpdates.find(
-        (cu) => cu.orderProductId === op.id
-      );
-      if (cancelUpdate) {
-        return cancelUpdate.isFullyCancelled;
-      }
-      return op.returnedQuantity === op.quantity;
-    });
-
-  // Process cancellation with transaction
-  await prisma.$transaction(async (tx) => {
-    // Update order products
-    for (const update of cancelUpdates) {
-      await tx.orderProduct.update({
-        where: { id: update.orderProductId },
-        data: {
-          returnedQuantity: update.newReturnedQuantity,
-          isReturned: update.isFullyCancelled,
-        },
-      });
-    }
-
-    // Update order
-    const updatedOrder = await tx.order.update({
-      where: { id: orderId },
-      data: {
-        isReturned: true,
-        isPartialReturn: !allProductsCancelled,
-        totalReturnedAmount:
-          (order.totalReturnedAmount || 0) + totalCancelAmount,
-        // status: allProductsCancelled ? OrderStatus.Cancelled : OrderStatus.PartiallyReturned,
-      },
-    });
-
-    // Process refund based on payment method
-    if (order.paymentMethod === PaymentMethod.Wallet && totalCancelAmount > 0) {
-      // Refund to wallet
-      await tx.wallet.update({
-        where: { id: order.user!.Wallet!.id },
-        data: {
-          balance: {
-            increment: totalCancelAmount,
-          },
-        },
-      });
-
-      // Record wallet transaction
-      await tx.walletTransaction.create({
-        data: {
-          walletId: order.user!.Wallet!.id,
-          amount: totalCancelAmount,
-          type: "Credit",
-          description: `Refund for ${
-            isFullCancellation ? "cancelled" : "partially cancelled"
-          } order ${order.orderId}`,
-          orderId: order.id,
-          status: "Success",
-        },
-      });
-    }
-    // COD and Credit orders don't need refund
-
-    // Recalculate MainOrder totals if order is linked to MainOrder
-    if (updatedOrder.mainOrderId) {
-      await recalculateMainOrder(updatedOrder.mainOrderId, tx);
-    }
-  });
-
-  return {
-    message: `Order ${
-      isFullCancellation ? "fully" : "partially"
-    } cancelled successfully`,
-    cancelledAmount: totalCancelAmount,
-  };
-};
-
-/**
- * Return order (partial or full)
- */
-//!@ TODO  : Return order By The Delivery Boy
-const returnOrder = async (payload: IReturnOrderPayload) => {
-  const { orderId, userId, products: returnProducts } = payload;
-
-  // Find order
-  const order = await prisma.order.findFirst({
-    where: {
-      id: orderId,
-      userId,
-    },
-    include: {
-      products: true,
-      user: {
-        include: {
-          Wallet: true,
-        },
-      },
-    },
-  });
-
-  if (!order) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
-  }
-
-  // Check if order can be returned
-  if (order.status !== OrderStatus.Delivered) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Only delivered orders can be returned"
-    );
-  }
-
-  // Validate return products
-  let totalReturnAmount = 0;
-  let isFullReturn = true;
-
-  const returnUpdates = returnProducts.map((rp) => {
-    const orderProduct = order.products.find(
-      (op) => op.id === rp.orderProductId
-    );
-    if (!orderProduct) {
-      throw new ApiError(
-        httpStatus.NOT_FOUND,
-        `Order product ${rp.orderProductId} not found`
-      );
-    }
-
-    const availableQuantity =
-      orderProduct.quantity - orderProduct.returnedQuantity;
-    if (rp.returnQuantity > availableQuantity) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Cannot return ${rp.returnQuantity} units. Available: ${availableQuantity}`
-      );
-    }
-
-    const returnAmount = orderProduct.price * rp.returnQuantity;
-    totalReturnAmount += returnAmount;
-
-    // Check if partial return
-    if (
-      orderProduct.returnedQuantity + rp.returnQuantity <
-      orderProduct.quantity
-    ) {
-      isFullReturn = false;
-    }
-
-    return {
-      orderProductId: rp.orderProductId,
-      returnQuantity: rp.returnQuantity,
-      newReturnedQuantity: orderProduct.returnedQuantity + rp.returnQuantity,
-      isFullyReturned:
-        orderProduct.returnedQuantity + rp.returnQuantity ===
-        orderProduct.quantity,
-    };
-  });
-
-  // Check if all products are fully returned
-  const allProductsReturned = order.products.every((op) => {
-    const returnUpdate = returnUpdates.find(
-      (ru) => ru.orderProductId === op.id
-    );
-    if (returnUpdate) {
-      return returnUpdate.isFullyReturned;
-    }
-    return op.returnedQuantity === op.quantity;
-  });
-
-  // Process return with transaction
-  await prisma.$transaction(async (tx) => {
-    // Update order products
-    for (const update of returnUpdates) {
-      await tx.orderProduct.update({
-        where: { id: update.orderProductId },
-        data: {
-          returnedQuantity: update.newReturnedQuantity,
-          isReturned: update.isFullyReturned,
-        },
-      });
-    }
-
-    // Update order
-    const updatedOrder = await tx.order.update({
-      where: { id: orderId },
-      data: {
-        isReturned: true,
-        isPartialReturn: !allProductsReturned,
-        totalReturnedAmount:
-          (order.totalReturnedAmount || 0) + totalReturnAmount,
-        // status: allProductsReturned ? OrderStatus.FullyReturned : OrderStatus.PartiallyReturned,
-      },
-    });
-
-    // Process refund based on payment method
-    if (order.paymentMethod === PaymentMethod.Wallet && totalReturnAmount > 0) {
-      // Refund to wallet
-      await tx.wallet.update({
-        where: { id: order.user!.Wallet!.id },
-        data: {
-          balance: {
-            increment: totalReturnAmount,
-          },
-        },
-      });
-
-      await tx.walletTransaction.create({
-        data: {
-          walletId: order.user!.Wallet!.id,
-          amount: totalReturnAmount,
-          type: "Credit",
-          description: `Refund for returned items from order ${order.orderId}`,
-          orderId: order.id,
-          status: "Success",
-        },
-      });
-    }
-    // COD returns don't process refund (handled separately in cash)
-
-    // Recalculate MainOrder totals if order is linked to MainOrder
-    if (updatedOrder.mainOrderId) {
-      await recalculateMainOrder(updatedOrder.mainOrderId, tx);
-    }
-  });
-
-  return {
-    message: `Order ${
-      allProductsReturned ? "fully" : "partially"
-    } returned successfully`,
-    totalReturnAmount,
-  };
-};
-
-/**
- * Get all orders
- */
-const getAllOrders = async () => {
-  return await prisma.order.findMany({
-    include: {
-      products: {
+      OrderProducts: {
         include: {
           product: true,
-        },
-      },
-      user: {
-        select: {
-          id: true,
-          fullName: true,
-          phone: true,
-          email: true,
+          OrderProductVariation: true,
         },
       },
       shippingAddress: true,
-      branch: true,
     },
     orderBy: {
       createdAt: "desc",
@@ -925,15 +370,125 @@ const getAllOrders = async () => {
 };
 
 /**
+ * Get today's order for a user
+ */
+const getTodayOrder = async (userId: string) => {
+  const dateString = getDateString();
+
+  return await prisma.dailyOrder.findFirst({
+    where: {
+      userId,
+      orderDate: dateString,
+    },
+    include: {
+      OrderProducts: {
+        include: {
+          product: true,
+          OrderProductVariation: true,
+        },
+      },
+      shippingAddress: true,
+    },
+  });
+};
+
+/**
+ * Get all daily orders (for admin)
+ */
+const getAllDailyOrders = async (queryParams: any) => {
+  const { dateString, branchId, status } = queryParams;
+  
+  const where: any = {};
+  
+  if (dateString) {
+    where.orderDate = dateString;
+  }
+  
+  if (branchId) {
+    where.branchId = branchId;
+  }
+  
+  if (status) {
+    where.status = status;
+  }
+
+  return await prisma.dailyOrder.findMany({
+    where,
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+        },
+      },
+      OrderProducts: {
+        include: {
+          product: true,
+          OrderProductVariation: true,
+        },
+      },
+      shippingAddress: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};
+
+/**
+ * Get daily product summary
+ */
+const getDailySummary = async (dateString?: string) => {
+  return await getDailyProductSummary(dateString);
+};
+
+/**
+ * Accept order product (Admin)
+ */
+const acceptProduct = async (orderProductId: string, userId: string) => {
+  return await acceptOrderProduct(orderProductId, userId);
+};
+
+/**
+ * Reject order product (Admin)
+ */
+const rejectProduct = async (
+  orderProductId: string,
+  userId: string,
+  reason?: string
+) => {
+  return await rejectOrderProduct(orderProductId, userId, reason);
+};
+
+/**
+ * Adjust product quantity (Driver)
+ */
+const adjustProductQuantity = async (
+  orderProductId: string,
+  newWeight: number,
+  userId: string,
+  reason?: string
+) => {
+  return await adjustOrderProductByDriver(
+    orderProductId,
+    newWeight,
+    userId,
+    reason
+  );
+};
+
+/**
  * Get order by ID
  */
 const getOrderById = async (id: string) => {
-  const order = await prisma.order.findUnique({
+  const order = await prisma.dailyOrder.findUnique({
     where: { id },
     include: {
-      products: {
+      OrderProducts: {
         include: {
           product: true,
+          OrderProductVariation: true,
         },
       },
       user: {
@@ -945,7 +500,6 @@ const getOrderById = async (id: string) => {
         },
       },
       shippingAddress: true,
-      branch: true,
     },
   });
 
@@ -956,1001 +510,16 @@ const getOrderById = async (id: string) => {
   return order;
 };
 
-/**
- * Get user orders
- */
-const getUserOrders = async (userId: string) => {
-  return await prisma.order.findMany({
-    where: { userId },
-    include: {
-      products: {
-        include: {
-          product: true,
-        },
-      },
-      shippingAddress: true,
-      branch: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-};
-
-/**
- * Update order status
- */
-const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
-  const order = await prisma.order.findUnique({ where: { id: orderId } });
-
-  if (!order) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
-  }
-
-  return await prisma.order.update({
-    where: { id: orderId },
-    data: { status },
-    include: {
-      products: {
-        include: {
-          product: true,
-        },
-      },
-    },
-  });
-};
-
-/**
- * Delete order (soft delete by marking as cancelled)
- */
-const deleteOrder = async (id: string) => {
-  const isExist = await prisma.order.findUnique({ where: { id } });
-  if (!isExist) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
-  }
-
-  return await prisma.order.update({
-    where: { id },
-    data: { status: OrderStatus.Cancelled },
-  });
-};
-
-/**
- * Get all MainOrders (for admin)
- */
-const getAllMainOrders = async (branchId: string) => {
-  return await prisma.mainOrder.findMany({
-    where: {
-      orders: {
-        every: {
-          branchId: branchId,
-        },
-      },
-    },
-   include :{
-      orders : true,
-      user : true,
-      driverAssignments : true
-   },
-    orderBy: {
-      orderDate: "desc",
-    },
-  });
-};
-
-/**
- * Get MainOrder by ID
- */
-const getMainOrderById = async (id: string) => {
-  const mainOrder = await prisma.mainOrder.findUnique({
-    where: { id },
-    include: {
-      orders: {
-        include: {
-          products: {
-            include: {
-              product: true,
-            },
-          },
-          shippingAddress: true,
-          branch: true,
-        },
-      },
-    },
-  });
-
-  if (!mainOrder) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Main order not found");
-  }
-
-  return mainOrder;
-};
-
-/**
- * Get user's MainOrders
- */
-const getUserMainOrders = async (userId: string, queryParams: any) => {
-  const { status } = queryParams;
-  let where: any = { userId };
-
-  if (status === "Active") {
-    where = {
-      userId,
-      // if active then send  Pending Processing onTheway both data
-      status: {
-        in: [
-          MainOrderStatus.Pending,
-          MainOrderStatus.Processing,
-          MainOrderStatus.onTheway,
-        ],
-      },
-    };
-  }
-  if (status === "Completed") {
-    where = {
-      userId,
-      status: {
-        in: [
-          MainOrderStatus.Delivered,
-          MainOrderStatus.deliveredWithPartiallyReturned,
-        ],
-      },
-    };
-  }
-
-  if (status === "Cancelled") {
-    where = {
-      userId,
-      status: MainOrderStatus.Cancelled,
-    };
-  }
-
-  if (status === "Returned") {
-    where = {
-      userId,
-      status: {
-        in: [
-          MainOrderStatus.FullyReturned,
-          MainOrderStatus.deliveredWithPartiallyReturned,
-        ],
-      },
-    };
-  }
-
-  return await prisma.mainOrder.findMany({
-    where,
-    include: {
-      orders: {
-        include: {
-          products: {
-            include: {
-              product: true,
-            },
-          },
-        },
-      },
-    },
-    orderBy: {
-      orderDate: "desc",
-    },
-  });
-};
-
-//@ --------------// Agent Customers Orders ---------------------
-
-const getMyCustomerOrders = async (userId: string, queryParams: any) => {
-  const { startDate, endDate } = queryParams;
-  console.log(startDate, endDate);
-
-  if (!userId) {
-    throw new Error("User ID is required");
-  }
-
-  // Fetch all customers for this agent
-  const customers = await prisma.user.findMany({
-    where: { agentId: userId },
-    select: { id: true },
-  });
-
-  const customerIds = customers.map((c) => c.id);
-
-  if (customerIds.length === 0) {
-    // No customers found for this agent
-    return [];
-  }
-
-  const where: any = {
-    userId: { in: customerIds },
-  };
-
-  // Apply date filters if provided
-  if (startDate && endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    // assign end date as like midnight of the end date
-    end.setHours(23, 59, 59, 999);
-
-    // Validate dates
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        "Invalid date format. Please provide valid dates."
-      );
-    }
-
-    where.orderDate = {
-      gte: start,
-      lte: end,
-    };
-  } else if (startDate) {
-    const start = new Date(startDate);
-
-    if (isNaN(start.getTime())) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        "Invalid start date format. Please provide a valid date."
-      );
-    }
-
-    where.orderDate = {
-      gte: start,
-    };
-  } else if (endDate) {
-    const end = new Date(endDate);
-
-    if (isNaN(end.getTime())) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        "Invalid end date format. Please provide a valid date."
-      );
-    }
-
-    where.orderDate = {
-      lte: end,
-    };
-  }
-  console.log(where);
-
-  // Fetch main orders with nested orders + products
-  const orders = await prisma.mainOrder.findMany({
-    where,
-    include: {
-      orders: {
-        include: {
-          products: {
-            include: {
-              product: true,
-            },
-          },
-        },
-      },
-    },
-    orderBy: { orderDate: "desc" },
-  });
-
-  return orders;
-};
-
-/**
- * Get today's MainOrder for a user
- */
-const getTodayMainOrder = async (userId: string) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const endOfDay = new Date(today);
-  endOfDay.setHours(23, 59, 59, 999);
-
-  return await prisma.mainOrder.findFirst({
-    where: {
-      userId,
-      orderDate: {
-        gte: today,
-        lte: endOfDay,
-      },
-    },
-    include: {
-      orders: {
-        include: {
-          products: {
-            include: {
-              product: true,
-            },
-          },
-          shippingAddress: true,
-          branch: true,
-        },
-      },
-    },
-  });
-};
-
-interface DispatchQueryParams {
-  branchId: string;
-  dateTime?: string;
-  categoryId?: string;
-}
-
-interface ProductMerged {
-  productId: string;
-  productName: string;
-  totalQuantity: number;
-  totalWeight: number;
-  orders: {
-    orderId: string;
-    variationId: string | null;
-    quantity: number;
-    weight: number;
-  }[];
-  categoryId: string | null;
-  categoryName: string;
-}
-
-/**
- * Get all dispatch orders by branch ID using mainOrderProduct
- */
-export const getAllDispatchOrdersByBranchId = async (
-  queryParams: DispatchQueryParams
-) => {
-  const { branchId, categoryId, dateTime } = queryParams;
-
-  // Handle date
-  let date = dateTime ? new Date(dateTime) : new Date();
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-
-  // Validate branch existence
-  const isBranchExist = await prisma.branch.findUnique({
-    where: { id: branchId },
-  });
-  if (!isBranchExist) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
-  }
-
-  // Build where condition
-  const where: any = {
-    orderDate: {
-      gte: startOfDay,
-      lte: endOfDay,
-    },
-    status: "Pending", // Only show pending dispatches
-  };
-
-  // Add category filter if provided
-  if (categoryId) {
-    where.product = {
-      categoryId: categoryId,
-      branchId: branchId,
-    };
-  } else {
-    where.product = {
-      branchId: branchId,
-    };
-  }
-
-  // Fetch mainOrderProducts with product details
-  const dispatchOrders = await prisma.mainOrderProduct.findMany({
-    where,
-    include: {
-      product: {
-        include: {
-          category: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          productVariation: true,
-        },
-      },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  // Collect all unique mainOrderIds
-  const allMainOrderIds = new Set<string>();
-  dispatchOrders.forEach((item) => {
-    item.orderIds.forEach((id) => allMainOrderIds.add(id));
-  });
-
-  // Fetch all MainOrders for this dispatch
-  const mainOrders = await prisma.mainOrder.findMany({
-    where: {
-      id: { in: Array.from(allMainOrderIds) },
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          fullName: true,
-          phone: true,
-          address: true,
-        },
-      },
-      orders: {
-        include: {
-          shippingAddress: true,
-          products: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  images: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  // Create a map for quick MainOrder lookup
-  const mainOrderMap = new Map(mainOrders.map((order) => [order.id, order]));
-
-  // Format response with MainOrder details
-  const formattedData = dispatchOrders.map((item) => {
-    // Get all MainOrders for this product
-    const relatedMainOrders = item.orderIds
-      .map((orderId) => mainOrderMap.get(orderId))
-      .filter((order) => order !== undefined);
-
-    return {
-      id: item.id,
-      productId: item.productId,
-      productName: item.product?.name || "Unknown",
-      productImage: item.product?.images?.[0] || null,
-      categoryId: item.product?.categoryId || null,
-      categoryName: item.product?.category?.name || "Unknown",
-      totalOrders: item.totalOrders,
-      totalWeight: item.totalWeight,
-      status: item.status,
-      orderDate: item.orderDate,
-      variations: item.product?.productVariation || [],
-      // MainOrder details
-      mainOrders: relatedMainOrders.map((mainOrder) => ({
-        id: mainOrder.id,
-        userId: mainOrder.userId,
-        customer: mainOrder.user,
-        totalAmount: mainOrder.totalAmount,
-        pendingAmount: mainOrder.pendingAmount,
-        status: mainOrder.status,
-        orderDate: mainOrder.orderDate,
-        confirmedBy: mainOrder.confirmedBy,
-        canceledBy: mainOrder.canceledBy,
-        orders: mainOrder.orders.map((order) => ({
-          id: order.id,
-          orderId: order.orderId,
-          totalAmount: order.totalAmount,
-          paymentMethod: order.paymentMethod,
-          status: order.status,
-          isDues: order.isDues,
-          duesCleared: order.duesCleared,
-          walletAmountUsed: order.walletAmountUsed,
-          shippingAddress: order.shippingAddress,
-          products: order.products,
-        })),
-      })),
-    };
-  });
-
-  return formattedData;
-};
-
-/**
- * Accept MainOrder - Mark as confirmed
- */
-const acceptMainOrders = async (mainOrderId: string, userId: string) => {
-  // Validate mainOrder exists
-  const mainOrder = await prisma.mainOrder.findUnique({
-    where: { id: mainOrderId },
-    include: {
-      orders: true,
-    },
-  });
-
-  if (!mainOrder) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Main order not found");
-  }
-
-  // Check if already processed
-  if (
-    mainOrder.status === "Processing" ||
-    mainOrder.status === "Cancelled" ||
-    mainOrder.status === "Delivered"
-  ) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `Main order is already ${mainOrder.status.toLowerCase()}`
-    );
-  }
-
-  // Get user role
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-  }
-
-  return await prisma.$transaction(async (tx) => {
-    // Update MainOrder status
-    const updatedMainOrder = await tx.mainOrder.update({
-      where: { id: mainOrderId },
-      data: {
-        status: "Processing",
-        confirmedBy: user.role,
-      },
-    });
-
-    // Update all associated orders to Processing
-    await tx.order.updateMany({
-      where: { mainOrderId: mainOrderId },
-      data: {
-        status: "Processing",
-      },
-    });
-
-    return updatedMainOrder;
-  });
-};
-
-/**
- * Reject/Cancel MainOrder - Mark as cancelled and update products
- */
-const rejectMainOrders = async (mainOrderId: string, userId: string) => {
-  // Validate mainOrder exists
-  const mainOrder = await prisma.mainOrder.findUnique({
-    where: { id: mainOrderId },
-    include: {
-      orders: {
-        include: {
-          products: {
-            include: {
-              product: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (!mainOrder) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Main order not found");
-  }
-
-  // Check if already cancelled
-  if (mainOrder.status === "Cancelled") {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Main order is already cancelled"
-    );
-  }
-
-  // Get user role
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return await prisma.$transaction(async (tx) => {
-    // Update MainOrder status
-    const updatedMainOrder = await tx.mainOrder.update({
-      where: { id: mainOrderId },
-      data: {
-        status: "Cancelled",
-        canceledBy: user.role,
-      },
-    });
-
-    // Update all associated orders to Cancelled
-    await tx.order.updateMany({
-      where: { mainOrderId: mainOrderId },
-      data: {
-        status: "Cancelled",
-      },
-    });
-
-    // Calculate products to update in mainOrderProduct
-    const productUpdates = new Map<
-      string,
-      { quantity: number; weight: number }
-    >();
-
-    for (const order of mainOrder.orders) {
-      for (const orderProduct of order.products) {
-        // Get variation weight
-        const variation = await tx.productVariation.findUnique({
-          where: { id: orderProduct.variationId as string },
-          select: { weight: true },
-        });
-
-        const weight = variation?.weight || 0;
-        const totalWeight = orderProduct.quantity * weight;
-
-        const existing = productUpdates.get(orderProduct.productId as string);
-        if (existing) {
-          productUpdates.set(orderProduct.productId as string, {
-            quantity: existing.quantity + orderProduct.quantity,
-            weight: existing.weight + totalWeight,
-          });
-        } else {
-          productUpdates.set(orderProduct.productId as string, {
-            quantity: orderProduct.quantity,
-            weight: totalWeight,
-          });
-        }
-      }
-    }
-
-    // Update mainOrderProduct records
-    for (const [productId, data] of productUpdates.entries()) {
-      const mainOrderProduct = await tx.mainOrderProduct.findUnique({
-        where: {
-          productId_orderDate: {
-            productId: productId,
-            orderDate: today,
-          },
-        },
-      });
-
-      if (mainOrderProduct) {
-        // Decrement totals
-        const newTotalOrders = Math.max(0, mainOrderProduct.totalOrders - 1);
-        const newTotalWeight = Math.max(
-          0,
-          mainOrderProduct.totalWeight - data.weight
-        );
-
-        // Remove mainOrderId from orderIds array
-        const updatedOrderIds = mainOrderProduct.orderIds.filter(
-          (id) => id !== mainOrderId
-        );
-
-        // If no more orders, mark as cancelled
-        const newStatus =
-          updatedOrderIds.length === 0 ? "Cancelled" : mainOrderProduct.status;
-
-        await tx.mainOrderProduct.update({
-          where: { id: mainOrderProduct.id },
-          data: {
-            totalOrders: newTotalOrders,
-            totalWeight: newTotalWeight,
-            orderIds: updatedOrderIds,
-            status: newStatus,
-          },
-        });
-      }
-    }
-
-    return updatedMainOrder;
-  });
-};
-
-// Keep old implementation as fallback
-const getAllDispatchOrdersByBranchIdOld = async (
-  queryParams: DispatchQueryParams
-) => {
-  const { branchId, categoryId, dateTime } = queryParams;
-
-  // 1️⃣ Handle date
-  const date = dateTime ? new Date(dateTime) : new Date();
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-
-  // 2️⃣ Validate branch existence
-  const isBranchExist = await prisma.branch.findUnique({
-    where: { id: branchId },
-  });
-  if (!isBranchExist) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
-  }
-
-  // 3️⃣ Base condition
-  const where: any = {
-    OR: [
-      { status: OrderStatus.Pending },
-      { canceledBy: UserRole.Admin },
-      { confirmedBy: UserRole.Admin },
-    ],
-    orders: {
-      some: {
-        branchId: branchId,
-      },
-    },
-    orderDate: {
-      gte: startOfDay,
-      lte: endOfDay,
-    },
-  };
-
-  // Optional category filter
-  if (categoryId) {
-    where.orders = {
-      some: {
-        products: {
-          some: {
-            product: { categoryId },
-          },
-        },
-      },
-    };
-  }
-
-  // 4️⃣ Fetch all main orders with products
-  const allMainOrders = await prisma.mainOrder.findMany({
-    where,
-    select: {
-      id: true, // mainOrderId (optional)
-      orders: {
-        select: {
-          id: true, // orderId
-          products: {
-            select: {
-              id: true,
-              quantity: true,
-              variationId: true,
-              productId: true,
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  categoryId: true,
-                  category: { select: { id: true, name: true } },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  // 5️⃣ Flatten all products + keep orderId
-  const allProducts = allMainOrders.flatMap((mainOrder) =>
-    mainOrder.orders.flatMap((order) =>
-      order.products.map((product) => ({
-        orderId: order.id,
-        productId: product.product?.id,
-        productName: product.product?.name,
-        variationId: product.variationId || null,
-        quantity: product.quantity,
-        categoryId: product.product?.categoryId || null,
-        categoryName: product.product?.category?.name || "Unknown",
-      }))
-    )
-  );
-
-  // 6️⃣ Batch fetch variations
-  const variationIds = allProducts
-    .map((p) => p.variationId)
-    .filter(Boolean) as string[];
-
-  const variations = await prisma.productVariation.findMany({
-    where: { id: { in: variationIds } },
-    select: { id: true, weight: true },
-  });
-
-  const variationMap = new Map(variations.map((v) => [v.id, v.weight]));
-
-  // 7️⃣ Add weight to each product
-  const productsWithWeights = allProducts.map((item) => {
-    const weight = item.variationId
-      ? variationMap.get(item.variationId) || 0
-      : 0;
-    return {
-      ...item,
-      variationWeight: weight,
-      totalWeight: item.quantity * weight,
-    };
-  });
-
-  const mergedByProduct: ProductMerged[] = Object.values(
-    productsWithWeights.reduce((acc: any, item) => {
-      const key = item.productId || ""; // Merge by productId only
-
-      if (!key || !acc[key]) {
-        acc[key] = {
-          productId: item.productId,
-          productName: item.productName,
-          totalQuantity: 0,
-          totalWeight: 0,
-          totalOrders: 0,
-          orders: [], // track all orders + variationId + quantity + weight
-          categoryId: item.categoryId,
-          categoryName: item.categoryName,
-        };
-      }
-
-      acc[key].totalQuantity += item.quantity;
-      acc[key].totalWeight += item.totalWeight;
-      // total main orders not subOrders
-      acc[key].totalOrders = allMainOrders.length;
-      acc[key].orders.push({
-        orderId: item.orderId,
-        variationId: item.variationId,
-        quantity: item.quantity,
-        weight: item.variationWeight,
-      });
-
-      return acc;
-    }, {})
-  );
-
-  //  Return final response
-  return mergedByProduct;
-};
-
-/// ----------------------- /// Assign orders to delivery Driver -----------------///
-
-const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
-  const { mainOrdersIds, driverId } = payload;
-
-  const isDriverExist = await prisma.user.findFirst({
-    where: {
-      role: UserRole.Driver,
-      id: driverId,
-    },
-  });
-  if (!isDriverExist) {
-    throw new ApiError(
-      httpStatus.NOT_FOUND,
-      "Driver not found . please send a valid driverId"
-    );
-  }
-
-  console.log({ mainOrdersIds, driverId });
-
-  // Validate main orders existence and also is already assigned or not
-  // Fetch all orders in one query
-  const existingOrders = await prisma.mainOrder.findMany({
-    where: { id: { in: mainOrdersIds } },
-    include: { driverAssignments: true },
-  });
-
-  // if some orders are not found
-  if (existingOrders.length !== mainOrdersIds.length) {
-    throw new ApiError(
-      httpStatus.NOT_FOUND,
-      "Some provided order IDs do not exist"
-    );
-  }
-
-  // check if any order is already assigned and also return the name which one is already assigned
-  const alreadyAssigned = existingOrders.filter(
-    (order) => order.driverAssignments && order.driverAssignments.length > 0
-  );
-
-  if (alreadyAssigned.length > 0) {
-    const assignedIds = alreadyAssigned.map((o) => o.id).join(", ");
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `These orders are already assigned to driver: ${assignedIds}`
-    );
-  }
-  // Logic to assign orders to the driver
-  await prisma.$transaction(async (tx) => {
-    const updatedAssignments = await tx.driverAssignment.createMany({
-      data: mainOrdersIds.map((orderId) => ({
-        mainOrderId: orderId,
-        driverId,
-      })),
-    });
-
-    const updatedMainOrders = await tx.mainOrder.updateMany({
-      where: { id: { in: mainOrdersIds } },
-      data: { status: MainOrderStatus.onTheway },
-    });
-
-    return { updatedAssignments, updatedMainOrders };
-  });
-
-  return;
-};
-
-const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
-  const driverId = user.id;
-
-  let where: any = { driverId };
-
-  // if (queryParams.status) {
-  //   where.mainOrder = { status: queryParams.status };
-  // }
-
-  const driverOrders = await prisma.driverAssignment.findMany({
-    where,
-    select: {
-      id: true,
-      deliveryDate: true,
-      assignedAt: true,
-      createdAt: true,
-      mainOrderId: true,
-      mainOrder: {
-        select: {
-          id: true,
-          totalAmount: true,
-          pendingAmount: true,
-          orderDate: true,
-          status: true,
-          userId: true,
-          user: {
-            select: {
-              id: true,
-              fullName: true,
-              phone: true,
-              email: true,
-              buyerRating: true,
-              isVerifyed: true,
-              profileImage: true,
-              address: true,
-              Review: true,
-            },
-          },
-          orders: {
-            select: {
-              id: true,
-              orderId: true,
-              totalAmount: true,
-              isPaid: true,
-              shippingAddress: {
-                select: {
-                  id: true,
-                  shopName: true,
-                  landmark: true,
-                  address: true,
-                  latitude: true,
-                  longitude: true,
-                },
-              },
-              products: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  return driverOrders;
-};
-
 export const orderServices = {
   createOrder,
   placeOrderCOD,
   placeOrderWallet,
-  cancelOrder,
-  returnOrder,
-  getAllOrders,
+  getUserDailyOrders,
+  getTodayOrder,
+  getAllDailyOrders,
+  getDailySummary,
+  acceptProduct,
+  rejectProduct,
+  adjustProductQuantity,
   getOrderById,
-  getUserOrders,
-  updateOrderStatus,
-  deleteOrder,
-  // MainOrder methods
-  getAllMainOrders,
-  getMainOrderById,
-  getUserMainOrders,
-  getTodayMainOrder,
-  getMyCustomerOrders,
-  createOrderByAgentForCustomer,
-  getAllDispatchOrdersByBranchId,
-  acceptMainOrders,
-  rejectMainOrders,
-  assignOrdersDeliveryToDriver,
-  // Driver APIs
-  getMyAssignedOrders,
 };

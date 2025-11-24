@@ -7,7 +7,12 @@ import { UserRole } from "@prisma/client";
 
 const router = express.Router();
 
-// Create order (all payment methods)
+// ========== Customer Routes ==========
+
+/**
+ * POST /api/orders
+ * Create/update today's order (COD or Wallet)
+ */
 router.post(
   "/",
   auth("Customer"),
@@ -15,110 +20,82 @@ router.post(
   orderControllers.createOrder
 );
 
-// Cancel order
-router.post(
-  "/cancel",
-  auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
-  validateRequest(OrderValidation.cancelOrderSchema),
-  orderControllers.cancelOrder
-);
+/**
+ * GET /api/orders/my-orders
+ * Get customer's daily orders
+ */
+router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);
 
-// Return order (partial or full)
-router.post(
-  "/return",
-  auth(UserRole.Driver),
-  validateRequest(OrderValidation.returnOrderSchema),
-  orderControllers.returnOrder
-);
+/**
+ * GET /api/orders/today
+ * Get customer's today's order
+ */
+router.get("/today", auth("Customer"), orderControllers.getTodayOrder);
 
-// Get user's orders
-router.get("/my-orders", auth("Customer"), orderControllers.getUserOrders);
-// Get all orders (Admin)
-router.get("/", auth("Owner", "SuperAdmin"), orderControllers.getAllOrders);
-
-// Get order by ID
+/**
+ * GET /api/orders/:id
+ * Get order by ID
+ */
 router.get(
   "/:id",
-  auth("Customer", "Admin", "SuperAdmin"),
+  auth("Customer", "Admin", "SuperAdmin", "Owner"),
   orderControllers.getOrderById
 );
 
-// Update order status (Admin)
-router.patch(
-  "/:id/status",
-  auth("Admin", "SuperAdmin"),
-  validateRequest(OrderValidation.updateOrderStatusSchema),
-  orderControllers.updateOrderStatus
-);
+// ========== Admin/Owner Routes ==========
 
-// Delete order (Admin)
-router.delete(
-  "/:id",
-  auth("Admin", "SuperAdmin"),
-  orderControllers.deleteOrder
-);
-
-// ========== MainOrder Routes ==========
-
+/**
+ * GET /api/orders/all-daily-orders
+ * Get all daily orders (Admin/Owner)
+ */
 router.get(
-  "/main/driver-my-assigned-orders",
+  "/all-daily-orders",
+  auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
+  orderControllers.getAllDailyOrders
+);
+
+/**
+ * GET /api/orders/daily-summary
+ * Get daily product aggregation summary
+ */
+router.get(
+  "/daily-summary",
+  auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
+  orderControllers.getDailySummary
+);
+
+/**
+ * PUT /api/orders/products/:orderProductId/accept
+ * Accept order product (Admin/Owner)
+ */
+router.put(
+  "/products/:orderProductId/accept",
+  auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
+  orderControllers.acceptProduct
+);
+
+/**
+ * PUT /api/orders/products/:orderProductId/reject
+ * Reject order product (Admin/Owner)
+ */
+router.put(
+  "/products/:orderProductId/reject",
+  auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
+  validateRequest(OrderValidation.rejectProductSchema),
+  orderControllers.rejectProduct
+);
+
+// ========== Driver Routes ==========
+
+/**
+ * PUT /api/orders/products/:orderProductId/adjust
+ * Adjust product quantity during delivery (Driver)
+ */
+router.put(
+  "/products/:orderProductId/adjust",
   auth(UserRole.Driver),
-  orderControllers.getMyAssignedOrders
-);
-
-router.get("/main/today", auth("Customer"), orderControllers.getTodayMainOrder);
-
-router.get(
-  "/main/my-customer-orders",
-  auth(UserRole.Agent),
-  orderControllers.getMyCustomerOrders
-);
-// Get user's main orders (Customer)
-router.get(
-  "/main/my-orders",
-  auth("Customer"),
-  orderControllers.getUserMainOrders
-);
-
-// Get all main orders (Admin)
-router.get(
-  "/all-orders/for-owners/:branchId",
-  auth(UserRole.SuperAdmin, UserRole.Owner),
-  orderControllers.getAllMainOrders
-);
-router.get(
-  "/all-dispatch/for-admin/:branchId",
-  auth(UserRole.Admin),
-  orderControllers.getAllDispatchOrdersByBranchId
-);
-
-// Get main order by ID
-router.get("/main/:id", auth(), orderControllers.getMainOrderById);
-
-router.post(
-  "/bulk-order-by-agent",
-  auth(UserRole.Agent),
-  validateRequest(OrderValidation.createOrderByAgentForCustomerSchema),
-  orderControllers.createOrderByAgentForCustomer
-);
-
-router.put(
-  "/main/accept-orders/:mainOrderId",
-  auth(UserRole.Owner, UserRole.SuperAdmin),
-  orderControllers.acceptMainOrders
-);
-
-router.put(
-  "/main/reject-orders/:mainOrderId",
-  auth(UserRole.Owner, UserRole.SuperAdmin),
-  orderControllers.rejectMainOrders
-);
-
-router.post(
-  "/assign-delivery-to-driver",
-  auth(UserRole.SuperAdmin),
-  validateRequest(OrderValidation.orderAssignToDriverSchema),
-  orderControllers.assignOrdersDeliveryToDriver
+  validateRequest(OrderValidation.adjustProductSchema),
+  orderControllers.adjustProductQuantity
 );
 
 export const orderRoutes = router;

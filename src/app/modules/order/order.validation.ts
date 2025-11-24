@@ -1,10 +1,10 @@
 import * as z from "zod";
 
-// Order product schema
+// Order product schema (updated for Float quantity)
 const orderProductSchema = z.object({
   productId: z.string({ required_error: "Product ID is required" }),
   variationId: z.string({ required_error: "Variation ID is required" }),
-  quantity: z.number().int().positive("Quantity must be positive"),
+  quantity: z.number().positive("Quantity must be positive"),
 });
 const orderProductSchemaForAgent = z.object({
   productId: z.string({ required_error: "Product ID is required" }),
@@ -99,11 +99,24 @@ const orderAssignToDriverSchema = z.object({
   driverId: z.string({ required_error: "Driver ID is required" }),
 });
 
+// Reject product schema
+const rejectProductSchema = z.object({
+  reason: z.string().optional(),
+});
+
+// Adjust product schema
+const adjustProductSchema = z.object({
+  newWeight: z.number().nonnegative("New weight must be non-negative"),
+  reason: z.string().optional(),
+});
+
 export const OrderValidation = {
   createOrderSchema,
   cancelOrderSchema,
   returnOrderSchema,
   updateOrderStatusSchema,
   createOrderByAgentForCustomerSchema,
-  orderAssignToDriverSchema
+  orderAssignToDriverSchema,
+  rejectProductSchema,
+  adjustProductSchema,
 };

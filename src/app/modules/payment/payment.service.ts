@@ -151,24 +151,24 @@ const createDuesPayment = async (payload: {
     notifyUrl: `${config.backend_base_url}/api/v1/payment/webhook/dues-payment`,
   });
 
-  const duesPayment = await prisma.duesPayment.create({
-    data: {
-      userId,
-      orderIds,
-      amount,
-      cashfreeOrderId: cashfreeOrder.order_id,
-      paymentSessionId: cashfreeOrder.payment_session_id,
-      paymentStatus: PaymentStatus.Pending,
-    },
-  });
+  // const duesPayment = await prisma.duesPayment.create({
+  //   data: {
+  //     userId,
+  //     orderIds,
+  //     amount,
+  //     cashfreeOrderId: cashfreeOrder.order_id,
+  //     paymentSessionId: cashfreeOrder.payment_session_id,
+  //     paymentStatus: PaymentStatus.Pending,
+  //   },
+  // });
 
-  return {
-    duesPayment,
-    paymentSessionId: cashfreeOrder.payment_session_id,
-    cashfreeOrderId: cashfreeOrder.order_id,
-    orders: orders.map((o) => ({ orderId: o.orderId, amount: o.totalAmount })),
-    message: "Use payment_session_id on frontend with Cashfree Checkout SDK",
-  };
+  // return {
+  //   duesPayment,
+  //   paymentSessionId: cashfreeOrder.payment_session_id,
+  //   cashfreeOrderId: cashfreeOrder.order_id,
+  //   orders: orders.map((o) => ({ orderId: o.orderId, amount: o.totalAmount })),
+  //   message: "Use payment_session_id on frontend with Cashfree Checkout SDK",
+  // };
 };
 
 /**
@@ -187,31 +187,31 @@ const getUserDues = async (userId: string) => {
     throw new ApiError(httpStatus.NOT_FOUND, "User not found");
   }
 
-  const duesOrders = await prisma.dailyOrder.findMany({
-    where: {
-      userId,
-      isDues: true,
-      duesCleared: false,
-    },
-    include: {
-      products: {
-        include: {
-          product: true,
-        },
-      },
-      shippingAddress: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  // const duesOrders = await prisma.dailyOrder.findMany({
+  //   where: {
+  //     userId,
+  //     isDues: true,
+  //     duesCleared: false,
+  //   },
+  //   include: {
+  //     products: {
+  //       include: {
+  //         product: true,
+  //       },
+  //     },
+  //     shippingAddress: true,
+  //   },
+  //   orderBy: {
+  //     createdAt: "desc",
+  //   },
+  // });
 
-  return {
-    activeDuesCount: user.activeDuesCount,
-    totalDuesAmount: user.totalDuesAmount,
-    canTakeCredit: user.activeDuesCount < 3,
-    duesOrders,
-  };
+  // return {
+  //   activeDuesCount: user.activeDuesCount,
+  //   totalDuesAmount: user.totalDuesAmount,
+  //   canTakeCredit: user.activeDuesCount < 3,
+  //   duesOrders,
+  // };
 };
 
 /**
@@ -267,27 +267,27 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
     }
 
     // Update wallet balance
-    await prisma.$transaction([
-      prisma.walletRecharge.update({
-        where: { id: walletRecharge.id },
-        data: { paymentStatus: PaymentStatus.Success },
-      }),
-      prisma.wallet.update({
-        where: { id: walletRecharge.walletId! },
-        data: { balance: { increment: payment_amount } },
-      }),
-      prisma.walletTransaction.create({
-        data: {
-          walletId: walletRecharge.walletId!,
-          amount: payment_amount,
-          type: "Credit",
-          description: "Wallet recharge via online payment",
-          status: "Success",
-        },
-      }),
-    ]);
+    // await prisma.$transaction([
+    //   prisma.walletRecharge.update({
+    //     where: { id: walletRecharge.id },
+    //     data: { paymentStatus: PaymentStatus.Success },
+    //   }),
+    //   prisma.wallet.update({
+    //     where: { id: walletRecharge.walletId! },
+    //     data: { balance: { increment: payment_amount } },
+    //   }),
+    //   prisma.walletTransaction.create({
+    //     data: {
+    //       walletId: walletRecharge.walletId!,
+    //       amount: payment_amount,
+    //       type: "Credit",
+    //       description: "Wallet recharge via online payment",
+    //       status: "Success",
+    //     },
+    //   }),
+    // ]);
 
-    return { message: "Wallet recharged successfully", amount: payment_amount };
+    // return { message: "Wallet recharged successfully", amount: payment_amount };
   }
 
   return { message: "Webhook received" };
@@ -308,44 +308,44 @@ const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
 
   const { type, data } = payload;
 
-  if (type === "PAYMENT_SUCCESS_WEBHOOK") {
-    const { order_id } = data.order;
-    const { payment_amount } = data.payment;
+  // if (type === "PAYMENT_SUCCESS_WEBHOOK") {
+  //   const { order_id } = data.order;
+  //   const { payment_amount } = data.payment;
 
-    const duesPayment = await prisma.duesPayment.findFirst({
-      where: { cashfreeOrderId: order_id },
-      include: { user: true },
-    });
+  //   const duesPayment = await prisma.duesPayment.findFirst({
+  //     where: { cashfreeOrderId: order_id },
+  //     include: { user: true },
+  //   });
 
-    if (!duesPayment) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Dues payment not found");
-    }
+  //   if (!duesPayment) {
+  //     throw new ApiError(httpStatus.NOT_FOUND, "Dues payment not found");
+  //   }
 
-    // Clear dues
-    await prisma.$transaction([
-      prisma.duesPayment.update({
-        where: { id: duesPayment.id },
-        data: { paymentStatus: PaymentStatus.Success },
-      }),
-      prisma.order.updateMany({
-        where: { id: { in: duesPayment.orderIds } },
-        data: {
-          duesCleared: true,
-          duesClearedAt: new Date(),
-          isPaid: true,
-        },
-      }),
-      prisma.user.update({
-        where: { id: duesPayment.userId! },
-        data: {
-          activeDuesCount: { decrement: duesPayment.orderIds.length },
-          totalDuesAmount: { decrement: payment_amount },
-        },
-      }),
-    ]);
+  //   // Clear dues
+  //   await prisma.$transaction([
+  //     prisma.duesPayment.update({
+  //       where: { id: duesPayment.id },
+  //       data: { paymentStatus: PaymentStatus.Success },
+  //     }),
+  //     prisma.order.updateMany({
+  //       where: { id: { in: duesPayment.orderIds } },
+  //       data: {
+  //         duesCleared: true,
+  //         duesClearedAt: new Date(),
+  //         isPaid: true,
+  //       },
+  //     }),
+  //     prisma.user.update({
+  //       where: { id: duesPayment.userId! },
+  //       data: {
+  //         activeDuesCount: { decrement: duesPayment.orderIds.length },
+  //         totalDuesAmount: { decrement: payment_amount },
+  //       },
+  //     }),
+  //   ]);
 
-    return { message: "Dues cleared successfully", amount: payment_amount };
-  }
+  //   return { message: "Dues cleared successfully", amount: payment_amount };
+  // }
 
   return { message: "Webhook received" };
 };

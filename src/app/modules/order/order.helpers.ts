@@ -1,298 +1,656 @@
-import { PrismaClient, UserRole } from "@prisma/client";
+import { PrismaClient, UserRole, PaymentMethod, OrderProductStatus } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 
 const prisma = new PrismaClient();
 
 /**
- * Normalize date to start of day (00:00:00)
+ * Get date string in YYYY-MM-DD format for daily aggregation
  */
-export const normalizeDateToStartOfDay = (date: Date): Date => {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  return normalized;
+export const getDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
 /**
- * Get or create MainOrder for today for a user (DAILY ORDER UPSERT)
- * This enforces the "one order per user per day" rule
+ * Get or create DailyOrder for a user on a specific date
+ * Enforces ONE order per user per day until midnight
  */
-export const getOrCreateDailyMainOrder = async (
+export const getOrCreateDailyOrder = async (
   userId: string,
+  shippingAddressId: string,
+  branchId: string,
+  paymentMethod: PaymentMethod,
   tx: any = prisma
 ) => {
-  const today = normalizeDateToStartOfDay(new Date());
+  const dateString = getDateString();
 
-  // Try to find existing MainOrder for today using unique constraint
-  let mainOrder = await tx.mainOrder.findUnique({
+  // Try to find existing DailyOrder for today
+  let dailyOrder = await tx.dailyOrder.findFirst({
     where: {
-      userId_orderDate: {
-        userId,
-        orderDate: today,
+      userId,
+      orderDate: dateString,
+    },
+    include: {
+      OrderProducts: {
+        include: {
+          OrderProductVariation: true,
+        },
       },
     },
   });
 
-  // Create new MainOrder if doesn't exist
-  if (!mainOrder) {
-    mainOrder = await tx.mainOrder.create({
+  // Create new DailyOrder if doesn't exist
+  if (!dailyOrder) {
+    dailyOrder = await tx.dailyOrder.create({
       data: {
         userId,
+        orderDate: dateString,
+        shippingAddressId,
+        branchId,
+        paymentMethod,
         totalAmount: 0,
-        pendingAmount: 0,
-        totalReturnedAmount: 0,
-        totalWalletUsed: 0,
-        totalDuesAmount: 0,
-        isDuesCleared: true,
-        orderDate: today,
+        walletAmountUsed: 0,
+        RemainingAmount: 0,
         status: "Pending",
       },
-    });
-  }
-
-  return mainOrder;
-};
-
-/**
- * Recalculate MainOrder totals from all its orders and products
- * Called whenever order is updated, product rejected/returned
- * TEMPORARY VERSION - full version with product status filtering will be enabled after prisma generate
- */
-export const recalculateDailyOrderTotals = async (
-  mainOrderId: string,
-  tx: any = prisma
-) => {
-  // Get all orders with products in this MainOrder
-  const orders = await tx.order.findMany({
-    where: { mainOrderId },
-    include: {
-      products: true,
-    },
-  });
-
-  if (orders.length === 0) {
-    return;
-  }
-
-  // Calculate totals (simplified for now, will enhance after schema update)
-  let totalAmount = 0;
-  let totalReturnedAmount = 0;
-  let totalWalletUsed = 0;
-  let pendingAmount = 0;
-  let totalDuesAmount = 0;
-
-  for (const order of orders) {
-    let orderActiveAmount = 0;
-
-    for (const product of order.products) {
-      // For now, count all non-returned products
-      // TODO: After prisma generate, filter by status field
-      if (!product.isReturned) {
-        orderActiveAmount += product.price;
-      } else {
-        totalReturnedAmount += product.price;
-      }
-    }
-
-    totalAmount += orderActiveAmount;
-    totalWalletUsed += order.walletAmountUsed || 0;
-
-    // Calculate pending (COD orders that aren't cancelled/returned)
-    if (
-      order.paymentMethod === "COD" &&
-      order.status !== "Cancelled" &&
-      order.status !== "FullyReturned"
-    ) {
-      pendingAmount += orderActiveAmount;
-    }
-
-    // Calculate dues (Credit orders not cleared)
-    if (order.isDues && !order.duesCleared) {
-      totalDuesAmount += orderActiveAmount;
-    }
-  }
-
-  // Check if all dues are cleared
-  const isDuesCleared = !orders.some(
-    (order: any) => order.isDues && !order.duesCleared
-  );
-
-  // Update MainOrder with recalculated totals
-  await tx.mainOrder.update({
-    where: { id: mainOrderId },
-    data: {
-      totalAmount,
-      pendingAmount,
-      totalReturnedAmount,
-      totalWalletUsed,
-      totalDuesAmount,
-      isDuesCleared,
-    },
-  });
-};
-
-/**
- * Update daily product summary in REAL-TIME (no end-of-day aggregation)
- * Uses atomic operations to prevent race conditions
- */
-export const updateDailyProductSummary = async (
-  products: any[],
-  mainOrderId: string,
-  orderDate: Date,
-  operation: "add" | "remove" | "reject" | "return",
-  tx: any = prisma
-) => {
-  const today = normalizeDateToStartOfDay(orderDate);
-
-  for (const p of products) {
-    // Get product variation for weight and price
-    const variation = await tx.productVariation.findUnique({
-      where: { id: p.variationId },
-      select: { weight: true, sellingPrice: true },
-    });
-
-    if (!variation) {
-      continue; // Skip if variation not found
-    }
-
-    const weight = variation.weight || 0;
-    const pricePerKg = variation.sellingPrice || 0;
-    const totalWeight = p.quantity * weight;
-    const totalPrice = pricePerKg * totalWeight;
-
-    // Check if mainOrderProduct already exists for this product today
-    const existing = await tx.mainOrderProduct.findUnique({
-      where: {
-        productId_orderDate: {
-          productId: p.productId,
-          orderDate: today,
+      include: {
+        OrderProducts: {
+          include: {
+            OrderProductVariation: true,
+          },
         },
       },
     });
+  }
 
-    if (operation === "add") {
-      if (existing) {
-        // Update existing record with atomic increments
-        const updatedOrderIds = [...new Set([...existing.orderIds, mainOrderId])];
-        
-        await tx.mainOrderProduct.update({
-          where: { id: existing.id },
-          data: {
-            totalOrders: existing.orderIds.includes(mainOrderId)
-              ? existing.totalOrders
-              : existing.totalOrders + 1,
-            totalQuantity: { increment: p.quantity },
-            totalWeight: { increment: totalWeight },
-            totalPrice: { increment: totalPrice },
-            orderIds: updatedOrderIds,
-          },
-        });
-      } else {
-        // Create new record
-        await tx.mainOrderProduct.create({
-          data: {
-            productId: p.productId,
-            totalOrders: 1,
-            totalQuantity: p.quantity,
-            totalWeight: totalWeight,
-            totalPrice: totalPrice,
-            acceptedWeight: 0,
-            rejectedWeight: 0,
-            returnWeight: 0,
-            orderIds: [mainOrderId],
-            orderDate: today,
-            status: "Pending",
-          },
-        });
-      }
-    } else if (operation === "remove") {
-      if (existing) {
-        const newTotalQuantity = Math.max(0, existing.totalQuantity - p.quantity);
-        const newTotalWeight = Math.max(0, existing.totalWeight - totalWeight);
-        const newTotalPrice = Math.max(0, existing.totalPrice - totalPrice);
+  return dailyOrder;
+};
 
-        // Remove mainOrderId from orderIds
-        const updatedOrderIds = existing.orderIds.filter(
-          (id: string) => id !== mainOrderId
-        );
-        const newTotalOrders = Math.max(0, existing.totalOrders - 1);
+/**
+ * Merge or create OrderProduct with snapshot pricing
+ * If product exists in today's order, merge quantities
+ * Uses SNAPSHOT pricing at time of order (won't change if admin updates product price later)
+ */
+export const mergeOrCreateOrderProduct = async (
+  dailyOrderId: string,
+  productId: string,
+  variationId: string,
+  quantity: number,
+  snapshotPricePerKg: number,
+  snapshotWeightPerUnit: number,
+  tx: any = prisma
+) => {
+  const totalWeight = quantity * snapshotWeightPerUnit;
+  const totalPrice = totalWeight * snapshotPricePerKg;
 
-        await tx.mainOrderProduct.update({
-          where: { id: existing.id },
-          data: {
-            totalOrders: newTotalOrders,
-            totalQuantity: newTotalQuantity,
-            totalWeight: newTotalWeight,
-            totalPrice: newTotalPrice,
-            orderIds: updatedOrderIds,
-            status: updatedOrderIds.length === 0 ? "Cancelled" : existing.status,
-          },
-        });
-      }
-    } else if (operation === "reject") {
-      if (existing) {
-        await tx.mainOrderProduct.update({
-          where: { id: existing.id },
-          data: {
-            totalQuantity: { decrement: p.quantity },
-            totalWeight: { decrement: totalWeight },
-            totalPrice: { decrement: totalPrice },
-            rejectedWeight: { increment: totalWeight },
-            status: "Partial", // Mark as partial since some products rejected
-          },
-        });
-      }
-    } else if (operation === "return") {
-      if (existing) {
-        await tx.mainOrderProduct.update({
-          where: { id: existing.id },
-          data: {
-            totalWeight: { decrement: totalWeight },
-            totalPrice: { decrement: totalPrice },
-            returnWeight: { increment: totalWeight },
-            status: "Partial", // Mark as partial since some products returned
-          },
-        });
-      }
+  // Check if OrderProduct exists for this product in this order
+  const existingOrderProduct = await tx.orderProduct.findUnique({
+    where: {
+      orderId_productId: {
+        orderId: dailyOrderId,
+        productId: productId,
+      },
+    },
+    include: {
+      OrderProductVariation: true,
+    },
+  });
+
+  if (existingOrderProduct) {
+    // MERGE: Update existing product
+    // Check if this variation already exists
+    const existingVariation = existingOrderProduct.OrderProductVariation.find(
+      (v: any) => v.variationId === variationId
+    );
+
+    if (existingVariation) {
+      // Update variation quantity
+      await tx.orderProductVariation.update({
+        where: { id: existingVariation.id },
+        data: {
+          quantity: { increment: quantity },
+        },
+      });
+    } else {
+      // Add new variation to this product
+      await tx.orderProductVariation.create({
+        data: {
+          orderProductId: existingOrderProduct.id,
+          variationId,
+          quantity,
+        },
+      });
     }
+
+    // Update OrderProduct totals (atomic increment)
+    const updatedOrderProduct = await tx.orderProduct.update({
+      where: { id: existingOrderProduct.id },
+      data: {
+        totalWeight: { increment: totalWeight },
+        totalPrice: { increment: totalPrice },
+      },
+      include: {
+        OrderProductVariation: true,
+      },
+    });
+
+    return updatedOrderProduct;
+  } else {
+    // CREATE: New product in order
+    const newOrderProduct = await tx.orderProduct.create({
+      data: {
+        orderId: dailyOrderId,
+        productId,
+        totalWeight,
+        totalPrice,
+        cancelledWeight: 0,
+        returnedWeight: 0,
+        status: "Active",
+        OrderProductVariation: {
+          create: {
+            variationId,
+            quantity,
+          },
+        },
+      },
+      include: {
+        OrderProductVariation: true,
+      },
+    });
+
+    return newOrderProduct;
   }
 };
 
 /**
- * PLACEHOLDER FUNCTIONS - Will be fully implemented after running: bunx prisma generate
- * These require the new OrderProductStatus enum and orderChangeLog model
+ * Update totalProductOrder aggregation for the day
+ * Tracks total orders, weight, price, cancellations, returns per product per day
  */
+export const updateDailyProductAggregation = async (
+  productId: string,
+  dailyOrderId: string,
+  weight: number,
+  price: number,
+  operation: "add" | "cancel" | "return",
+  tx: any = prisma
+) => {
+  const dateString = getDateString();
 
+  const existing = await tx.totalProductOrder.findUnique({
+    where: {
+      productId_orderDateString: {
+        productId,
+        orderDateString: dateString,
+      },
+    },
+  });
+
+  if (operation === "add") {
+    if (existing) {
+      // Update existing aggregation
+      const isNewOrder = !existing.orderIds.includes(dailyOrderId);
+      
+      await tx.totalProductOrder.update({
+        where: { id: existing.id },
+        data: {
+          totalOrders: isNewOrder ? { increment: 1 } : existing.totalOrders,
+          totalWeight: { increment: weight },
+          totalPrice: { increment: price },
+          orderIds: isNewOrder ? [...existing.orderIds, dailyOrderId] : existing.orderIds,
+        },
+      });
+    } else {
+      // Create new aggregation
+      await tx.totalProductOrder.create({
+        data: {
+          productId,
+          orderDateString: dateString,
+          totalOrders: 1,
+          totalQuantity: 1,
+          totalWeight: weight,
+          totalPrice: price,
+          acceptedWeight: 0,
+          rejectedWeight: 0,
+          returnWeight: 0,
+          orderIds: [dailyOrderId],
+          status: "Active",
+        },
+      });
+    }
+  } else if (operation === "cancel" && existing) {
+    await tx.totalProductOrder.update({
+      where: { id: existing.id },
+      data: {
+        rejectedWeight: { increment: weight },
+        totalWeight: { decrement: weight },
+        totalPrice: { decrement: price },
+      },
+    });
+  } else if (operation === "return" && existing) {
+    await tx.totalProductOrder.update({
+      where: { id: existing.id },
+      data: {
+        returnWeight: { increment: weight },
+        totalWeight: { decrement: weight },
+        totalPrice: { decrement: price },
+      },
+    });
+  }
+};
+
+/**
+ * Recalculate DailyOrder total amount from all OrderProducts
+ */
+export const recalculateDailyOrderTotal = async (
+  dailyOrderId: string,
+  tx: any = prisma
+) => {
+  const orderProducts = await tx.orderProduct.findMany({
+    where: {
+      orderId: dailyOrderId,
+      status: { in: ["Active", "Confirmed"] }, // Only count active/confirmed products
+    },
+  });
+
+  const totalAmount = orderProducts.reduce((sum: number, product: any) => {
+    return sum + product.totalPrice;
+  }, 0);
+
+  const dailyOrder = await tx.dailyOrder.findUnique({
+    where: { id: dailyOrderId },
+  });
+
+  if (!dailyOrder) return;
+
+  // Calculate remaining amount based on payment method
+  let remainingAmount = totalAmount - (dailyOrder.walletAmountUsed || 0);
+  
+  // Check if it's a dues order
+  const isDues = dailyOrder.paymentMethod === "Credit" && remainingAmount > 0;
+
+  await tx.dailyOrder.update({
+    where: { id: dailyOrderId },
+    data: {
+      totalAmount,
+      RemainingAmount: Math.max(0, remainingAmount),
+      isDues,
+    },
+  });
+};
+
+/**
+ * Accept (confirm) an OrderProduct by admin
+ */
+export const acceptOrderProduct = async (
+  orderProductId: string,
+  userId: string
+) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  const allowedRoles: UserRole[] = [UserRole.Admin, UserRole.Owner, UserRole.SuperAdmin];
+  if (!user || !allowedRoles.includes(user.role)) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      "Only admin/owner can accept products"
+    );
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const orderProduct = await tx.orderProduct.findUnique({
+      where: { id: orderProductId },
+      include: { order: true },
+    });
+
+    if (!orderProduct) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
+    }
+
+    // Update status to Confirmed
+    await tx.orderProduct.update({
+      where: { id: orderProductId },
+      data: { status: "Confirmed" },
+    });
+
+    // Update daily aggregation
+    if (orderProduct.order) {
+      await tx.totalProductOrder.updateMany({
+        where: {
+          productId: orderProduct.productId!,
+          orderDateString: orderProduct.order.orderDate!,
+        },
+        data: {
+          acceptedWeight: { increment: orderProduct.totalWeight },
+        },
+      });
+    }
+
+    return { message: "Product accepted successfully" };
+  });
+};
+
+/**
+ * Reject (cancel) an OrderProduct by admin
+ * Refunds wallet payment if applicable
+ */
 export const rejectOrderProduct = async (
   orderProductId: string,
   userId: string,
   reason?: string
 ) => {
-  throw new ApiError(
-    httpStatus.NOT_IMPLEMENTED,
-    "Reject product feature will be available after running: bunx prisma generate"
-  );
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  const allowedRoles: UserRole[] = [UserRole.Admin, UserRole.Owner, UserRole.SuperAdmin];
+  if (!user || !allowedRoles.includes(user.role)) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      "Only admin/owner can reject products"
+    );
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const orderProduct = await tx.orderProduct.findUnique({
+      where: { id: orderProductId },
+      include: {
+        order: {
+          include: {
+            user: {
+              include: { Wallet: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!orderProduct || !orderProduct.order) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
+    }
+
+    if (orderProduct.status === "Cancelled") {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Product already cancelled");
+    }
+
+    const rejectedAmount = orderProduct.totalPrice;
+    const rejectedWeight = orderProduct.totalWeight;
+
+    // Mark as cancelled
+    await tx.orderProduct.update({
+      where: { id: orderProductId },
+      data: {
+        status: "Cancelled",
+        cancelledWeight: orderProduct.totalWeight,
+      },
+    });
+
+    // Refund wallet if payment was Wallet
+    if (
+      orderProduct.order.paymentMethod === PaymentMethod.Wallet &&
+      orderProduct.order.user?.Wallet
+    ) {
+      await tx.wallet.update({
+        where: { id: orderProduct.order.user.Wallet.id },
+        data: {
+          balance: { increment: rejectedAmount },
+        },
+      });
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: orderProduct.order.user.Wallet.id,
+          amount: rejectedAmount,
+          type: "Credit",
+          description: `Refund for rejected product (${reason || "Admin rejected"})`,
+          status: "Success",
+        },
+      });
+    }
+
+    // Update daily aggregation
+    await updateDailyProductAggregation(
+      orderProduct.productId!,
+      orderProduct.order.id,
+      rejectedWeight,
+      rejectedAmount,
+      "cancel",
+      tx
+    );
+
+    // Recalculate order total
+    await recalculateDailyOrderTotal(orderProduct.order.id, tx);
+
+    return {
+      message: "Product rejected successfully",
+      refundAmount: rejectedAmount,
+      refunded: orderProduct.order.paymentMethod === PaymentMethod.Wallet,
+    };
+  });
 };
 
-export const returnOrderProduct = async (
+/**
+ * Adjust OrderProduct quantity by delivery driver
+ * Can reduce quantity or fully cancel
+ */
+export const adjustOrderProductByDriver = async (
   orderProductId: string,
-  returnQuantity: number,
+  newWeight: number,
   userId: string,
   reason?: string
 ) => {
-  throw new ApiError(
-    httpStatus.NOT_IMPLEMENTED,
-    "Return product feature will be available after running: bunx prisma generate"
-  );
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!user || user.role !== UserRole.Driver) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      "Only delivery driver can adjust quantities"
+    );
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const orderProduct = await tx.orderProduct.findUnique({
+      where: { id: orderProductId },
+      include: {
+        order: {
+          include: {
+            user: {
+              include: { Wallet: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!orderProduct || !orderProduct.order) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
+    }
+
+    const originalWeight = orderProduct.totalWeight;
+    const originalPrice = orderProduct.totalPrice;
+
+    if (newWeight < 0) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Weight cannot be negative");
+    }
+
+    if (newWeight === 0) {
+      // Fully cancel/return
+      const returnedWeight = originalWeight;
+      const returnedAmount = originalPrice;
+
+      await tx.orderProduct.update({
+        where: { id: orderProductId },
+        data: {
+          status: "Returned",
+          returnedWeight: returnedWeight,
+          totalWeight: 0,
+          totalPrice: 0,
+        },
+      });
+
+      // Refund wallet if applicable
+      if (
+        orderProduct.order.paymentMethod === PaymentMethod.Wallet &&
+        orderProduct.order.user?.Wallet
+      ) {
+        await tx.wallet.update({
+          where: { id: orderProduct.order.user.Wallet.id },
+          data: {
+            balance: { increment: returnedAmount },
+          },
+        });
+
+        await tx.walletTransaction.create({
+          data: {
+            walletId: orderProduct.order.user.Wallet.id,
+            amount: returnedAmount,
+            type: "Credit",
+            description: `Refund for returned product (${reason || "Delivery return"})`,
+            status: "Success",
+          },
+        });
+      }
+
+      // Update daily aggregation
+      await updateDailyProductAggregation(
+        orderProduct.productId!,
+        orderProduct.order.id,
+        returnedWeight,
+        returnedAmount,
+        "return",
+        tx
+      );
+
+      // Recalculate order total
+      await recalculateDailyOrderTotal(orderProduct.order.id, tx);
+
+      return {
+        message: "Product fully returned",
+        returnedAmount,
+        refunded: orderProduct.order.paymentMethod === PaymentMethod.Wallet,
+      };
+    } else {
+      // Partial reduction
+      const reducedWeight = originalWeight - newWeight;
+      const pricePerKg = originalPrice / originalWeight;
+      const reducedPrice = reducedWeight * pricePerKg;
+      const newPrice = newWeight * pricePerKg;
+
+      await tx.orderProduct.update({
+        where: { id: orderProductId },
+        data: {
+          totalWeight: newWeight,
+          totalPrice: newPrice,
+          returnedWeight: { increment: reducedWeight },
+        },
+      });
+
+      // Refund wallet for reduced amount
+      if (
+        orderProduct.order.paymentMethod === PaymentMethod.Wallet &&
+        orderProduct.order.user?.Wallet
+      ) {
+        await tx.wallet.update({
+          where: { id: orderProduct.order.user.Wallet.id },
+          data: {
+            balance: { increment: reducedPrice },
+          },
+        });
+
+        await tx.walletTransaction.create({
+          data: {
+            walletId: orderProduct.order.user.Wallet.id,
+            amount: reducedPrice,
+            type: "Credit",
+            description: `Partial refund for reduced quantity (${reason || "Delivery adjustment"})`,
+            status: "Success",
+          },
+        });
+      }
+
+      // Update daily aggregation
+      await updateDailyProductAggregation(
+        orderProduct.productId!,
+        orderProduct.order.id,
+        reducedWeight,
+        reducedPrice,
+        "return",
+        tx
+      );
+
+      // Recalculate order total
+      await recalculateDailyOrderTotal(orderProduct.order.id, tx);
+
+      return {
+        message: "Product quantity adjusted",
+        reducedAmount: reducedPrice,
+        refunded: orderProduct.order.paymentMethod === PaymentMethod.Wallet,
+      };
+    }
+  });
 };
 
-export const cancelFullOrderByDriver = async (
-  orderId: string,
-  userId: string,
-  reason?: string
-) => {
-  throw new ApiError(
-    httpStatus.NOT_IMPLEMENTED,
-    "Cancel order feature will be available after running: bunx prisma generate"
-  );
+/**
+ * Get daily product summary (for admin dashboard)
+ */
+export const getDailyProductSummary = async (dateString?: string) => {
+  const targetDate = dateString || getDateString();
+
+  return await prisma.totalProductOrder.findMany({
+    where: {
+      orderDateString: targetDate,
+    },
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          images: true,
+        },
+      },
+    },
+    orderBy: {
+      totalWeight: "desc",
+    },
+  });
+};
+
+/**
+ * Get all daily orders for a specific date
+ */
+export const getDailyOrders = async (dateString?: string) => {
+  const targetDate = dateString || getDateString();
+
+  return await prisma.dailyOrder.findMany({
+    where: {
+      orderDate: targetDate,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+        },
+      },
+      OrderProducts: {
+        include: {
+          product: true,
+          OrderProductVariation: true,
+        },
+      },
+      shippingAddress: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
 };
