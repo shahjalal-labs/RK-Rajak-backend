@@ -53,7 +53,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     quantity: number;
     product: any;
     variation: any;
-    snapshotPricePerKg: number;
+    perQuantityPrice: number;
     snapshotWeightPerUnit: number;
   }> = [];
   
@@ -83,7 +83,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       quantity: p.quantity,
       product: dbProduct,
       variation: variation,
-      snapshotPricePerKg: variation.sellingPrice,
+      perQuantityPrice: variation.sellingPrice,
       snapshotWeightPerUnit: variation.weight,
     });
   }
@@ -107,7 +107,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         p.productId,
         p.variationId,
         p.quantity,
-        p.snapshotPricePerKg,
+        p.perQuantityPrice,
         p.snapshotWeightPerUnit,
         tx
       );
@@ -115,7 +115,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
       // Update daily product aggregation
       const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = weight * p.snapshotPricePerKg;
+      const price = p.quantity * p.perQuantityPrice;
       await updateDailyProductAggregation(
         p.productId,
         dailyOrder.id,
@@ -186,7 +186,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     quantity: number;
     product: any;
     variation: any;
-    snapshotPricePerKg: number;
+    perQuantityPrice: number;
     snapshotWeightPerUnit: number;
   }> = [];
   let orderTotal = 0;
@@ -211,7 +211,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     }
 
     const weight = p.quantity * variation.weight;
-    const price = weight * variation.sellingPrice;
+    const price = p.quantity * variation.sellingPrice;
     orderTotal += price;
 
     validatedProducts.push({
@@ -220,7 +220,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       quantity: p.quantity,
       product: dbProduct,
       variation: variation,
-      snapshotPricePerKg: variation.sellingPrice,
+      perQuantityPrice: variation.sellingPrice,
       snapshotWeightPerUnit: variation.weight,
     });
   }
@@ -267,14 +267,14 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         p.productId,
         p.variationId,
         p.quantity,
-        p.snapshotPricePerKg,
+        p.perQuantityPrice,
         p.snapshotWeightPerUnit,
         tx
       );
 
       // Update aggregation
       const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = weight * p.snapshotPricePerKg;
+      const price = p.quantity * p.perQuantityPrice;
       await updateDailyProductAggregation(
         p.productId,
         dailyOrder.id,

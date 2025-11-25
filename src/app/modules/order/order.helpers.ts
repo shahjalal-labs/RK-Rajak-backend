@@ -79,12 +79,12 @@ export const mergeOrCreateOrderProduct = async (
   productId: string,
   variationId: string,
   quantity: number,
-  snapshotPricePerKg: number,
+  perQuantityPrice: number,
   snapshotWeightPerUnit: number,
   tx: any = prisma
 ) => {
   const totalWeight = quantity * snapshotWeightPerUnit;
-  const totalPrice = totalWeight * snapshotPricePerKg;
+  const totalPrice = quantity * perQuantityPrice;
 
   // Check if OrderProduct exists for this product in this order
   const existingOrderProduct = await tx.orderProduct.findUnique({
