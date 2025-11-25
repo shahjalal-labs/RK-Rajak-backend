@@ -1,6 +1,13 @@
-import { PrismaClient, UserRole, PaymentMethod, OrderProductStatus } from "@prisma/client";
+import {
+  PrismaClient,
+  UserRole,
+  PaymentMethod,
+  OrderProductStatus,
+  OrderStatus,
+} from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
+import { productCategory } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -175,7 +182,9 @@ export const updateDailyProductAggregation = async (
   weight: number,
   price: number,
   operation: "add" | "cancel" | "return",
-  tx: any = prisma
+  tx: any = prisma,
+  productCategoryId?: string,
+  branchId?: string
 ) => {
   const dateString = getDateString();
 
@@ -192,14 +201,16 @@ export const updateDailyProductAggregation = async (
     if (existing) {
       // Update existing aggregation
       const isNewOrder = !existing.orderIds.includes(dailyOrderId);
-      
+
       await tx.totalProductOrder.update({
         where: { id: existing.id },
         data: {
           totalOrders: isNewOrder ? { increment: 1 } : existing.totalOrders,
           totalWeight: { increment: weight },
           totalPrice: { increment: price },
-          orderIds: isNewOrder ? [...existing.orderIds, dailyOrderId] : existing.orderIds,
+          orderIds: isNewOrder
+            ? [...existing.orderIds, dailyOrderId]
+            : existing.orderIds,
         },
       });
     } else {
@@ -207,6 +218,8 @@ export const updateDailyProductAggregation = async (
       await tx.totalProductOrder.create({
         data: {
           productId,
+          productCategoryId: productCategoryId,
+          branchId: branchId,
           orderDateString: dateString,
           totalOrders: 1,
           totalQuantity: 1,
@@ -267,7 +280,7 @@ export const recalculateDailyOrderTotal = async (
 
   // Calculate remaining amount based on payment method
   let remainingAmount = totalAmount - (dailyOrder.walletAmountUsed || 0);
-  
+
   // Check if it's a dues order
   const isDues = dailyOrder.paymentMethod === "Credit" && remainingAmount > 0;
 
@@ -293,7 +306,11 @@ export const acceptOrderProduct = async (
     select: { role: true },
   });
 
-  const allowedRoles: UserRole[] = [UserRole.Admin, UserRole.Owner, UserRole.SuperAdmin];
+  const allowedRoles: UserRole[] = [
+    UserRole.Admin,
+    UserRole.Owner,
+    UserRole.SuperAdmin,
+  ];
   if (!user || !allowedRoles.includes(user.role)) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
@@ -348,7 +365,11 @@ export const rejectOrderProduct = async (
     select: { role: true },
   });
 
-  const allowedRoles: UserRole[] = [UserRole.Admin, UserRole.Owner, UserRole.SuperAdmin];
+  const allowedRoles: UserRole[] = [
+    UserRole.Admin,
+    UserRole.Owner,
+    UserRole.SuperAdmin,
+  ];
   if (!user || !allowedRoles.includes(user.role)) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
@@ -407,7 +428,9 @@ export const rejectOrderProduct = async (
           walletId: orderProduct.order.user.Wallet.id,
           amount: rejectedAmount,
           type: "Credit",
-          description: `Refund for rejected product (${reason || "Admin rejected"})`,
+          description: `Refund for rejected product (${
+            reason || "Admin rejected"
+          })`,
           status: "Success",
         },
       });
@@ -513,7 +536,9 @@ export const adjustOrderProductByDriver = async (
             walletId: orderProduct.order.user.Wallet.id,
             amount: returnedAmount,
             type: "Credit",
-            description: `Refund for returned product (${reason || "Delivery return"})`,
+            description: `Refund for returned product (${
+              reason || "Delivery return"
+            })`,
             status: "Success",
           },
         });
@@ -570,7 +595,9 @@ export const adjustOrderProductByDriver = async (
             walletId: orderProduct.order.user.Wallet.id,
             amount: reducedPrice,
             type: "Credit",
-            description: `Partial refund for reduced quantity (${reason || "Delivery adjustment"})`,
+            description: `Partial refund for reduced quantity (${
+              reason || "Delivery adjustment"
+            })`,
             status: "Success",
           },
         });
@@ -601,12 +628,20 @@ export const adjustOrderProductByDriver = async (
 /**
  * Get daily product summary (for admin dashboard)
  */
-export const getDailyProductSummary = async (dateString?: string) => {
+export const getDailyProductSummary = async (
+  dateString?: any,
+  branchId?: string,
+  productCategoryId?: string
+) => {
+
+  console.log(productCategoryId)
   const targetDate = dateString || getDateString();
 
   return await prisma.totalProductOrder.findMany({
     where: {
-      orderDateString: targetDate,
+      orderDateString: targetDate ? targetDate : undefined,
+      branchId: branchId ? branchId : undefined,
+      productCategoryId: productCategoryId ? productCategoryId : undefined,
     },
     include: {
       product: {

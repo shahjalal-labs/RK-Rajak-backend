@@ -151,8 +151,9 @@ model branch {
   productCategory   productCategory[]
   livePhotoCategory livePhotoCategory[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  totalProductOrders totalProductOrder[]
 
   @@map("branchs")
 }
@@ -295,6 +296,7 @@ model productCategory {
   updatedAt          DateTime             @updatedAt
   productSubcategory productSubcategory[]
   product            product[]
+  totalProductOrders totalProductOrder[]
 
   @@map("productCategories")
 }
@@ -309,9 +311,6 @@ model productSubcategory {
 
   @@map("productSubcategories")
 }
-
-
-
 
 //###############-########----- Order System -------------#######################
 
@@ -384,21 +383,25 @@ model OrderProductVariation {
 // total order product collection for admin adn superadmin for one day
 
 model totalProductOrder {
-  id              String             @id @default(auto()) @map("_id") @db.ObjectId
-  productId       String             @db.ObjectId // product id for individual day aggregation . like how many orders placed for a product on that date  and also this is dynamic collection
-  product         product?           @relation(fields: [productId], references: [id])
-  totalOrders     Int
-  totalQuantity   Int                @default(0) // Real-time aggregated quantity
-  totalWeight     Float
-  totalPrice      Float              @default(0) // Real-time aggregated price
-  acceptedWeight  Float              @default(0) // Weight of accepted products
-  rejectedWeight  Float              @default(0) // Weight of rejected products
-  returnWeight    Float              @default(0) // Weight of returned products
-  orderIds        String[]           @db.ObjectId // must be main orders associated with this product on that date
-  orderDateString String // date string for daily orders aggregation
-  status          OrderProductStatus @default(Active)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id                String             @id @default(auto()) @map("_id") @db.ObjectId
+  productId         String             @db.ObjectId // product id for individual day aggregation . like how many orders placed for a product on that date  and also this is dynamic collection
+  product           product?           @relation(fields: [productId], references: [id])
+  productCategory   productCategory   @relation(fields: [productCategoryId], references: [id])
+  productCategoryId String            @db.ObjectId
+  branchId          String            @db.ObjectId
+  branch            branch            @relation(fields: [branchId], references: [id])
+  totalOrders       Int
+  totalQuantity     Int                @default(0) // Real-time aggregated quantity
+  totalWeight       Float
+  totalPrice        Float              @default(0) // Real-time aggregated price
+  acceptedWeight    Float              @default(0) // Weight of accepted products
+  rejectedWeight    Float              @default(0) // Weight of rejected products
+  returnWeight      Float              @default(0) // Weight of returned products
+  orderIds          String[]           @db.ObjectId // must be main orders associated with this product on that date
+  orderDateString   String // date string for daily orders aggregation
+  status            OrderProductStatus @default(Active)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@unique([productId, orderDateString])
   @@map("totalProductOrders")
@@ -410,6 +413,7 @@ enum OrderProductStatus {
   Returned // if delivery driver cancel fully then its called returned
   Cancelled // if admin or superAdmin cancelled it called cancelled
 }
+
 enum OrderStatus {
   Pending
   Active
@@ -425,11 +429,6 @@ enum PaymentMethod {
   QrCode // delivery boy show scanner and collects payment
   Online // after clearing dues
 }
-
-
-
-
-
 
 /// ----------------------------- /// Assign main orders to delivery Driver // under one driver assign multiple main orders -----------------///
 

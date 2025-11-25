@@ -44,7 +44,9 @@ const getTodayOrder = catchAsync(async (req: Request, res: Response) => {
   sendResponse(res, {
     success: true,
     statusCode: httpStatus.OK,
-    message: result ? "Today's order retrieved successfully" : "No order found for today",
+    message: result
+      ? "Today's order retrieved successfully"
+      : "No order found for today",
     data: result,
   });
 });
@@ -66,14 +68,13 @@ const getAllDailyOrders = catchAsync(async (req: Request, res: Response) => {
 /**
  * Get daily product summary (Admin/Owner)
  */
-const getDailySummary = catchAsync(async (req: Request, res: Response) => {
-  const { dateString } = req.query;
-  const result = await orderServices.getDailySummary(dateString as string);
+const getDailyDispatch = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getDailyDispatch(req.query);
 
   sendResponse(res, {
     success: true,
     statusCode: httpStatus.OK,
-    message: "Daily product summary retrieved successfully",
+    message: "Daily product Dispatch retrieved successfully",
     data: result,
   });
 });
@@ -101,7 +102,11 @@ const rejectProduct = catchAsync(async (req: Request, res: Response) => {
   const { orderProductId } = req.params;
   const { reason } = req.body;
   const userId = req.user.id;
-  const result = await orderServices.rejectProduct(orderProductId, userId, reason);
+  const result = await orderServices.rejectProduct(
+    orderProductId,
+    userId,
+    reason
+  );
 
   sendResponse(res, {
     success: true,
@@ -114,24 +119,26 @@ const rejectProduct = catchAsync(async (req: Request, res: Response) => {
 /**
  * Adjust product quantity (Driver)
  */
-const adjustProductQuantity = catchAsync(async (req: Request, res: Response) => {
-  const { orderProductId } = req.params;
-  const { newWeight, reason } = req.body;
-  const userId = req.user.id;
-  const result = await orderServices.adjustProductQuantity(
-    orderProductId,
-    newWeight,
-    userId,
-    reason
-  );
+const adjustProductQuantity = catchAsync(
+  async (req: Request, res: Response) => {
+    const { orderProductId } = req.params;
+    const { newWeight, reason } = req.body;
+    const userId = req.user.id;
+    const result = await orderServices.adjustProductQuantity(
+      orderProductId,
+      newWeight,
+      userId,
+      reason
+    );
 
-  sendResponse(res, {
-    success: true,
-    statusCode: httpStatus.OK,
-    message: "Product quantity adjusted successfully",
-    data: result,
-  });
-});
+    sendResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "Product quantity adjusted successfully",
+      data: result,
+    });
+  }
+);
 
 /**
  * Get order by ID
@@ -151,7 +158,7 @@ export const orderControllers = {
   getUserDailyOrders,
   getTodayOrder,
   getAllDailyOrders,
-  getDailySummary,
+  getDailyDispatch,
   acceptProduct,
   rejectProduct,
   adjustProductQuantity,

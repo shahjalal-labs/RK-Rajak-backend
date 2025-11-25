@@ -143,51 +143,51 @@ const authLoginIntoDB = async (payload: {
 const getProfileFromDB = async (userId: string) => {
   let user: any = await prisma.user.findUnique({
     where: { id: userId },
-    select :{
+    select: {
       id: true,
       fullName: true,
       phone: true,
-      role : true,
+      role: true,
       email: true,
       profileImage: true,
       address: true,
       isProfileComplete: true,
-      isVerifyed  : true,
-      branchId : true,
-      buyerRating : true,
-      status : true,
-      agentId : true,
-      referralCode : true,
-      fcmToken : true,
-      shopOpeningTime : true,
-      threshold : true,
-      discount : true,
-      createdAt : true,
-      updatedAt : true,
+      isVerifyed: true,
+      branchId: true,
+      buyerRating: true,
+      status: true,
+      agentId: true,
+      referralCode: true,
+      fcmToken: true,
+      shopOpeningTime: true,
+      threshold: true,
+      discount: true,
+      createdAt: true,
+      updatedAt: true,
       UserLocation: {
-        select :{
-          id : true,
-          latitude : true,
-          longitude : true,
-        }
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+        },
       },
-      verificationUsers : true
-    }
+      verificationUsers: true,
+    },
   });
   if (!user) {
     throw new ApiError(404, "user not found!");
   }
-  if(user.agentId){
-    user.agentData =  await prisma.user.findUnique({
+  if (user.agentId) {
+    user.agentData = await prisma.user.findUnique({
       where: { id: user.agentId },
-      select :{
+      select: {
         id: true,
         fullName: true,
         phone: true,
         email: true,
         profileImage: true,
         address: true,
-      }
+      },
     });
   }
 
@@ -202,10 +202,17 @@ const updateProfileIntoDB = async (
   file: Express.Multer.File
 ) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
+  const isExistNum = await prisma.user.findFirst({
+    where: {
+      phone: payload.phone,
+    },
+  });
   if (!user) {
     throw new ApiError(404, "user not found for edit user");
   }
-
+  if (isExistNum && isExistNum.id !== userId) {
+    throw new ApiError(400, "Phone number already in use by another user");
+  }
   if (user.status === "Blocked") {
     throw new ApiError(
       400,

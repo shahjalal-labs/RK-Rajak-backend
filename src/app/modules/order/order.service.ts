@@ -1,14 +1,7 @@
-import {
-  PrismaClient,
-  PaymentMethod,
-  OrderStatus,
-  UserRole,
-} from "@prisma/client";
+import { PrismaClient, PaymentMethod } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import {
-  ICreateOrderPayload,
-} from "./order.interface";
+import { ICreateOrderPayload } from "./order.interface";
 import {
   getOrCreateDailyOrder,
   mergeOrCreateOrderProduct,
@@ -19,7 +12,6 @@ import {
   rejectOrderProduct,
   adjustOrderProductByDriver,
   getDailyProductSummary,
-  getDailyOrders,
 } from "./order.helpers";
 
 const prisma = new PrismaClient();
@@ -29,12 +21,26 @@ const prisma = new PrismaClient();
  * Merges products into daily order with snapshot pricing
  */
 const placeOrderCOD = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId, branchId } = payload;
+  const { userId, products, shippingAddressId } = payload;
 
   // Validate user
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  if (!user.branchId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Please set you Location from profile!"
+    );
+  }
+
+  if (user.isProfileComplete === false) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Please complete your profile to place order!"
+    );
   }
 
   // Fetch all products with variations
@@ -43,6 +49,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     where: { id: { in: productIds } },
     include: {
       productVariation: true,
+      category: true,
     },
   });
 
@@ -50,13 +57,14 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
   const validatedProducts: Array<{
     productId: string;
     variationId: string;
+    categoryId : string;
     quantity: number;
     product: any;
     variation: any;
     perQuantityPrice: number;
     snapshotWeightPerUnit: number;
   }> = [];
-  
+
   for (const p of products) {
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
     if (!dbProduct) {
@@ -80,6 +88,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     validatedProducts.push({
       productId: p.productId,
       variationId: p.variationId,
+      categoryId: dbProduct.categoryId,
       quantity: p.quantity,
       product: dbProduct,
       variation: variation,
@@ -94,7 +103,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     const dailyOrder = await getOrCreateDailyOrder(
       userId,
       shippingAddressId,
-      branchId,
+      user.branchId!,
       PaymentMethod.COD,
       tx
     );
@@ -122,7 +131,9 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         weight,
         price,
         "add",
-        tx
+        tx,
+        p.categoryId,
+        user.branchId!,
       );
     }
 
@@ -166,6 +177,20 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     throw new ApiError(httpStatus.NOT_FOUND, "User not found");
   }
 
+  if (!user.branchId) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Please set you Location from profile!"
+    );
+  }
+
+  if (user.isProfileComplete === false) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Please complete your profile to place order!"
+    );
+  }
+
   if (!user.Wallet) {
     throw new ApiError(httpStatus.NOT_FOUND, "Wallet not found for user");
   }
@@ -176,6 +201,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     where: { id: { in: productIds } },
     include: {
       productVariation: true,
+      category: true,
     },
   });
 
@@ -183,6 +209,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
   const validatedProducts: Array<{
     productId: string;
     variationId: string;
+    categoryId : string;
     quantity: number;
     product: any;
     variation: any;
@@ -216,6 +243,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
 
     validatedProducts.push({
       productId: p.productId,
+      categoryId : dbProduct.categoryId,
       variationId: p.variationId,
       quantity: p.quantity,
       product: dbProduct,
@@ -277,11 +305,13 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       const price = p.quantity * p.perQuantityPrice;
       await updateDailyProductAggregation(
         p.productId,
-        dailyOrder.id,
+        p.categoryId,
         weight,
         price,
         "add",
-        tx
+        tx,
+        p.categoryId,
+        user.branchId!,
       );
     }
 
@@ -397,23 +427,23 @@ const getTodayOrder = async (userId: string) => {
  */
 const getAllDailyOrders = async (queryParams: any) => {
   const { dateString, branchId, status } = queryParams;
-  
+
   const where: any = {};
-  
+
   if (dateString) {
     where.orderDate = dateString;
   }
-  
+
   if (branchId) {
     where.branchId = branchId;
   }
-  
+
   if (status) {
     where.status = status;
   }
 
   return await prisma.dailyOrder.findMany({
-    where,
+    where: where ? where : {},
     include: {
       user: {
         select: {
@@ -439,11 +469,12 @@ const getAllDailyOrders = async (queryParams: any) => {
 /**
  * Get daily product summary
  */
-const getDailySummary = async (dateString?: string) => {
-  return await getDailyProductSummary(dateString);
+const getDailyDispatch = async (queryParams?: any) => {
+  const { dateString, branchId, productCategoryId } = queryParams || {};
+  return await getDailyProductSummary(dateString, branchId, productCategoryId);
 };
-
 /**
+
  * Accept order product (Admin)
  */
 const acceptProduct = async (orderProductId: string, userId: string) => {
@@ -517,7 +548,7 @@ export const orderServices = {
   getUserDailyOrders,
   getTodayOrder,
   getAllDailyOrders,
-  getDailySummary,
+  getDailyDispatch,
   acceptProduct,
   rejectProduct,
   adjustProductQuantity,

@@ -33,12 +33,12 @@ router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);
 router.get("/today", auth("Customer"), orderControllers.getTodayOrder);
 
 /**
- * GET /api/orders/:id
+ * GET /api/orders/:id 
  * Get order by ID
  */
 router.get(
   "/:id",
-  auth("Customer", "Admin", "SuperAdmin", "Owner"),
+  auth(),
   orderControllers.getOrderById
 );
 
@@ -49,7 +49,10 @@ router.get(
  * Get all daily orders (Admin/Owner)
  */
 router.get(
-  "/all-daily-orders",
+  "/all-daily-orders/admin",
+  (req,res, next)=>{
+      console.log("hit"), next()
+  },
   auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
   orderControllers.getAllDailyOrders
 );
@@ -59,9 +62,9 @@ router.get(
  * Get daily product aggregation summary
  */
 router.get(
-  "/daily-summary",
+  "/daily-dispatch/admin",
   auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
-  orderControllers.getDailySummary
+  orderControllers.getDailyDispatch
 );
 
 /**
