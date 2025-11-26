@@ -198,6 +198,9 @@ export const updateDailyProductAggregation = async (
   });
 
   if (operation === "add") {
+
+    // need to calculate the totalweight and totalprice and also total save the daily order
+
     if (existing) {
       // Update existing aggregation
       const isNewOrder = !existing.orderIds.includes(dailyOrderId);
@@ -297,54 +300,68 @@ export const recalculateDailyOrderTotal = async (
 /**
  * Accept (confirm) an OrderProduct by admin
  */
-export const acceptOrderProduct = async (
-  orderProductId: string,
-  userId: string
-) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  const allowedRoles: UserRole[] = [
-    UserRole.Admin,
-    UserRole.Owner,
-    UserRole.SuperAdmin,
-  ];
-  if (!user || !allowedRoles.includes(user.role)) {
-    throw new ApiError(
-      httpStatus.FORBIDDEN,
-      "Only admin/owner can accept products"
-    );
-  }
-
+export const acceptOrderProduct = async (totalorderProductId: string) => {
   return await prisma.$transaction(async (tx) => {
-    const orderProduct = await tx.orderProduct.findUnique({
-      where: { id: orderProductId },
-      include: { order: true },
+    const totalorderProduct = await tx.totalProductOrder.findUnique({
+      where: { id: totalorderProductId },
     });
 
-    if (!orderProduct) {
+    if (!totalorderProduct) {
       throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
     }
 
-    // Update status to Confirmed
-    await tx.orderProduct.update({
-      where: { id: orderProductId },
+    // Update status to Confirmed and also how many weight accepted
+    /*
+    totalOrders
+    totalQuantity
+    totalWeight
+    totalPrice
+    acceptedWeight
+    rejectedWeight
+    returnWeight
+    orderIds
+    */
+
+    await tx.totalProductOrder.update({
+      where: { id: totalorderProductId },
       data: { status: "Confirmed" },
     });
 
-    // Update daily aggregation
-    if (orderProduct.order) {
-      await tx.totalProductOrder.updateMany({
-        where: {
-          productId: orderProduct.productId!,
-          orderDateString: orderProduct.order.orderDate!,
-        },
+    // fetch all order and update all and update order products status to confirmed
+    const dailyOrders = await tx.dailyOrder.findMany({
+      where: {
+        id: { in: totalorderProduct.orderIds },
+      },
+    });
+
+    for (const order of dailyOrders) {
+      // Update each order's products to Confirmed
+      await tx.orderProduct.updateMany({
+        where: { orderId: order.id },
         data: {
-          acceptedWeight: { increment: orderProduct.totalWeight },
+          acceptedWeight: totalorderProduct.totalWeight,
+          status: "Confirmed",
         },
       });
+
+      const dailyOrderDetails = await tx.dailyOrder.findUnique({
+        where: { id: order.id },
+        include: {
+          OrderProducts: true,
+        },
+      });
+      // if all products are confirmed then update order status to confirmed
+      const allConfirmed = dailyOrderDetails?.OrderProducts.every(
+        (prod) => prod.status === "Confirmed"
+      );
+      if (allConfirmed) {
+        await tx.dailyOrder.update({
+          where: { id: order.id },
+          data: {
+            status: "Active",
+          },
+        });
+      }
     }
 
     return { message: "Product accepted successfully" };
@@ -407,7 +424,7 @@ export const rejectOrderProduct = async (
       where: { id: orderProductId },
       data: {
         status: "Cancelled",
-        cancelledWeight: orderProduct.totalWeight,
+        rejectedWeight: orderProduct.totalWeight,
       },
     });
 
@@ -419,14 +436,14 @@ export const rejectOrderProduct = async (
       await tx.wallet.update({
         where: { id: orderProduct.order.user.Wallet.id },
         data: {
-          balance: { increment: rejectedAmount },
+          balance: { increment: Number(rejectedAmount) },
         },
       });
 
       await tx.walletTransaction.create({
         data: {
           walletId: orderProduct.order.user.Wallet.id,
-          amount: rejectedAmount,
+          amount: Number(rejectedAmount) ,
           type: "Credit",
           description: `Refund for rejected product (${
             reason || "Admin rejected"
@@ -440,8 +457,8 @@ export const rejectOrderProduct = async (
     await updateDailyProductAggregation(
       orderProduct.productId!,
       orderProduct.order.id,
-      rejectedWeight,
-      rejectedAmount,
+      Number(rejectedWeight),
+      Number(rejectedAmount),
       "cancel",
       tx
     );
@@ -527,14 +544,14 @@ export const adjustOrderProductByDriver = async (
         await tx.wallet.update({
           where: { id: orderProduct.order.user.Wallet.id },
           data: {
-            balance: { increment: returnedAmount },
+            balance: { increment: Number(returnedAmount) },
           },
         });
 
         await tx.walletTransaction.create({
           data: {
             walletId: orderProduct.order.user.Wallet.id,
-            amount: returnedAmount,
+            amount: Number(returnedAmount),
             type: "Credit",
             description: `Refund for returned product (${
               reason || "Delivery return"
@@ -548,8 +565,8 @@ export const adjustOrderProductByDriver = async (
       await updateDailyProductAggregation(
         orderProduct.productId!,
         orderProduct.order.id,
-        returnedWeight,
-        returnedAmount,
+        Number(returnedWeight),
+        Number(returnedAmount),
         "return",
         tx
       );
@@ -564,8 +581,8 @@ export const adjustOrderProductByDriver = async (
       };
     } else {
       // Partial reduction
-      const reducedWeight = originalWeight - newWeight;
-      const pricePerKg = originalPrice / originalWeight;
+      const reducedWeight = Number(originalWeight) - newWeight;
+      const pricePerKg = Number(originalPrice) / Number(originalWeight);
       const reducedPrice = reducedWeight * pricePerKg;
       const newPrice = newWeight * pricePerKg;
 
@@ -586,14 +603,14 @@ export const adjustOrderProductByDriver = async (
         await tx.wallet.update({
           where: { id: orderProduct.order.user.Wallet.id },
           data: {
-            balance: { increment: reducedPrice },
+            balance: { increment: Number(reducedPrice) },
           },
         });
 
         await tx.walletTransaction.create({
           data: {
             walletId: orderProduct.order.user.Wallet.id,
-            amount: reducedPrice,
+            amount: Number(reducedPrice),
             type: "Credit",
             description: `Partial refund for reduced quantity (${
               reason || "Delivery adjustment"
@@ -633,10 +650,9 @@ export const getDailyProductSummary = async (
   branchId?: string,
   productCategoryId?: string
 ) => {
-
-  console.log(productCategoryId)
   const targetDate = dateString || getDateString();
 
+  console.log({ targetDate });
   return await prisma.totalProductOrder.findMany({
     where: {
       orderDateString: targetDate ? targetDate : undefined,

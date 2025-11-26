@@ -48,6 +48,7 @@ router.get(
  * GET /api/orders/all-daily-orders
  * Get all daily orders (Admin/Owner)
  */
+
 router.get(
   "/all-daily-orders/admin",
   (req,res, next)=>{
@@ -72,7 +73,7 @@ router.get(
  * Accept order product (Admin/Owner)
  */
 router.put(
-  "/products/:orderProductId/accept",
+  "/products/:totalorderProductId/accept",
   auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
   orderControllers.acceptProduct
 );

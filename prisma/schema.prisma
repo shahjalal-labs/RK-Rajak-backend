@@ -316,16 +316,23 @@ model productSubcategory {
 
 // daily Order  collection for user 
 model DailyOrder {
-  id                String           @id @default(auto()) @map("_id") @db.ObjectId
-  user              User?            @relation(fields: [userId], references: [id])
-  userId            String?          @db.ObjectId
-  OrderProducts     OrderProduct[] // all products in the order
-  totalAmount       Float // calculated total amount from OrderProducts
-  status            OrderStatus      @default(Pending)
-  shippingAddressId String?          @db.ObjectId
-  shippingAddress   shippingAddress? @relation(fields: [shippingAddressId], references: [id])
-  orderDate         String? // date string for daily orders aggregation
-  branchId          String?          @db.ObjectId
+  id                  String           @id @default(auto()) @map("_id") @db.ObjectId
+  user                User?            @relation(fields: [userId], references: [id])
+  userId              String?          @db.ObjectId
+  OrderProducts       OrderProduct[] // all products in the order
+  totalAmount         Float?           @default(0) // calculated total amount from OrderProducts
+  totalWeight         Float?           @default(0) // calculated total weight from OrderProducts
+  totalAcceptedWeight Float?           @default(0) // calculated total accepted weight from OrderProducts
+  totalRejectedWeight Float?           @default(0) // calculated total rejected weight from OrderProducts
+  totalReturnedWeight Float?           @default(0) // calculated total returned weight from OrderProducts
+  totalAcceptedPrice  Float?           @default(0) // calculated total accepted price from OrderProducts
+  totalRejectedPrice  Float?           @default(0) // calculated total rejected price from OrderProducts
+  totalReturnedPrice  Float?           @default(0) // calculated total returned price from OrderProducts
+  status              OrderStatus      @default(Pending)
+  shippingAddressId   String?          @db.ObjectId
+  shippingAddress     shippingAddress? @relation(fields: [shippingAddressId], references: [id])
+  orderDate           String? // date string for daily orders aggregation
+  branchId            String?          @db.ObjectId
 
   // Payment tracking
   paymentMethod PaymentMethod? // if credit and also RemainingAmount is greater than 0. then its called dues payment
@@ -354,11 +361,14 @@ model OrderProduct {
   order                 DailyOrder?             @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product               product?                @relation(fields: [productId], references: [id])
   productId             String?                 @db.ObjectId
-  totalWeight           Float                   @default(0) // Total weight for this product and its can editable in future by admin and delivery driver
-  totalPrice            Float                   @default(0) // Total price for this product and its can editable in future by admin and delivery driver
-  // cancelled and return tracking pertial or full
-  cancelledWeight       Float                   @default(0)
-  returnedWeight        Float                   @default(0)
+  totalWeight           Float?                  @default(0) // Total weight for this product and its can editable in future by admin and delivery driver
+  totalPrice            Float?                  @default(0) // Total price for this product and its can editable in future by admin and delivery driver
+  returnedPrice         Float?                  @default(0)
+  rejectedPrice         Float?                  @default(0)
+  acceptedPrice         Float?                  @default(0)
+  acceptedWeight        Float?                  @default(0)
+  rejectedWeight        Float?                  @default(0)
+  returnedWeight        Float?                  @default(0)
   // if fully cancelled or returned then need to status as cancelled or returned
   status                OrderProductStatus      @default(Active) // Product lifecycle status
   OrderProductVariation OrderProductVariation[]
@@ -386,17 +396,17 @@ model totalProductOrder {
   id                String             @id @default(auto()) @map("_id") @db.ObjectId
   productId         String             @db.ObjectId // product id for individual day aggregation . like how many orders placed for a product on that date  and also this is dynamic collection
   product           product?           @relation(fields: [productId], references: [id])
-  productCategory   productCategory   @relation(fields: [productCategoryId], references: [id])
-  productCategoryId String            @db.ObjectId
-  branchId          String            @db.ObjectId
-  branch            branch            @relation(fields: [branchId], references: [id])
-  totalOrders       Int
-  totalQuantity     Int                @default(0) // Real-time aggregated quantity
-  totalWeight       Float
-  totalPrice        Float              @default(0) // Real-time aggregated price
-  acceptedWeight    Float              @default(0) // Weight of accepted products
-  rejectedWeight    Float              @default(0) // Weight of rejected products
-  returnWeight      Float              @default(0) // Weight of returned products
+  productCategory   productCategory    @relation(fields: [productCategoryId], references: [id])
+  productCategoryId String             @db.ObjectId
+  branchId          String             @db.ObjectId
+  branch            branch             @relation(fields: [branchId], references: [id])
+  totalOrders       Int?
+  totalQuantity     Int?               @default(0) // Real-time aggregated quantity
+  totalWeight       Float?
+  totalPrice        Float?             @default(0) // Real-time aggregated price
+  acceptedWeight    Float?             @default(0) // Weight of accepted products
+  rejectedWeight    Float?             @default(0) // Weight of rejected products
+  returnWeight      Float?             @default(0) // Weight of returned products
   orderIds          String[]           @db.ObjectId // must be main orders associated with this product on that date
   orderDateString   String // date string for daily orders aggregation
   status            OrderProductStatus @default(Active)

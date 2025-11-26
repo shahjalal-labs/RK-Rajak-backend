@@ -99,7 +99,9 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
   // Execute in transaction
   const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's DailyOrder
+    // Get or create today's DailyOrder  
+    // need to pass total weight for all products and also totalPrice
+    
     const dailyOrder = await getOrCreateDailyOrder(
       userId,
       shippingAddressId,
@@ -477,13 +479,14 @@ const getDailyDispatch = async (queryParams?: any) => {
 
  * Accept order product (Admin)
  */
-const acceptProduct = async (orderProductId: string, userId: string) => {
-  return await acceptOrderProduct(orderProductId, userId);
+const acceptProduct = async (totalorderProductId: string) => {
+  return await acceptOrderProduct(totalorderProductId);
 };
 
 /**
  * Reject order product (Admin)
- */
+*/
+
 const rejectProduct = async (
   orderProductId: string,
   userId: string,
