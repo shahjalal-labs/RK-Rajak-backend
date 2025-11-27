@@ -1,13 +1,6 @@
-import {
-  PrismaClient,
-  UserRole,
-  PaymentMethod,
-  OrderProductStatus,
-  OrderStatus,
-} from "@prisma/client";
+import { PrismaClient, UserRole, PaymentMethod, product } from '@prisma/client';
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import { productCategory } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -153,8 +146,6 @@ export const mergeOrCreateOrderProduct = async (
         productId,
         totalWeight,
         totalPrice,
-        cancelledWeight: 0,
-        returnedWeight: 0,
         status: "Active",
         OrderProductVariation: {
           create: {
@@ -198,8 +189,16 @@ export const updateDailyProductAggregation = async (
   });
 
   if (operation === "add") {
+    // need to calculate the totalweight and totalprice and also total save the daily order
 
     // need to calculate the totalweight and totalprice and also total save the daily order
+    await tx.dailyOrder.update({
+      where: { id: dailyOrderId },
+      data: {
+        totalWeight: { increment: weight },
+        totalAmount: { increment: price },
+      },
+    });
 
     if (existing) {
       // Update existing aggregation
@@ -300,71 +299,72 @@ export const recalculateDailyOrderTotal = async (
 /**
  * Accept (confirm) an OrderProduct by admin
  */
-export const acceptOrderProduct = async (totalorderProductId: string) => {
+export const acceptOrderProduct = async (totalOrderProductId: string) => {
   return await prisma.$transaction(async (tx) => {
-    const totalorderProduct = await tx.totalProductOrder.findUnique({
-      where: { id: totalorderProductId },
+    const totalOrderProduct = await tx.totalProductOrder.findUnique({
+      where: { id: totalOrderProductId },
     });
 
-    if (!totalorderProduct) {
+    if (!totalOrderProduct) {
       throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
     }
-
-    // Update status to Confirmed and also how many weight accepted
-    /*
-    totalOrders
-    totalQuantity
-    totalWeight
-    totalPrice
-    acceptedWeight
-    rejectedWeight
-    returnWeight
-    orderIds
-    */
-
     await tx.totalProductOrder.update({
-      where: { id: totalorderProductId },
-      data: { status: "Confirmed" },
+      where: { id: totalOrderProductId },
+      data: {
+        status: "Confirmed",
+        acceptedWeight: totalOrderProduct.totalWeight,
+      },
     });
+
+    // accepted product id
+    const productId = totalOrderProduct.productId;
 
     // fetch all order and update all and update order products status to confirmed
     const dailyOrders = await tx.dailyOrder.findMany({
       where: {
-        id: { in: totalorderProduct.orderIds },
+        id: { in: totalOrderProduct.orderIds },
       },
     });
 
     for (const order of dailyOrders) {
+      const orderProducts = await tx.orderProduct.findMany({
+        where: { orderId: order.id, productId },
+      });
+
+      if (orderProducts.length === 0) continue; // Skip if no product found
+
+      const orderTotalWeight = orderProducts.reduce(
+        (sum, prod) => sum + prod.totalWeight!,
+        0
+      );
+
+      const orderTotalPrice = orderProducts.reduce(
+        (sum, prod) => sum + prod.totalPrice!,
+        0
+      );
+
       // Update each order's products to Confirmed
       await tx.orderProduct.updateMany({
-        where: { orderId: order.id },
+        where: { orderId: order.id, productId },
         data: {
-          acceptedWeight: totalorderProduct.totalWeight,
           status: "Confirmed",
+          // need to save exactly this order weight as accepted weight couse totalOrderProduct is for multiple orders
+          acceptedWeight: orderTotalWeight,
+          acceptedPrice: orderTotalPrice,
         },
       });
 
-      const dailyOrderDetails = await tx.dailyOrder.findUnique({
+      // if all products are confirmed then update order status to confirmed // 27-11-25 - now i think when one product is confirmed then order will be active.
+      await tx.dailyOrder.update({
         where: { id: order.id },
-        include: {
-          OrderProducts: true,
+        data: {
+          totalAcceptedPrice: { increment: orderTotalPrice },
+          totalAcceptedWeight: { increment: orderTotalWeight },
+          status: "Active",
         },
       });
-      // if all products are confirmed then update order status to confirmed
-      const allConfirmed = dailyOrderDetails?.OrderProducts.every(
-        (prod) => prod.status === "Confirmed"
-      );
-      if (allConfirmed) {
-        await tx.dailyOrder.update({
-          where: { id: order.id },
-          data: {
-            status: "Active",
-          },
-        });
-      }
     }
-
-    return { message: "Product accepted successfully" };
+    return;
   });
 };
 
@@ -372,105 +372,80 @@ export const acceptOrderProduct = async (totalorderProductId: string) => {
  * Reject (cancel) an OrderProduct by admin
  * Refunds wallet payment if applicable
  */
-export const rejectOrderProduct = async (
-  orderProductId: string,
-  userId: string,
-  reason?: string
-) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  const allowedRoles: UserRole[] = [
-    UserRole.Admin,
-    UserRole.Owner,
-    UserRole.SuperAdmin,
-  ];
-  if (!user || !allowedRoles.includes(user.role)) {
-    throw new ApiError(
-      httpStatus.FORBIDDEN,
-      "Only admin/owner can reject products"
-    );
-  }
-
+export const rejectOrderProduct = async (totalorderProductId: string) => {
   return await prisma.$transaction(async (tx) => {
-    const orderProduct = await tx.orderProduct.findUnique({
-      where: { id: orderProductId },
-      include: {
-        order: {
-          include: {
-            user: {
-              include: { Wallet: true },
-            },
-          },
-        },
-      },
+    const totalOrderProduct = await tx.totalProductOrder.findUnique({
+      where: { id: totalorderProductId },
     });
 
-    if (!orderProduct || !orderProduct.order) {
+    if (!totalOrderProduct) {
       throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
     }
 
-    if (orderProduct.status === "Cancelled") {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Product already cancelled");
-    }
-
-    const rejectedAmount = orderProduct.totalPrice;
-    const rejectedWeight = orderProduct.totalWeight;
-
-    // Mark as cancelled
-    await tx.orderProduct.update({
-      where: { id: orderProductId },
+    // update the totalOrderProduct status to cancelled
+    await tx.totalProductOrder.update({
+      where: { id: totalorderProductId },
       data: {
         status: "Cancelled",
-        rejectedWeight: orderProduct.totalWeight,
+        rejectedWeight: { decrement: Number(totalOrderProduct.totalWeight) },
+      },
+    });
+    const orderIds = totalOrderProduct.orderIds;
+    const productId = totalOrderProduct.productId;
+
+    const dailyOrders = await tx.dailyOrder.findMany({
+      where: {
+        id: { in: orderIds },
       },
     });
 
-    // Refund wallet if payment was Wallet
-    if (
-      orderProduct.order.paymentMethod === PaymentMethod.Wallet &&
-      orderProduct.order.user?.Wallet
-    ) {
-      await tx.wallet.update({
-        where: { id: orderProduct.order.user.Wallet.id },
+    for (const order of dailyOrders) {
+      const orderProducts = await tx.orderProduct.findMany({
+        where: { orderId: order.id, productId },
+      });
+
+      if (orderProducts.length === 0) continue; // Skip if no product found
+
+
+      // calculate cancelled weight and price for this order
+      const orderTotalWeight = orderProducts.reduce(
+        (sum, prod) => sum + prod.totalWeight!,
+        0
+      );
+
+      const orderTotalPrice = orderProducts.reduce(
+        (sum, prod) => sum + prod.totalPrice!,
+        0
+      );
+
+      // Update each order's products to Confirmed
+      await tx.orderProduct.updateMany({
+        where: { orderId: order.id, productId },
         data: {
-          balance: { increment: Number(rejectedAmount) },
+          status: "Cancelled",
+          //need to save exactly this order weight as accepted weight couse totalOrderProduct is for multiple orders
+          rejectedWeight: orderTotalWeight,
+          rejectedPrice: orderTotalPrice,
         },
       });
 
-      await tx.walletTransaction.create({
+      // if all products are confirmed then update order status to confirmed // 27-11-25 - now i think when one product is confirmed then order will be active.
+
+      const isAllCancelled = await tx.orderProduct.count({
+        where: { orderId: order.id, status: { not: "Cancelled" } },
+      });
+
+      await tx.dailyOrder.update({
+        where: { id: order.id },
         data: {
-          walletId: orderProduct.order.user.Wallet.id,
-          amount: Number(rejectedAmount) ,
-          type: "Credit",
-          description: `Refund for rejected product (${
-            reason || "Admin rejected"
-          })`,
-          status: "Success",
+          totalRejectedPrice: { increment: orderTotalPrice },
+          totalRejectedWeight: { increment: orderTotalWeight },
+          status: isAllCancelled === 0 ? "Cancelled" : "Active",
         },
       });
     }
 
-    // Update daily aggregation
-    await updateDailyProductAggregation(
-      orderProduct.productId!,
-      orderProduct.order.id,
-      Number(rejectedWeight),
-      Number(rejectedAmount),
-      "cancel",
-      tx
-    );
-
-    // Recalculate order total
-    await recalculateDailyOrderTotal(orderProduct.order.id, tx);
-
-    return {
-      message: "Product rejected successfully",
-      refundAmount: rejectedAmount,
-      refunded: orderProduct.order.paymentMethod === PaymentMethod.Wallet,
-    };
+    return;
   });
 };
 

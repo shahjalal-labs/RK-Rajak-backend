@@ -34,6 +34,7 @@ const createProduct = async (
       })
     );
   } catch (error: any) {
+    console.log({error})
     throw new ApiError(500, "Failed to upload images: " + error.message);
   }
   const createdProduct = await prisma.product.create({

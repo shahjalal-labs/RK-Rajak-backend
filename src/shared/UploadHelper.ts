@@ -1,44 +1,27 @@
 import { S3Client, S3ClientConfig, ObjectCannedACL } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import path from "path";
+import config from "../config";
 
-
-// DO_SPACE_ENDPOINT="https://nyc3.digitaloceanspaces.com"
-// DO_SPACE_ACCESS_KEY="DO0027J7KJDZWYGM3YH7"
-// DO_SPACE_SECRET_KEY="JgoBnFAbi/R/teVFdnDeY6MzDclRBO8BiUw9MOzVCAo"
-// DO_SPACE_BUCKET="freemanz"
-
-// DO_SPACE_ENDPOINT="https://nyc3.digitaloceanspaces.com"
-// DO_SPACE_ACCESS_KEY="DO002RGDJ947DJHJ9WDT"
-// DO_SPACE_SECRET_KEY="e5+/pko6Ojar51Hb8ojUKfq2HtXy+tnGKOfs3rIcEfo"
-// DO_SPACE_BUCKET="smtech-space"
 
 // const DO_CONFIG = {
 //   endpoint: "https://nyc3.digitaloceanspaces.com",
 //   region: "nyc3",
 //   credentials: {
-//     accessKeyId: "DO002RGDJ947DJHJ9WDT",
-//     secretAccessKey: "e5+/pko6Ojar51Hb8ojUKfq2HtXy+tnGKOfs3rIcEfo",
+//     accessKeyId: "DO0027J7KJDZWYGM3YH7",
+//     secretAccessKey: "JgoBnFAbi/R/teVFdnDeY6MzDclRBO8BiUw9MOzVCAo",
 //   },
-//   spaceName: "smtech-space",
+//   spaceName: "freemanz",
 // };
-const DO_CONFIG = {
-  endpoint: "https://nyc3.digitaloceanspaces.com",
-  region: "nyc3",
-  credentials: {
-    accessKeyId: "DO0027J7KJDZWYGM3YH7",
-    secretAccessKey: "JgoBnFAbi/R/teVFdnDeY6MzDclRBO8BiUw9MOzVCAo",
-  },
-  spaceName: "freemanz",
-};
-
 
 const s3Config: S3ClientConfig = {
-  endpoint: DO_CONFIG.endpoint,
-  region: DO_CONFIG.region,
-  credentials: DO_CONFIG.credentials,
-  forcePathStyle: true,
+  region: "us-east-2",
+  credentials: {
+    accessKeyId: config.do_space.access_key!,
+    secretAccessKey: config.do_space.secret_key!,
+  },
 };
+
 
 const s3 = new S3Client(s3Config);
 
@@ -96,7 +79,7 @@ export const uploadInSpace = async (
       .substring(2, 15)}${fileExtension}`;
 
     const uploadParams = {
-      Bucket: DO_CONFIG.spaceName,
+      Bucket: process.env.DO_SPACE_BUCKET!,
       Key: fileName,
       Body: file.buffer,
       ACL: "public-read" as ObjectCannedACL,
@@ -110,7 +93,7 @@ export const uploadInSpace = async (
 
     await upload.done();
 
-    const fileUrl = `${DO_CONFIG.endpoint}/${DO_CONFIG.spaceName}/${fileName}`;
+    const fileUrl = `${process.env.DO_SPACE_ENDPOINT}/${process.env.DO_SPACE_BUCKET}/${fileName}`;
 
     return fileUrl;
   } catch (error) {

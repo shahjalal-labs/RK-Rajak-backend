@@ -64,6 +64,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     perQuantityPrice: number;
     snapshotWeightPerUnit: number;
   }> = [];
+  let orderTotal = 0;
 
   for (const p of products) {
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
@@ -84,11 +85,15 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       );
     }
 
+    const weight = p.quantity * variation.weight;
+    const price = p.quantity * variation.sellingPrice;
+    orderTotal += price;
+
     // Snapshot pricing - capture current price
     validatedProducts.push({
       productId: p.productId,
-      variationId: p.variationId,
       categoryId: dbProduct.categoryId,
+      variationId: p.variationId,
       quantity: p.quantity,
       product: dbProduct,
       variation: variation,
@@ -167,7 +172,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
  * Place order with Wallet payment
  */
 const placeOrderWallet = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId, branchId } = payload;
+  const { userId, products, shippingAddressId } = payload;
 
   // Validate user and wallet
   const user = await prisma.user.findUnique({
@@ -277,7 +282,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     const dailyOrder = await getOrCreateDailyOrder(
       userId,
       shippingAddressId,
-      branchId,
+      user.branchId!,
       PaymentMethod.Wallet,
       tx
     );
@@ -307,7 +312,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       const price = p.quantity * p.perQuantityPrice;
       await updateDailyProductAggregation(
         p.productId,
-        p.categoryId,
+        dailyOrder.id,
         weight,
         price,
         "add",
@@ -488,11 +493,9 @@ const acceptProduct = async (totalorderProductId: string) => {
 */
 
 const rejectProduct = async (
-  orderProductId: string,
-  userId: string,
-  reason?: string
+  totalorderProductId: string,
 ) => {
-  return await rejectOrderProduct(orderProductId, userId, reason);
+  return await rejectOrderProduct(totalorderProductId);
 };
 
 /**

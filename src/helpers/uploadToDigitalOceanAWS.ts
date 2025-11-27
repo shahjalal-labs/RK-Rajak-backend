@@ -20,7 +20,7 @@ interface UploadResponse {
 }
 
 const s3Client = new S3Client({
-  region: 'us-east-1', // Set any valid region
+  region: 'us-east-2', // Set any valid region
   endpoint: `${process.env.DO_SPACE_ENDPOINT}`,
   credentials: {
     accessKeyId: `${process.env.DO_SPACE_ACCESS_KEY}`,
@@ -53,7 +53,7 @@ export const uploadVideoToDigitalOcean = async (
       Bucket: process.env.DO_SPACE_BUCKET!,
       Key: fileName,
       Body: fs.createReadStream(tempPath),
-      ACL: 'public-read',
+      // ACL: 'public-read',
       ContentType: file.mimetype,
     });
 
@@ -88,7 +88,7 @@ export const uploadToDigitalOceanAWS = async (
       Bucket: `${process.env.DO_SPACE_BUCKET}`,
       Key: fileName,
       Body: fileBody,
-      ACL: 'public-read',
+      // ACL: 'public-read',
       ContentType: file.mimetype,
     });
 
@@ -99,7 +99,7 @@ export const uploadToDigitalOceanAWS = async (
       Bucket: process.env.DO_SPACE_BUCKET,
       Key: fileName,
       Body: file.buffer,
-      ACL: 'public-read', // 👈 this is important
+      // ACL: 'public-read', // 👈 this is important
       ContentType: file.mimetype,
     };
     // const fileUrl = `${process.env.DO_SPACE_ENDPOINT}/${process.env.DO_SPACE_BUCKET}/${fileName}`;

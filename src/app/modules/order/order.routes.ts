@@ -83,7 +83,7 @@ router.put(
  * Reject order product (Admin/Owner)
  */
 router.put(
-  "/products/:orderProductId/reject",
+  "/products/:totalorderProductId/reject",
   auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
   validateRequest(OrderValidation.rejectProductSchema),
   orderControllers.rejectProduct

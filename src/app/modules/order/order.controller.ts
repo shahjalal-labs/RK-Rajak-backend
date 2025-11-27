@@ -84,7 +84,6 @@ const getDailyDispatch = catchAsync(async (req: Request, res: Response) => {
  */
 const acceptProduct = catchAsync(async (req: Request, res: Response) => {
   const { totalorderProductId } = req.params;
-  const userId = req.user.id;
   const result = await orderServices.acceptProduct(totalorderProductId);
 
   sendResponse(res, {
@@ -99,13 +98,9 @@ const acceptProduct = catchAsync(async (req: Request, res: Response) => {
  * Reject order product (Admin/Owner)
  */
 const rejectProduct = catchAsync(async (req: Request, res: Response) => {
-  const { orderProductId } = req.params;
-  const { reason } = req.body;
-  const userId = req.user.id;
+  const { totalorderProductId } = req.params;
   const result = await orderServices.rejectProduct(
-    orderProductId,
-    userId,
-    reason
+    totalorderProductId,
   );
 
   sendResponse(res, {
