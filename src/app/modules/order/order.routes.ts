@@ -102,4 +102,11 @@ router.put(
   orderControllers.adjustProductQuantity
 );
 
+
+//** SuperAdmin calculations branch and day wised */
+router.get(
+  "/calculations/branchId/:branchId",
+  auth(UserRole.SuperAdmin),
+  orderControllers.getBranchDayWiseCalculations
+);
 export const orderRoutes = router;

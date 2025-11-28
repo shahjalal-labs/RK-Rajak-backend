@@ -148,6 +148,17 @@ const getOrderById = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+
+const getBranchDayWiseCalculations = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getBranchDayWiseCalculations(req.params.branchId , req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Order OverView retrieved successfully",
+    data: result,
+  });
+});
+
 export const orderControllers = {
   createOrder,
   getUserDailyOrders,
@@ -158,4 +169,5 @@ export const orderControllers = {
   rejectProductByAdmin,
   adjustProductQuantity,
   getOrderById,
+  getBranchDayWiseCalculations
 };

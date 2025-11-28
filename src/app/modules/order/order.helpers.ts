@@ -324,6 +324,7 @@ export const acceptOrderProduct = async (totalOrderProductId: string) => {
       data: {
         status: "Confirmed",
         acceptedWeight: totalOrderProduct.totalWeight,
+        acceptedPrice: totalOrderProduct.totalPrice,
       },
     });
 
@@ -571,6 +572,8 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
       where: { id: totalorderProductId },
       data: {
         status: "Cancelled",
+        rejectedWeight: totalOrderProduct.totalWeight,
+        rejectedPrice: totalOrderProduct.totalPrice
       },
     });
 

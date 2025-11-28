@@ -57,7 +57,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
   const validatedProducts: Array<{
     productId: string;
     variationId: string;
-    categoryId : string;
+    categoryId: string;
     quantity: number;
     product: any;
     variation: any;
@@ -104,9 +104,9 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
   // Execute in transaction
   const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's DailyOrder  
+    // Get or create today's DailyOrder
     // need to pass total weight for all products and also totalPrice
-    
+
     const dailyOrder = await getOrCreateDailyOrder(
       userId,
       shippingAddressId,
@@ -141,7 +141,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         "add",
         tx,
         p.categoryId,
-        user.branchId!,
+        user.branchId!
       );
     }
 
@@ -217,7 +217,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
   const validatedProducts: Array<{
     productId: string;
     variationId: string;
-    categoryId : string;
+    categoryId: string;
     quantity: number;
     product: any;
     variation: any;
@@ -251,7 +251,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
 
     validatedProducts.push({
       productId: p.productId,
-      categoryId : dbProduct.categoryId,
+      categoryId: dbProduct.categoryId,
       variationId: p.variationId,
       quantity: p.quantity,
       product: dbProduct,
@@ -320,7 +320,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         "add",
         tx,
         p.categoryId,
-        user.branchId!,
+        user.branchId!
       );
     }
 
@@ -453,21 +453,27 @@ const getAllDailyOrders = async (queryParams: any) => {
 
   return await prisma.dailyOrder.findMany({
     where: where ? where : {},
-    include: {
+    select: {
+      id: true,
       user: {
         select: {
           id: true,
           fullName: true,
-          phone: true,
+          profileImage: true,
         },
       },
-      OrderProducts: {
-        include: {
-          product: true,
-          OrderProductVariation: true,
+      totalWeight: true,
+      totalAcceptedWeight: true,
+      orderDate: true,
+      status: true,
+      shippingAddress: {
+        select: {
+          shopName: true,
+          address: true,
+          latitude: true,
+          longitude: true,
         },
       },
-      shippingAddress: true,
     },
     orderBy: {
       createdAt: "desc",
@@ -492,11 +498,9 @@ const acceptProduct = async (totalorderProductId: string) => {
 
 /**
  * Reject order product (Admin)
-*/
+ */
 
-const rejectProductByAdmin = async (
-  totalorderProductId: string,
-) => {
+const rejectProductByAdmin = async (totalorderProductId: string) => {
   return await rejectOrderProduct(totalorderProductId);
 };
 
@@ -549,6 +553,69 @@ const getOrderById = async (id: string) => {
   return order;
 };
 
+const getBranchDayWiseCalculations = async (
+  branchId: string,
+  queryParams?: any
+) => {
+  // Implement the logic to get branch day-wise calculations
+  const date = queryParams?.dateString || getDateString();
+
+  // total orders of the day
+  const orderOfTheDay = await prisma.dailyOrder.count({
+    where: {
+      branchId: branchId,
+      orderDate: date,
+    },
+  });
+  // total order product of the day
+  const orderProductsOfTheDay = await prisma.totalProductOrder.count({
+    where: {
+      branchId: branchId,
+      createdAt: {
+        gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
+        lte: new Date(new Date(date).setHours(23, 59, 59, 999)),
+      },
+    },
+  });
+  // total revenue of the day
+  const revenueOfTheDayAgg = await prisma.dailyOrder.aggregate({
+    where: {
+      branchId: branchId,
+      orderDate: date,
+    },
+    _sum: {
+      totalAmount: true,
+    },
+  });
+
+  // total return products of the day
+  // totalProductOrder
+  const returnProductsOfTheDay = await prisma.totalProductOrder.aggregate({
+    where: {
+      branchId: branchId,
+      orderDateString: date,
+      status: "Returned",
+    },
+    _count: {
+      _all: true,
+    },
+    _sum: {
+      returnedWeight: true,
+      returnedPrice: true,
+    },
+  });
+
+  return {
+    totalOrders: orderOfTheDay,
+    totalOrderProducts: orderProductsOfTheDay,
+    totalRevenue: revenueOfTheDayAgg._sum.totalAmount || 0,
+    totalReturnedWeight: returnProductsOfTheDay._sum.returnedWeight || 0, // KG
+    totalReturnedPrice: returnProductsOfTheDay._sum.returnedPrice || 0,
+  };
+
+  // This is a placeholder implementation
+};
+
 export const orderServices = {
   createOrder,
   placeOrderCOD,
@@ -561,4 +628,5 @@ export const orderServices = {
   rejectProductByAdmin,
   adjustProductQuantity,
   getOrderById,
+  getBranchDayWiseCalculations,
 };

@@ -320,7 +320,7 @@ model DailyOrder {
   user                User?            @relation(fields: [userId], references: [id])
   userId              String?          @db.ObjectId
   OrderProducts       OrderProduct[] // all products in the order
-  totalAmount         Float           @default(0) // calculated total amount from OrderProducts
+  totalAmount         Float            @default(0) // calculated total amount from OrderProducts
   totalWeight         Float?           @default(0) // calculated total weight from OrderProducts
   totalAcceptedWeight Float?           @default(0) // calculated total accepted weight from OrderProducts
   totalRejectedWeight Float?           @default(0) // calculated total rejected weight from OrderProducts
@@ -395,21 +395,27 @@ model OrderProductVariation {
 
 model totalProductOrder {
   id                String             @id @default(auto()) @map("_id") @db.ObjectId
-  productId         String             @db.ObjectId // product id for individual day aggregation . like how many orders placed for a product on that date  and also this is dynamic collection
+  productId         String             @db.ObjectId
   product           product?           @relation(fields: [productId], references: [id])
   productCategory   productCategory    @relation(fields: [productCategoryId], references: [id])
   productCategoryId String             @db.ObjectId
   branchId          String             @db.ObjectId
   branch            branch             @relation(fields: [branchId], references: [id])
   totalOrders       Int?
-  totalQuantity     Int?               @default(0) // Real-time aggregated quantity
+  totalQuantity     Int?               @default(0) 
   totalWeight       Float?
-  totalPrice        Float?             @default(0) // Real-time aggregated price
-  acceptedWeight    Float?             @default(0) // Weight of accepted products
-  rejectedWeight    Float?             @default(0) // Weight of rejected products
-  returnWeight      Float?             @default(0) // Weight of returned products
-  orderIds          String[]           @db.ObjectId // must be main orders associated with this product on that date
-  orderDateString   String // date string for daily orders aggregation
+  totalPrice        Float?             @default(0) 
+  // Separate fields for accepted, rejected, and returned weights 
+  acceptedWeight    Float?             @default(0) 
+  rejectedWeight    Float?             @default(0) 
+  returnedWeight    Float?             @default(0) 
+  // Separate fields for accepted, rejected, and returned prices
+  acceptedPrice     Float?             @default(0) 
+  rejectedPrice     Float?             @default(0) 
+  returnedPrice     Float?             @default(0) 
+  // Store main order IDs associated with this product on that date
+  orderIds          String[]           @db.ObjectId 
+  orderDateString   String
   status            OrderProductStatus @default(Active)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
