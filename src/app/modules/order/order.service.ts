@@ -125,7 +125,8 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         p.quantity,
         p.perQuantityPrice,
         p.snapshotWeightPerUnit,
-        tx
+        tx,
+        "COD"
       );
       orderProducts.push(orderProduct);
 
@@ -304,7 +305,8 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         p.quantity,
         p.perQuantityPrice,
         p.snapshotWeightPerUnit,
-        tx
+        tx,
+        "Wallet"
       );
 
       // Update aggregation
@@ -492,7 +494,7 @@ const acceptProduct = async (totalorderProductId: string) => {
  * Reject order product (Admin)
 */
 
-const rejectProduct = async (
+const rejectProductByAdmin = async (
   totalorderProductId: string,
 ) => {
   return await rejectOrderProduct(totalorderProductId);
@@ -556,7 +558,7 @@ export const orderServices = {
   getAllDailyOrders,
   getDailyDispatch,
   acceptProduct,
-  rejectProduct,
+  rejectProductByAdmin,
   adjustProductQuantity,
   getOrderById,
 };

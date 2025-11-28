@@ -363,6 +363,7 @@ model OrderProduct {
   productId             String?                 @db.ObjectId
   totalWeight           Float?                  @default(0) // Total weight for this product and its can editable in future by admin and delivery driver
   totalPrice            Float?                  @default(0) // Total price for this product and its can editable in future by admin and delivery driver
+  totalWalletAmountUsed Float?                  @default(0) // total wallet amount used for this product
   returnedPrice         Float?                  @default(0)
   rejectedPrice         Float?                  @default(0)
   acceptedPrice         Float?                  @default(0)

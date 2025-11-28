@@ -97,16 +97,16 @@ const acceptProduct = catchAsync(async (req: Request, res: Response) => {
 /**
  * Reject order product (Admin/Owner)
  */
-const rejectProduct = catchAsync(async (req: Request, res: Response) => {
+const rejectProductByAdmin = catchAsync(async (req: Request, res: Response) => {
   const { totalorderProductId } = req.params;
-  const result = await orderServices.rejectProduct(
+  const result = await orderServices.rejectProductByAdmin(
     totalorderProductId,
   );
 
   sendResponse(res, {
     success: true,
     statusCode: httpStatus.OK,
-    message: "Product rejected successfully",
+    message: "Product rejected by Admin successfully",
     data: result,
   });
 });
@@ -155,7 +155,7 @@ export const orderControllers = {
   getAllDailyOrders,
   getDailyDispatch,
   acceptProduct,
-  rejectProduct,
+  rejectProductByAdmin,
   adjustProductQuantity,
   getOrderById,
 };

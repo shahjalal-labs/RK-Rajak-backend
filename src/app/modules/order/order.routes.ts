@@ -83,10 +83,10 @@ router.put(
  * Reject order product (Admin/Owner)
  */
 router.put(
-  "/products/:totalorderProductId/reject",
+  "/products/:totalorderProductId/rejectByAdmin",
   auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
   validateRequest(OrderValidation.rejectProductSchema),
-  orderControllers.rejectProduct
+  orderControllers.rejectProductByAdmin
 );
 
 // ========== Driver Routes ==========
