@@ -92,13 +92,6 @@ const createOrderByAgentForCustomerSchema = z.object({
   paymentMethod: z.enum(["COD"], { invalid_type_error: "Only COD is allowed" }),
 });
 
-const orderAssignToDriverSchema = z.object({
-  mainOrdersIds: z
-    .array(z.string().nonempty("Main Order ID cannot be empty"))
-    .min(1, "At least one Main Order ID is required"),
-  driverId: z.string({ required_error: "Driver ID is required" }),
-});
-
 // Reject product schema
 const rejectProductSchema = z.object({
   reason: z.string().optional(),
@@ -110,6 +103,24 @@ const adjustProductSchema = z.object({
   reason: z.string().optional(),
 });
 
+const orderAssignToDriverSchema = z.object({
+  ordersIds: z
+    .array(z.string().nonempty("Main Order ID cannot be empty"))
+    .min(1, "At least one Main Order ID is required"),
+  driverId: z.string({ required_error: "Driver ID is required" }),
+});
+
+const MarkOrderAsDeliveredSchema = z.object({
+  payments: z.array(
+    z.object({
+      method: z.enum(["Cash", "Wallet", "Credit", "QrCode"]),
+      amount: z.number().positive(),
+    })
+  )
+  .min(1, "At least one payment entry is required"),
+});
+
+
 export const OrderValidation = {
   createOrderSchema,
   cancelOrderSchema,
@@ -119,4 +130,5 @@ export const OrderValidation = {
   orderAssignToDriverSchema,
   rejectProductSchema,
   adjustProductSchema,
+  MarkOrderAsDeliveredSchema,
 };

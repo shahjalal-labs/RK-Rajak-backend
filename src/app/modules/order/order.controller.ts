@@ -99,9 +99,7 @@ const acceptProduct = catchAsync(async (req: Request, res: Response) => {
  */
 const rejectProductByAdmin = catchAsync(async (req: Request, res: Response) => {
   const { totalorderProductId } = req.params;
-  const result = await orderServices.rejectProductByAdmin(
-    totalorderProductId,
-  );
+  const result = await orderServices.rejectProductByAdmin(totalorderProductId);
 
   sendResponse(res, {
     success: true,
@@ -148,16 +146,101 @@ const getOrderById = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getBranchDayWiseCalculations = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.getBranchDayWiseCalculations(
+      req.params.branchId,
+      req.query
+    );
+    sendResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "Order OverView retrieved successfully",
+      data: result,
+    });
+  }
+);
 
-const getBranchDayWiseCalculations = catchAsync(async (req: Request, res: Response) => {
-  const result = await orderServices.getBranchDayWiseCalculations(req.params.branchId , req.query);
+///------------------- Assign Delivery to Driver -----------------///
+const assignOrdersDeliveryToDriver = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.assignOrdersDeliveryToDriver(req.body);
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "Delivery assigned to driver successfully",
+      data: result,
+    });
+  }
+);
+const getMyAssignedOrders = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getMyAssignedOrders(
+    req.user.id,
+    req.query
+  );
   sendResponse(res, {
     success: true,
-    statusCode: httpStatus.OK,
-    message: "Order OverView retrieved successfully",
+    statusCode: 200,
+    message: "My assigned orders retrieved successfully",
     data: result,
   });
 });
+const getTotalAssignedOrderProducts = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.getTotalAssignedOrderProducts(
+      req.user.id
+    );
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "My assigned orders retrieved successfully",
+      data: result,
+    });
+  }
+);
+const getTotalAssignedReturnedProducts = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.getTotalAssignedReturnedProducts(
+      req.user.id
+    );
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "My assigned returned products retrieved successfully",
+      data: result,
+    });
+  }
+);
+
+const getOrderDetailsForDriver = catchAsync(async (req: Request, res: Response) => {
+  const orderId = req.params.orderId;
+  if (!orderId) {
+    throw new Error("Order ID is required");
+  }
+  const result = await orderServices.getOrderDetailsForDriver(orderId, req.user.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Order retrieved successfully",
+    data: result,
+  });
+});
+
+
+const markOrderAsDelivered = catchAsync(async (req: Request, res: Response) => {
+  const orderId = req.params.orderId;
+  if (!orderId) {
+    throw new Error("Order ID is required");
+  }
+  const result = await orderServices.markOrderAsDelivered(orderId, req.user.id, req.body);
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Order marked as delivered successfully",
+    data: result,
+  });
+});
+
 
 export const orderControllers = {
   createOrder,
@@ -169,5 +252,12 @@ export const orderControllers = {
   rejectProductByAdmin,
   adjustProductQuantity,
   getOrderById,
-  getBranchDayWiseCalculations
+  assignOrdersDeliveryToDriver,
+  getMyAssignedOrders,
+  getBranchDayWiseCalculations,
+  getTotalAssignedOrderProducts,
+  getTotalAssignedReturnedProducts,
+  getOrderDetailsForDriver,
+  markOrderAsDelivered
+
 };

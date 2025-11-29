@@ -75,6 +75,15 @@ const getAllAgents = catchAsync(async (req, res) => {
     data: users,
   });
 });
+const getAllDrivers = catchAsync(async (req, res) => {
+  const users = await userService.getAllDriversFromDB(req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Driver retrived successfully",
+    data: users,
+  });
+});
 const getMyCustomers = catchAsync(async (req, res) => {
   const users = await userService.getMyCustomersFromDB(req.query , req.user.id);
   sendResponse(res, {
@@ -182,6 +191,8 @@ const createUserByOwner = catchAsync(async(req , res)=>{
 })
 
 
+
+
 export const UserControllers = {
   buyerOtpLogin,
   createUserByOwner,
@@ -196,5 +207,6 @@ export const UserControllers = {
   verifyMyAccount,
   getCustomersForBranch,
   getAllAgents,
-  getMyCustomers
+  getMyCustomers,
+  getAllDrivers
 };

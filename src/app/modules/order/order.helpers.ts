@@ -165,7 +165,7 @@ export const mergeOrCreateOrderProduct = async (
     return newOrderProduct;
   }
 };
-
+ 
 /**
  * Update totalProductOrder aggregation for the day
  * Tracks total orders, weight, price, cancellations, returns per product per day
@@ -232,7 +232,7 @@ export const updateDailyProductAggregation = async (
           totalPrice: price,
           acceptedWeight: 0,
           rejectedWeight: 0,
-          returnWeight: 0,
+          returnedWeight: 0,
           orderIds: [dailyOrderId],
           status: "Active",
         },

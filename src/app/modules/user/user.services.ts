@@ -350,6 +350,30 @@ const getAllAgentsFromDB = async (query: any,) => {
   };
 };
 
+//!TODO : optimize this function with delivery boy total orders total earnings etc 
+const getAllDriversFromDB = async (query: any,) => {
+  const keys = await getModelKeys("user");
+  const driverQuery = new QueryBuilder(prisma.user, query, keys);
+  const result = await driverQuery
+      // if branchId exist then set branchId condition
+      .setCustomWhere({
+        role: UserRole.Driver,
+        branchId: query.branchId || undefined,
+      })
+      .search(["fullName", "email"])
+      .filter()
+      .sort()
+      .exclude()
+      .paginate()
+      .execute();
+
+  const pagination = await driverQuery.countTotal();
+  return {
+    meta: pagination,
+    result,
+  };
+};
+
 const updateUser = async (
   payload: User,
   userId: string,
@@ -515,5 +539,6 @@ export const userService = {
   userCreateByOwner,
   getCustomersForBranch,
   getAllAgentsFromDB,
-  getMyCustomersFromDB
+  getMyCustomersFromDB,
+  getAllDriversFromDB
 };

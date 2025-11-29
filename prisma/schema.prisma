@@ -402,19 +402,19 @@ model totalProductOrder {
   branchId          String             @db.ObjectId
   branch            branch             @relation(fields: [branchId], references: [id])
   totalOrders       Int?
-  totalQuantity     Int?               @default(0) 
+  totalQuantity     Int?               @default(0)
   totalWeight       Float?
-  totalPrice        Float?             @default(0) 
+  totalPrice        Float?             @default(0)
   // Separate fields for accepted, rejected, and returned weights 
-  acceptedWeight    Float?             @default(0) 
-  rejectedWeight    Float?             @default(0) 
-  returnedWeight    Float?             @default(0) 
+  acceptedWeight    Float?             @default(0)
+  rejectedWeight    Float?             @default(0)
+  returnedWeight    Float?             @default(0)
   // Separate fields for accepted, rejected, and returned prices
-  acceptedPrice     Float?             @default(0) 
-  rejectedPrice     Float?             @default(0) 
-  returnedPrice     Float?             @default(0) 
+  acceptedPrice     Float?             @default(0)
+  rejectedPrice     Float?             @default(0)
+  returnedPrice     Float?             @default(0)
   // Store main order IDs associated with this product on that date
-  orderIds          String[]           @db.ObjectId 
+  orderIds          String[]           @db.ObjectId
   orderDateString   String
   status            OrderProductStatus @default(Active)
   createdAt         DateTime           @default(now())
@@ -434,13 +434,14 @@ enum OrderProductStatus {
 enum OrderStatus {
   Pending
   Active
-  OnTheway
+  OnTheWay
   Delivered
   Cancelled
 }
 
 enum PaymentMethod {
   COD // cash on delivery
+  Cash // cash payment
   Wallet // wallet amount used
   Credit // delivery boy assign as credit and user clear dues later
   QrCode // delivery boy show scanner and collects payment

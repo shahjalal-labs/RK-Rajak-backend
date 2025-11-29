@@ -43,6 +43,6 @@ export interface ICancelOrderPayload {
 
 
 export type AssignOrdersPayload = {
-  mainOrdersIds: string[];
+  ordersIds: string[];
   driverId: string;
 }

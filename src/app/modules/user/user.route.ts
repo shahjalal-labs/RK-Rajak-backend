@@ -33,6 +33,7 @@ router.post(
 router.get("/", auth(UserRole.Owner), UserControllers.getUsers);
 router.get("/customers/:branchId", auth(UserRole.Owner , UserRole.SuperAdmin), UserControllers.getCustomersForBranch);
 router.get('/all-agents', auth(UserRole.Owner, UserRole.SuperAdmin), UserControllers.getAllAgents);
+router.get('/all-drivers', auth(UserRole.Owner, UserRole.SuperAdmin), UserControllers.getAllDrivers);
 router.get('/my-customers', auth(UserRole.Agent), UserControllers.getMyCustomers);
 router.get(
   "/single/:id",

@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Router } from "express";
 import { orderControllers } from "./order.controller";
 import auth from "../../middlewares/auth";
 import validateRequest from "../../middlewares/validateRequest";
@@ -102,11 +102,31 @@ router.put(
   orderControllers.adjustProductQuantity
 );
 
-
 //** SuperAdmin calculations branch and day wised */
 router.get(
   "/calculations/branchId/:branchId",
   auth(UserRole.SuperAdmin),
   orderControllers.getBranchDayWiseCalculations
 );
+
+
+//** Driver Routes */
+
+router.get(
+  "/main/driver-my-assigned-orders",
+  auth(UserRole.Driver),
+  orderControllers.getMyAssignedOrders
+);
+
+router.post(
+  "/assign-delivery-to-driver",
+  auth(UserRole.SuperAdmin),
+  validateRequest(OrderValidation.orderAssignToDriverSchema),
+  orderControllers.assignOrdersDeliveryToDriver
+);
+
+router.get("/driver/total-assigned-order-products", auth(UserRole.Driver), orderControllers.getTotalAssignedOrderProducts);
+router.get("/driver/total-assigned-returned-products", auth(UserRole.Driver), orderControllers.getTotalAssignedReturnedProducts);
+router.get("/get-orderdetails-for-driver/:orderId", auth(UserRole.Driver), orderControllers.getOrderDetailsForDriver);
+router.patch("/delivered-order/:orderId", validateRequest(OrderValidation.MarkOrderAsDeliveredSchema), auth(UserRole.Driver), orderControllers.markOrderAsDelivered);
 export const orderRoutes = router;
