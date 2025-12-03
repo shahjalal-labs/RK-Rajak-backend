@@ -30,19 +30,7 @@ export const createOrderSchema = z.object({
 export const cancelOrderSchema = z.object({
   orderId: z.string({ required_error: "Order ID is required" }),
   reason: z.string().optional(),
-  products: z
-    .array(
-      z.object({
-        orderProductId: z.string({
-          required_error: "Order product ID is required",
-        }),
-        cancelQuantity: z
-          .number()
-          .int()
-          .positive("Cancel quantity must be positive"),
-      })
-    )
-    .optional(), // If not provided, cancel entire order
+  productId: z.string().optional(), // If not provided, cancel entire order
 });
 
 // Return order schema
@@ -54,10 +42,6 @@ export const returnOrderSchema = z.object({
         orderProductId: z.string({
           required_error: "Order product ID is required",
         }),
-        returnQuantity: z
-          .number()
-          .int()
-          .positive("Return quantity must be positive"),
       })
     )
     .min(1, "At least one product must be returned"),
@@ -111,15 +95,15 @@ const orderAssignToDriverSchema = z.object({
 });
 
 const MarkOrderAsDeliveredSchema = z.object({
-  payments: z.array(
-    z.object({
-      method: z.enum(["Cash", "Wallet", "Credit", "QrCode"]),
-      amount: z.number().positive(),
-    })
-  )
-  .min(1, "At least one payment entry is required"),
+  payments: z
+    .array(
+      z.object({
+        method: z.enum(["Cash", "Pre_Paid", "Credit", "QrCode"]),
+        amount: z.number().positive().optional(),
+      })
+    )
+    .min(1, "At least one payment entry is required"),
 });
-
 
 export const OrderValidation = {
   createOrderSchema,

@@ -1,9 +1,11 @@
-import express, { Router } from "express";
+import express from "express";
 import { orderControllers } from "./order.controller";
 import auth from "../../middlewares/auth";
 import validateRequest from "../../middlewares/validateRequest";
 import { OrderValidation } from "./order.validation";
 import { UserRole } from "@prisma/client";
+import { fileUploader } from "../../../helpers/fileUploadHelper";
+import { parseBodyData } from "../../middlewares/parseBodyData";
 
 const router = express.Router();
 
@@ -33,14 +35,10 @@ router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);
 router.get("/today", auth("Customer"), orderControllers.getTodayOrder);
 
 /**
- * GET /api/orders/:id 
+ * GET /api/orders/:id
  * Get order by ID
  */
-router.get(
-  "/:id",
-  auth(),
-  orderControllers.getOrderById
-);
+router.get("/:id", auth(), orderControllers.getOrderById);
 
 // ========== Admin/Owner Routes ==========
 
@@ -51,8 +49,8 @@ router.get(
 
 router.get(
   "/all-daily-orders/admin",
-  (req,res, next)=>{
-      console.log("hit"), next()
+  (req, res, next) => {
+    console.log("hit"), next();
   },
   auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
   orderControllers.getAllDailyOrders
@@ -85,11 +83,34 @@ router.put(
 router.put(
   "/products/:totalorderProductId/rejectByAdmin",
   auth(UserRole.SuperAdmin, UserRole.Admin, UserRole.Owner),
-  validateRequest(OrderValidation.rejectProductSchema),
   orderControllers.rejectProductByAdmin
 );
 
-// ========== Driver Routes ==========
+//** --------------------------------SuperAdmin calculations branch and day wised  ----------------------------------- */
+
+
+router.get(
+  "/calculations/branchId/:branchId",
+  auth(UserRole.SuperAdmin),
+  orderControllers.getBranchDayWiseCalculations
+);
+
+router.post(
+  "/assign-delivery-to-driver",
+  auth(UserRole.SuperAdmin),
+  validateRequest(OrderValidation.orderAssignToDriverSchema),
+  orderControllers.assignOrdersDeliveryToDriver
+);
+
+
+
+//**------------------------------- Driver Routes----------------------------------------- */
+
+router.get(
+  "/main/driver-my-assigned-orders",
+  auth(UserRole.Driver),
+  orderControllers.getMyAssignedOrders
+);
 
 /**
  * PUT /api/orders/products/:orderProductId/adjust
@@ -102,31 +123,39 @@ router.put(
   orderControllers.adjustProductQuantity
 );
 
-//** SuperAdmin calculations branch and day wised */
 router.get(
-  "/calculations/branchId/:branchId",
-  auth(UserRole.SuperAdmin),
-  orderControllers.getBranchDayWiseCalculations
-);
-
-
-//** Driver Routes */
-
-router.get(
-  "/main/driver-my-assigned-orders",
+  "/driver/total-assigned-order-products",
   auth(UserRole.Driver),
-  orderControllers.getMyAssignedOrders
+  orderControllers.getTotalAssignedOrderProducts
 );
+router.get(
+  "/driver/total-assigned-returned-products",
+  auth(UserRole.Driver),
+  orderControllers.getTotalAssignedReturnedProducts
+);
+router.get(
+  "/get-orderdetails-for-driver/:orderId",
+  auth(UserRole.Driver),
+  orderControllers.getOrderDetailsForDriver
+);
+router.patch(
+  "/delivered-order/:orderId",
+  fileUploader.uploadSingle,
+  parseBodyData,
+  validateRequest(OrderValidation.MarkOrderAsDeliveredSchema),
+  auth(UserRole.Driver),
+  orderControllers.markOrderAsDelivered
+);
+
+/* 1.Cancel Order , 
+  2. Cancel Just products , 
+  3. Cancel quantity of products */
 
 router.post(
-  "/assign-delivery-to-driver",
-  auth(UserRole.SuperAdmin),
-  validateRequest(OrderValidation.orderAssignToDriverSchema),
-  orderControllers.assignOrdersDeliveryToDriver
+  "/cancel-order-by-driver",
+  auth(UserRole.Customer , UserRole.Driver),
+  validateRequest(OrderValidation.cancelOrderSchema),
+  orderControllers.cancelOrderByCustomer
 );
 
-router.get("/driver/total-assigned-order-products", auth(UserRole.Driver), orderControllers.getTotalAssignedOrderProducts);
-router.get("/driver/total-assigned-returned-products", auth(UserRole.Driver), orderControllers.getTotalAssignedReturnedProducts);
-router.get("/get-orderdetails-for-driver/:orderId", auth(UserRole.Driver), orderControllers.getOrderDetailsForDriver);
-router.patch("/delivered-order/:orderId", validateRequest(OrderValidation.MarkOrderAsDeliveredSchema), auth(UserRole.Driver), orderControllers.markOrderAsDelivered);
 export const orderRoutes = router;

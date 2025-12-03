@@ -41,8 +41,18 @@ export interface ICancelOrderPayload {
   }[]; // If provided, cancel specific products; if not, cancel entire order
 }
 
-
 export type AssignOrdersPayload = {
   ordersIds: string[];
   driverId: string;
+};
+
+// Cancel order schema (supports partial or full cancellation)
+export interface ICancelOrderByCustomerPayload {
+  orderId: string;
+  reason?: string;
+  productId?: string; // If provided, cancel specific products; if not, cancel entire order
 }
+
+// orderId
+// reason
+// productId

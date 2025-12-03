@@ -525,6 +525,45 @@ const getMyCustomersFromDB = async (query: any, userId: string) => {
   };
 };
 
+const rateUser = async (payload: { userId: string; rating: number; review?: string }) => {
+  const { userId, rating, review } = payload;
+
+  await prisma.$transaction(async (tx) => {
+    // 1) Check user exists & is Customer
+    const user = await tx.user.findFirst({
+      where: { id: userId, role: UserRole.Customer },
+    });
+
+    if (!user) {
+      throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+    }
+
+    // 2) Create review
+    await tx.review.create({
+      data: {
+        userId,
+        rating,
+        comment: review || "",
+      },
+    });
+
+    // 3) Aggregate: get average rating directly from DB (fastest)
+    const { _avg } = await tx.review.aggregate({
+      where: { userId },
+      _avg: { rating: true },
+    });
+
+    // 4) Update user with average rating
+    await tx.user.update({
+      where: { id: userId },
+      data: { buyerRating: _avg.rating ? parseFloat(_avg.rating.toFixed(2)) : 0 },
+    });
+  });
+
+  return;
+};
+
+
 export const userService = {
   buyerOtpLogin,
   getUsers,
@@ -540,5 +579,6 @@ export const userService = {
   getCustomersForBranch,
   getAllAgentsFromDB,
   getMyCustomersFromDB,
-  getAllDriversFromDB
+  getAllDriversFromDB,
+  rateUser
 };

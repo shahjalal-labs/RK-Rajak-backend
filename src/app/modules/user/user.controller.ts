@@ -189,8 +189,15 @@ const createUserByOwner = catchAsync(async(req , res)=>{
     data: result,
   });
 })
-
-
+const rateUser = catchAsync(async(req , res)=>{
+  const result = await userService.rateUser(req.body)
+  sendResponse(res, {
+    success: true,
+    statusCode: 201,
+    message: "User rated successfully",
+    data: result,
+  });
+})
 
 
 export const UserControllers = {
@@ -208,5 +215,6 @@ export const UserControllers = {
   getCustomersForBranch,
   getAllAgents,
   getMyCustomers,
-  getAllDrivers
+  getAllDrivers,
+  rateUser
 };

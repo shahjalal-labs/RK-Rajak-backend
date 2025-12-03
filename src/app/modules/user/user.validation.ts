@@ -37,10 +37,17 @@ const userCreateValidation = z.object({
   branchId: z.string({ required_error: "Branch ID is required" }),
 });
 
+const userRatingValidation = z.object({
+  userId: z.string({ required_error: "User ID is required" }),
+  rating: z.number({ required_error: "Rating is required" }).min(1).max(5),
+  review: z.string().optional(),
+});
+
 
 export const userValidation = {
   buyerLoginValidation,
   authLoginValidation,
   userVerifyValidation,
-  userCreateValidation
+  userCreateValidation,
+  userRatingValidation
 };

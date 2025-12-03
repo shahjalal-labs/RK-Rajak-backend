@@ -329,6 +329,8 @@ model DailyOrder {
   totalRejectedPrice  Float?           @default(0) // calculated total rejected price from OrderProducts
   totalReturnedPrice  Float?           @default(0) // calculated total returned price from OrderProducts
   status              OrderStatus      @default(Pending)
+  cancellationReason  String?
+  DeliveryProof       String?
   shippingAddressId   String?          @db.ObjectId
   shippingAddress     shippingAddress? @relation(fields: [shippingAddressId], references: [id])
   orderDate           String? // date string for daily orders aggregation
@@ -362,6 +364,9 @@ model OrderProduct {
   product               product?                @relation(fields: [productId], references: [id])
   productId             String?                 @db.ObjectId
   totalWeight           Float?                  @default(0) // Total weight for this product and its can editable in future by admin and delivery driver
+  totalQuantity         Float?                  @default(0) // Total quantity for this product and its can editable in future by admin and delivery driver
+  acceptedQuantity      Float?                  @default(0)
+  returnedQuantity      Float?                  @default(0)
   totalPrice            Float?                  @default(0) // Total price for this product and its can editable in future by admin and delivery driver
   totalWalletAmountUsed Float?                  @default(0) // total wallet amount used for this product
   returnedPrice         Float?                  @default(0)
@@ -428,7 +433,9 @@ enum OrderProductStatus {
   Active // defult and also when return partial or cancelled partial
   Confirmed // when admin or superadmin accept the order product
   Returned // if delivery driver cancel fully then its called returned
+  PartialReturned // if delivery driver cancel partial then its called partial returned
   Cancelled // if admin or superAdmin cancelled it called cancelled
+  PartialCancelled // if admin or superAdmin cancelled partial then its called partial cancelled
 }
 
 enum OrderStatus {
@@ -437,12 +444,14 @@ enum OrderStatus {
   OnTheWay
   Delivered
   Cancelled
+  Returned
 }
 
 enum PaymentMethod {
   COD // cash on delivery
   Cash // cash payment
   Wallet // wallet amount used
+  Pre_Paid // pre-paid online payment
   Credit // delivery boy assign as credit and user clear dues later
   QrCode // delivery boy show scanner and collects payment
   Online // after clearing dues

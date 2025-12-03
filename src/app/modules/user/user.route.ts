@@ -31,13 +31,29 @@ router.post(
 );
 
 router.get("/", auth(UserRole.Owner), UserControllers.getUsers);
-router.get("/customers/:branchId", auth(UserRole.Owner , UserRole.SuperAdmin), UserControllers.getCustomersForBranch);
-router.get('/all-agents', auth(UserRole.Owner, UserRole.SuperAdmin), UserControllers.getAllAgents);
-router.get('/all-drivers', auth(UserRole.Owner, UserRole.SuperAdmin), UserControllers.getAllDrivers);
-router.get('/my-customers', auth(UserRole.Agent), UserControllers.getMyCustomers);
+router.get(
+  "/customers/:branchId",
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  UserControllers.getCustomersForBranch
+);
+router.get(
+  "/all-agents",
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  UserControllers.getAllAgents
+);
+router.get(
+  "/all-drivers",
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  UserControllers.getAllDrivers
+);
+router.get(
+  "/my-customers",
+  auth(UserRole.Agent),
+  UserControllers.getMyCustomers
+);
 router.get(
   "/single/:id",
-  auth(UserRole.Owner, UserRole.Admin, UserRole.SuperAdmin , UserRole.Agent),
+  auth(UserRole.Owner, UserRole.Admin, UserRole.SuperAdmin, UserRole.Agent),
   UserControllers.getSingleUser
 );
 router.patch(
@@ -53,7 +69,7 @@ router.delete(
 );
 router.patch(
   "/update-user/:userId",
-  auth(UserRole.Owner , UserRole.SuperAdmin),
+  auth(UserRole.Owner, UserRole.SuperAdmin),
   fileUploader.profileImage,
   parseBodyData,
   UserControllers.updateUser
@@ -65,6 +81,13 @@ router.post(
   validateRequest(userValidation.userVerifyValidation),
   auth(),
   UserControllers.verifyMyAccount
+);
+
+router.post(
+  "/rate-user",
+  validateRequest(userValidation.userRatingValidation),
+  auth(UserRole.Driver),
+  UserControllers.rateUser
 );
 
 export const userRoutes = router;

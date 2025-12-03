@@ -3,6 +3,7 @@ import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { orderServices } from "./order.service";
 import httpStatus from "http-status";
+import ApiError from "../../../errors/ApiErrors";
 
 /**
  * Create order (handles COD and Wallet)
@@ -212,27 +213,37 @@ const getTotalAssignedReturnedProducts = catchAsync(
   }
 );
 
-const getOrderDetailsForDriver = catchAsync(async (req: Request, res: Response) => {
-  const orderId = req.params.orderId;
-  if (!orderId) {
-    throw new Error("Order ID is required");
+const getOrderDetailsForDriver = catchAsync(
+  async (req: Request, res: Response) => {
+    const orderId = req.params.orderId;
+    if (!orderId) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Order ID is required");
+    }
+    const result = await orderServices.getOrderDetailsForDriver(
+      orderId,
+      req.user.id
+    );
+    sendResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "Order retrieved successfully",
+      data: result,
+    });
   }
-  const result = await orderServices.getOrderDetailsForDriver(orderId, req.user.id);
-  sendResponse(res, {
-    success: true,
-    statusCode: httpStatus.OK,
-    message: "Order retrieved successfully",
-    data: result,
-  });
-});
-
+);
 
 const markOrderAsDelivered = catchAsync(async (req: Request, res: Response) => {
   const orderId = req.params.orderId;
   if (!orderId) {
-    throw new Error("Order ID is required");
+    throw new ApiError(httpStatus.BAD_REQUEST, "Order ID is required");
   }
-  const result = await orderServices.markOrderAsDelivered(orderId, req.user.id, req.body);
+  const deliveryProof = req.file;
+  const result = await orderServices.markOrderAsDelivered(
+    orderId,
+    req.user.id,
+    req.body,
+    deliveryProof
+  );
   sendResponse(res, {
     success: true,
     statusCode: httpStatus.OK,
@@ -241,6 +252,17 @@ const markOrderAsDelivered = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const cancelOrderByCustomer = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.cancelOrderByCustomer(req.body);
+    sendResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "Order cancelled successfully",
+      data: result,
+    });
+  }
+);
 
 export const orderControllers = {
   createOrder,
@@ -258,6 +280,6 @@ export const orderControllers = {
   getTotalAssignedOrderProducts,
   getTotalAssignedReturnedProducts,
   getOrderDetailsForDriver,
-  markOrderAsDelivered
-
+  markOrderAsDelivered,
+  cancelOrderByCustomer,
 };

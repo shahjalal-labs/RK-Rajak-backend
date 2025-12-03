@@ -132,7 +132,8 @@ export const mergeOrCreateOrderProduct = async (
       data: {
         totalWeight: { increment: totalWeight },
         totalPrice: { increment: totalPrice },
-        totalWalletAmountUsed: method === "Wallet" ? { increment: totalPrice } : undefined,
+        totalWalletAmountUsed:
+          method === "Wallet" ? { increment: totalPrice } : undefined,
       },
       include: {
         OrderProductVariation: true,
@@ -165,7 +166,7 @@ export const mergeOrCreateOrderProduct = async (
     return newOrderProduct;
   }
 };
- 
+
 /**
  * Update totalProductOrder aggregation for the day
  * Tracks total orders, weight, price, cancellations, returns per product per day
@@ -243,15 +244,15 @@ export const updateDailyProductAggregation = async (
       where: { id: existing.id },
       data: {
         rejectedWeight: { increment: weight },
-        totalWeight: { decrement: weight },
-        totalPrice: { decrement: price },
+        rejectedPrice: { increment: price },
       },
     });
   } else if (operation === "return" && existing) {
     await tx.totalProductOrder.update({
       where: { id: existing.id },
       data: {
-        returnWeight: { increment: weight },
+        returnedWeight: { increment: weight },
+        returnedPrice: { increment: price },
         totalWeight: { decrement: weight },
         totalPrice: { decrement: price },
       },
@@ -277,6 +278,8 @@ export const recalculateDailyOrderTotal = async (
     return sum + product.totalPrice;
   }, 0);
 
+  console.log({totalAmount})
+
   const dailyOrder = await tx.dailyOrder.findUnique({
     where: { id: dailyOrderId },
   });
@@ -284,8 +287,8 @@ export const recalculateDailyOrderTotal = async (
   if (!dailyOrder) return;
 
   // Calculate remaining amount based on payment method
-  let remainingAmount = totalAmount - (dailyOrder.walletAmountUsed || 0);
-
+  let remainingAmount = Number(totalAmount) - (Number(dailyOrder.walletAmountUsed) || 0);
+  console.log({remainingAmount})
   // Check if it's a dues order
   const isDues = dailyOrder.paymentMethod === "Credit" && remainingAmount > 0;
 
@@ -293,7 +296,7 @@ export const recalculateDailyOrderTotal = async (
     where: { id: dailyOrderId },
     data: {
       totalAmount,
-      RemainingAmount: Math.max(0, remainingAmount),
+      RemainingAmount: remainingAmount,
       isDues,
     },
   });
@@ -573,7 +576,7 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
       data: {
         status: "Cancelled",
         rejectedWeight: totalOrderProduct.totalWeight,
-        rejectedPrice: totalOrderProduct.totalPrice
+        rejectedPrice: totalOrderProduct.totalPrice,
       },
     });
 
@@ -595,6 +598,7 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
         include: {
           order: {
             include: {
+              OrderProducts: true,
               user: {
                 include: { Wallet: true },
               },
@@ -654,14 +658,17 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
 
       // f) Refund wallet if this order used Wallet payment
       //    Use the order relation attached to any orderProduct (all have same order)
-      const orderRelation = orderProducts[0].order;
+      const orderRelation = orderProducts[0].order?.OrderProducts.find(
+        (op) => op.productId === productId
+      );
+      const user = orderProducts[0].order?.user;
       if (
         orderRelation &&
-        orderRelation.paymentMethod === PaymentMethod.Wallet &&
-        orderRelation.user?.Wallet
+        orderRelation.totalWalletAmountUsed &&
+        user?.Wallet
       ) {
-        const walletId = orderRelation.user.Wallet.id;
-        const refundAmount = orderProducts[0].totalWalletAmountUsed!; /// this is wrong -
+        const walletId = user.Wallet.id;
+        const refundAmount = orderRelation.totalWalletAmountUsed; /// this is wrong -
         // const refundAmountUsingWallet = orderRelation // ai amount  ta ai order er sokol product er jonno wallet theke use kora hoyeche amd bujte hobe exactly ai product er jonno koto ta use hoyeche then sei amount ta refund korte hobe
 
         if (refundAmount > 0) {

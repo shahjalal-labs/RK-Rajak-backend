@@ -6,7 +6,11 @@ import {
 } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import { AssignOrdersPayload, ICreateOrderPayload } from "./order.interface";
+import {
+  AssignOrdersPayload,
+  ICancelOrderByCustomerPayload,
+  ICreateOrderPayload,
+} from "./order.interface";
 import {
   getOrCreateDailyOrder,
   mergeOrCreateOrderProduct,
@@ -19,6 +23,7 @@ import {
   getDailyProductSummary,
 } from "./order.helpers";
 import { JwtPayload } from "jsonwebtoken";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
 
 const prisma = new PrismaClient();
 
@@ -468,8 +473,16 @@ const getAllDailyOrders = async (queryParams: any) => {
           profileImage: true,
         },
       },
+      totalAmount: true,
+      walletAmountUsed: true,
       totalWeight: true,
       totalAcceptedWeight: true,
+      totalAcceptedPrice: true,
+      totalRejectedWeight: true,
+      totalRejectedPrice: true,
+      totalReturnedWeight: true,
+      totalReturnedPrice: true,
+      RemainingAmount: true,
       orderDate: true,
       status: true,
       shippingAddress: {
@@ -809,6 +822,9 @@ const getTotalAssignedOrderProducts = async (driverId: string) => {
   const assignedOrders = await prisma.driverAssignment.findMany({
     where: {
       driverId,
+      dailyOrder: {
+        status: { equals: OrderStatus.OnTheWay },
+      },
       assignedAt: {
         gte: startOfDay,
         lte: endOfDay,
@@ -858,19 +874,24 @@ const getTotalAssignedOrderProducts = async (driverId: string) => {
   const productMap = new Map(products.map((p) => [p.id, p]));
 
   // 5️ Build final result array
-  const finalResult = groupedProducts.map((gp) => {
-    const product = productMap.get(gp.productId!);
+  // Implemenet - whose are accepted must be getter then 0
+  const finalResult = groupedProducts
+    .filter((gp) => (gp._sum.acceptedWeight || 0) > 0)
+    .map((gp) => {
+      const product = productMap.get(gp.productId!);
 
-    return {
-      productId: gp.productId,
-      productName: product?.name || "",
-      productImage:
-        product?.images && product.images.length > 0 ? product.images[0] : null,
-      totalDeliveryWeight: gp._sum.acceptedWeight || 0,
-      totalPrice: gp._sum.acceptedPrice || 0,
-      orderCount: gp._count.orderId,
-    };
-  });
+      return {
+        productId: gp.productId,
+        productName: product?.name || "",
+        productImage:
+          product?.images && product.images.length > 0
+            ? product.images[0]
+            : null,
+        totalDeliveryWeight: gp._sum.acceptedWeight || 0,
+        totalPrice: gp._sum.acceptedPrice || 0,
+        orderCount: gp._count.orderId,
+      };
+    });
 
   return {
     totalAssignedProducts: finalResult,
@@ -982,18 +1003,27 @@ const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
       totalAmount: true,
       totalWeight: true,
       totalAcceptedWeight: true,
+      totalRejectedWeight: true,
+      totalReturnedWeight: true,
       totalAcceptedPrice: true,
+      totalRejectedPrice: true,
+      totalReturnedPrice: true,
+      status: true,
       orderDate: true,
       paymentMethod: true,
       walletAmountUsed: true,
       RemainingAmount: true,
+      DeliveryProof: true,
       OrderProducts: {
-        select: {
-          totalPrice: true,
-          acceptedWeight: true,
-          acceptedPrice: true,
+        where :{
+          status : {
+            not : "Cancelled"
+          }
+        },
+        include: {
           product: {
             select: {
+              id : true,
               name: true,
               images: true,
             },
@@ -1031,7 +1061,7 @@ const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
 };
 
 type PaymentEntry = {
-  method: "Cash" | "Wallet" | "Credit" | "QrCode";
+  method: "Cash" | "Wallet" | "Credit" | "QrCode" | "Pre_Paid";
   amount: number;
 };
 
@@ -1042,7 +1072,8 @@ type MarkOrderAsDeliveredPayload = {
 const markOrderAsDelivered = async (
   orderId: string,
   driverId: string,
-  payload: MarkOrderAsDeliveredPayload
+  payload: MarkOrderAsDeliveredPayload,
+  deliveryProof?: Express.Multer.File
 ) => {
   // Validate assignment
   const assignment = await prisma.driverAssignment.findFirst({
@@ -1067,7 +1098,10 @@ const markOrderAsDelivered = async (
     );
   }
 
-  const totalPaid = payload.payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = payload.payments.reduce(
+    (sum, p) => sum + (p.amount || 0),
+    0
+  );
 
   // Priority logic
   const hasCredit = payload.payments.some((p) => p.method === "Credit");
@@ -1083,6 +1117,12 @@ const markOrderAsDelivered = async (
     primaryMethod = payload.payments[0].method as PaymentMethod;
   }
 
+  let deliveryProofUrl: string | undefined = undefined;
+
+  if (deliveryProof) {
+    deliveryProofUrl = (await uploadToDigitalOceanAWS(deliveryProof)).Location;
+  }
+
   // Single DB update
   await prisma.dailyOrder.update({
     where: { id: orderId },
@@ -1090,18 +1130,172 @@ const markOrderAsDelivered = async (
       status: OrderStatus.Delivered,
       paymentMethod: primaryMethod,
       RemainingAmount: { decrement: totalPaid },
+      DeliveryProof: deliveryProofUrl,
     },
   });
 
-  // // OPTIONAL: Save each payment method in a separate table
-  // await prisma.paymentHistory.createMany({
-  //   data: payload.payments.map(p => ({
-  //     orderId,
-  //     driverId,
-  //     method: p.method,
-  //     amount: p.amount,
-  //   })),
-  // });
+  //!TODO: Handle payment history logging if needed
+  /*
+  //** Check still remaing exist or not! if Exist then change the isDues : true with paymentMethod : "credit"*/
+  const order = await prisma.dailyOrder.findUnique({
+    where: { id: orderId },
+  });
+  if (order && order.RemainingAmount > 0) {
+    await prisma.dailyOrder.update({
+      where: { id: orderId },
+      data: {
+        isDues: true,
+        paymentMethod: "Credit",
+      },
+    });
+  }
+};
+
+const cancelOrderByCustomer = async (
+  payload: ICancelOrderByCustomerPayload
+) => {
+  const { orderId, productId, reason } = payload;
+
+  // =================== FETCH ORDER ===================
+  const order = await prisma.dailyOrder.findUnique({
+    where: { id: orderId },
+    include: { OrderProducts: true },
+  });
+
+  if (!order) throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
+
+  // =====================================================================================
+  //   CASE 1: FULL ORDER CANCEL (ONLY orderId PROVIDED)
+  // =====================================================================================
+  if (!productId) {
+    await prisma.$transaction(async (tx) => {
+      // Cancel main order
+      await tx.dailyOrder.update({
+        where: { id: orderId },
+        data: {
+          status: "Returned",
+          cancellationReason: reason ?? "Cancelled by Customer",
+          totalReturnedWeight: order.totalAcceptedWeight,
+          totalReturnedPrice: order.totalAcceptedPrice,
+          RemainingAmount: 0,
+        },
+      });
+
+      // Cancel all products
+      for (const op of order.OrderProducts) {
+        await tx.orderProduct.update({
+          where: { id: op.id },
+          data: {
+            status: "Returned",
+            returnedWeight: op.acceptedWeight,
+            returnedPrice: op.acceptedPrice,
+            acceptedWeight: 0,
+            acceptedPrice: 0,
+            returnedQuantity: op.acceptedQuantity,
+          },
+        });
+
+        // Daily aggregation update
+        await updateDailyProductAggregation(
+          op.productId!,
+          orderId,
+          op.acceptedWeight!,
+          op.acceptedPrice!,
+          "return",
+          tx,
+          "",
+          order.branchId!
+        );
+
+        // Update totalProductOrder
+        const dailyAgg = await tx.totalProductOrder.findFirst({
+          where: { orderIds: { has: orderId } },
+        });
+
+        if (dailyAgg) {
+          await tx.totalProductOrder.update({
+            where: { id: dailyAgg.id },
+            data: {
+              returnedWeight:
+                (dailyAgg.returnedWeight || 0) + op.acceptedWeight!,
+              returnedPrice: (dailyAgg.returnedPrice || 0) + op.acceptedPrice!,
+            },
+          });
+        }
+      }
+    });
+
+    return { message: "Full order cancelled successfully" };
+  }
+
+  // =====================================================================================
+  //   CASE 2: FULL PRODUCT CANCEL (orderId + productId)
+  // =====================================================================================
+
+  const orderProduct = order.OrderProducts.find(
+    (op) => op.productId === productId
+  );
+
+  if (!orderProduct) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Product ${productId} not found in this order`
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Full cancel product
+    await tx.orderProduct.update({
+      where: { id: orderProduct.id },
+      data: {
+        status: "PartialReturned",
+        returnedWeight: orderProduct.acceptedWeight,
+        returnedPrice: orderProduct.acceptedPrice,
+        acceptedWeight: 0,
+        acceptedPrice: 0,
+        returnedQuantity: orderProduct.acceptedQuantity,
+      },
+    });
+
+    // Update aggregation
+    await updateDailyProductAggregation(
+      orderProduct.productId!,
+      orderId,
+      orderProduct.acceptedWeight!,
+      orderProduct.acceptedPrice!,
+      "return",
+      tx,
+      "",
+      order.branchId!
+    );
+
+    // Update totalProductOrder
+    const dailyAgg = await tx.totalProductOrder.findFirst({
+      where: { orderIds: { has: orderId } },
+    });
+
+    if (dailyAgg) {
+      await tx.totalProductOrder.update({
+        where: { id: dailyAgg.id },
+        data: {
+          returnedWeight:
+            (dailyAgg.returnedWeight || 0) + orderProduct.acceptedWeight!,
+          returnedPrice:
+            (dailyAgg.returnedPrice || 0) + orderProduct.acceptedPrice!,
+        },
+      });
+    }
+
+    // Optional reason
+    if (reason) {
+      await tx.dailyOrder.update({
+        where: { id: orderId },
+        data: { cancellationReason: reason },
+      });
+    }
+  });
+
+  return { message: "Product cancelled successfully" };
 };
 
 export const orderServices = {
@@ -1123,4 +1317,5 @@ export const orderServices = {
   getTotalAssignedReturnedProducts,
   getOrderDetailsForDriver,
   markOrderAsDelivered,
+  cancelOrderByCustomer,
 };
