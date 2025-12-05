@@ -1203,7 +1203,6 @@ const cancelOrderByCustomer = async (
   payload: ICancelOrderByCustomerPayload
 ) => {
   //! TODO : Refund After cancellation if paid by wallet
-
   let refundAmount: number = 0;
   let totalPrice: number = 0;
   let decressRemaining: number = 0;
@@ -1213,7 +1212,7 @@ const cancelOrderByCustomer = async (
   // =================== FETCH ORDER ===================
   const order = await prisma.dailyOrder.findUnique({
     where: { id: orderId },
-    include: { OrderProducts: true },
+    include: { OrderProducts: true, user: { include: { Wallet: true } } },
   });
 
   if (!order) throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
@@ -1274,8 +1273,25 @@ const cancelOrderByCustomer = async (
           order.branchId!
         );
       }
-    });
 
+      // refund logic if paid by wallet
+      if (order.walletAmountUsed! > 0 && order.user?.Wallet) {
+        await tx.wallet.update({
+          where: { id: order.user.Wallet.id },
+          data: { balance: { increment: order.walletAmountUsed || 0 } },
+        });
+
+        await tx.walletTransaction.create({
+          data: {
+            walletId: order.user.Wallet.id,
+            amount: order.walletAmountUsed || 0,
+            type: "Credit",
+            description: "Refund for returned order (Admin rejected)",
+            status: "Success",
+          },
+        });
+      }
+    });
     return { message: "Full order cancelled successfully" };
   }
 
@@ -1329,6 +1345,26 @@ const cancelOrderByCustomer = async (
       order.branchId!
     );
 
+    // refund logic if paid by wallet
+    const productRefundAmount = orderProduct.totalWalletAmountUsed || 0;
+    const decressRemainingAmount =
+      orderProduct.acceptedPrice! - productRefundAmount;
+    if (productRefundAmount > 0 && order.user?.Wallet) {
+      await tx.wallet.update({
+        where: { id: order.user.Wallet.id },
+        data: { balance: { increment: productRefundAmount } },
+      });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: order.user.Wallet.id,
+          amount: productRefundAmount,
+          type: "Credit",
+          description: `Refund for returned product ${orderProduct.productId} (Admin rejected)`,
+          status: "Success",
+        },
+      });
+    }
+
     // Optional reason
     await tx.dailyOrder.update({
       where: { id: orderId },
@@ -1337,9 +1373,11 @@ const cancelOrderByCustomer = async (
         cancellationReason: reason ?? "Cancelled by Customer",
         totalReturnedWeight: { increment: orderProduct.acceptedWeight! },
         totalReturnedPrice: { increment: orderProduct.acceptedPrice! },
-        RemainingAmount: { decrement: orderProduct.acceptedPrice! },
+        RemainingAmount: { decrement: decressRemainingAmount },
       },
     });
+
+    
   });
 
   // DONE : Check if all products are returned then update main order status to returned
