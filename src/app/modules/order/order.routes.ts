@@ -3,7 +3,7 @@ import { orderControllers } from "./order.controller";
 import auth from "../../middlewares/auth";
 import validateRequest from "../../middlewares/validateRequest";
 import { OrderValidation } from "./order.validation";
-import { UserRole } from "@prisma/client";
+import { UserRole, User } from '@prisma/client';
 import { fileUploader } from "../../../helpers/fileUploadHelper";
 import { parseBodyData } from "../../middlewares/parseBodyData";
 
@@ -156,6 +156,20 @@ router.post(
   auth(UserRole.Customer , UserRole.Driver),
   validateRequest(OrderValidation.cancelOrderSchema),
   orderControllers.cancelOrderByCustomer
+);
+
+/* 
+  1. Adjust the total weight and also total price in order product 
+    recalculate the main order total price , save in returnweigth , returnprice, status = partialReturned 
+    recalculate order product object same as main order
+    recalculate totalOrderProducts on that orderproduct 
+  2. calculcate new remaining price and if he was use wallet the give back the remaining amount to wallet
+*/
+router.put(
+  "/products/:orderProductId/return",
+  auth(UserRole.Driver , UserRole.SuperAdmin , UserRole.Owner),
+  validateRequest(OrderValidation.returnProductSchema),
+  orderControllers.returnOrderProduct
 );
 
 export const orderRoutes = router;

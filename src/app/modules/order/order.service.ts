@@ -10,6 +10,7 @@ import {
   AssignOrdersPayload,
   ICancelOrderByCustomerPayload,
   ICreateOrderPayload,
+  IOrderAdjustMent,
 } from "./order.interface";
 import {
   getOrCreateDailyOrder,
@@ -1376,8 +1377,6 @@ const cancelOrderByCustomer = async (
         RemainingAmount: { decrement: decressRemainingAmount },
       },
     });
-
-    
   });
 
   // DONE : Check if all products are returned then update main order status to returned
@@ -1399,8 +1398,186 @@ const cancelOrderByCustomer = async (
   return { message: "Product cancelled successfully" };
 };
 
+const returnOrderProduct = async (orderProductId: string, payload: IOrderAdjustMent) => {
+  const {returnWeight, returnPrice } = payload;
+
+  // 1) Fetch orderProduct with order and user wallet
+  const orderProduct = await prisma.orderProduct.findUnique({
+    where: { id: orderProductId },
+    include: {
+      order: {
+        include: {
+          user: { include: { Wallet: true } },
+          OrderProducts: true, // later we'll need to check all products
+        },
+      },
+    },
+  });
+
+  if (!orderProduct) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
+  }
+
+  // 2) Validation
+  const maxReturnableWeight =
+    (orderProduct.acceptedWeight || 0) - (orderProduct.returnedWeight || 0);
+  if (returnWeight > maxReturnableWeight) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Return weight exceeds maximum returnable weight of ${maxReturnableWeight} kg`
+    );
+  }
+
+  const maxReturnablePrice =
+    (orderProduct.acceptedPrice || 0) - (orderProduct.returnedPrice || 0);
+  if (returnPrice > maxReturnablePrice) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Return price exceeds maximum returnable price of ${maxReturnablePrice}`
+    );
+  }
+
+  // helper for rounding (2 decimal places)
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+  await prisma.$transaction(async (tx) => {
+    // CURRENT numeric values
+    const prevAcceptedWeight = orderProduct.acceptedWeight || 0;
+    const prevAcceptedPrice = orderProduct.acceptedPrice || 0;
+    const prevReturnedWeight = orderProduct.returnedWeight || 0;
+    const prevReturnedPrice = orderProduct.returnedPrice || 0;
+
+    // 3) New accepted / returned values after this return
+    const newReturnedWeight = round2(prevReturnedWeight + returnWeight);
+    const newReturnedPrice = round2(prevReturnedPrice + returnPrice);
+
+    const newAcceptedWeight = round2(prevAcceptedWeight - returnWeight);
+    const newAcceptedPrice = round2(prevAcceptedPrice - returnPrice);
+
+    // 4) Wallet refund: pro-rata based on acceptedPrice portion
+    const walletAmountUsedForProduct = orderProduct.totalWalletAmountUsed || 0;
+    // if acceptedPrice was zero, avoid divide by zero
+    const refundAmount =
+      prevAcceptedPrice > 0
+        ? round2((walletAmountUsedForProduct * returnPrice) / prevAcceptedPrice)
+        : 0;
+
+    // 5) Update orderProduct fields
+    // - increment returnedWeight/Price
+    // - decrement acceptedWeight/Price
+    // - optionally update returnedQuantity/acceptedQuantity if you track quantity (left as is currently)
+    // - set status based on whether fully returned
+    const productStatus =
+      newAcceptedWeight === 0 && newAcceptedPrice === 0 ? "Returned" : "PartialReturned";
+
+    await tx.orderProduct.update({
+      where: { id: orderProductId },
+      data: {
+        returnedWeight: { set: newReturnedWeight },
+        returnedPrice: { set: newReturnedPrice },
+        acceptedWeight: { set: newAcceptedWeight },
+        acceptedPrice: { set: newAcceptedPrice },
+        status: productStatus,
+        // if you want, update returnedQuantity/acceptedQuantity here
+        // returnedQuantity: { increment: <...> },
+        // acceptedQuantity: { decrement: <...> },
+      },
+    });
+
+    // 6) Update daily aggregation for the returned amount
+    await updateDailyProductAggregation(
+      orderProduct.productId!,
+      orderProduct.orderId!,
+      returnWeight,
+      returnPrice,
+      "return",
+      tx,
+      "",
+      orderProduct?.order?.branchId!
+    );
+
+    // 7) Wallet refund transaction (if any)
+    if (refundAmount > 0 && orderProduct.order?.user?.Wallet) {
+      // increment wallet balance
+      await tx.wallet.update({
+        where: { id: orderProduct.order.user.Wallet.id },
+        data: { balance: { increment: refundAmount } },
+      });
+
+      // create wallet transaction
+      await tx.walletTransaction.create({
+        data: {
+          walletId: orderProduct.order.user.Wallet.id,
+          amount: refundAmount,
+          type: "Credit",
+          description: `Refund for returned product ${orderProduct.productId} (by admin)`,
+          status: "Success",
+        },
+      });
+    }
+
+    // 8) Update main order totals: totalReturnedWeight/Price increment, totalAcceptedWeight/Price decrement
+    // Also adjust RemainingAmount: decrease by (returnPrice - refundAmount)
+    const remainingDecrement = round2(Math.max(0, returnPrice - refundAmount));
+
+    // Ensure RemainingAmount not become negative
+    const orderRow = await tx.dailyOrder.findUnique({
+      where: { id: orderProduct.orderId! },
+      select: { RemainingAmount: true, totalAcceptedPrice: true, totalAcceptedWeight: true },
+    });
+
+    const prevRemaining = orderRow?.RemainingAmount || 0;
+    const newRemaining = round2(Math.max(0, prevRemaining - remainingDecrement));
+
+    await tx.dailyOrder.update({
+      where: { id: orderProduct.orderId! },
+      data: {
+        totalReturnedWeight: { increment: returnWeight },
+        totalReturnedPrice: { increment: returnPrice },
+        // optionally decrement totalAcceptedWeight/Price if you track those
+        totalAcceptedWeight: orderRow?.totalAcceptedWeight !== undefined ? { decrement: returnWeight } : undefined,
+        totalAcceptedPrice: orderRow?.totalAcceptedPrice !== undefined ? { decrement: returnPrice } : undefined,
+        RemainingAmount: { set: newRemaining },
+        status: "PartialReturned", // we'll finalize status check after transaction
+      },
+    });
+  }); // end transaction
+
+  // 9) AFTER transaction: check if all products are returned to set main order status to Returned
+  // Fetch updated order products to decide
+  const updatedOrder = await prisma.dailyOrder.findUnique({
+    where: { id: orderProduct.orderId! },
+    include: { OrderProducts: true },
+  });
+
+  if (!updatedOrder) {
+    // this is unlikely, but handle defensively
+    return { message: "Product returned and order updated" };
+  }
+
+  const allReturned = updatedOrder.OrderProducts.every(
+    (op) => op.status === "Returned" || op.status === "Cancelled"
+  );
+
+  if (allReturned) {
+    await prisma.dailyOrder.update({
+      where: { id: orderProduct.orderId! },
+      data: { status: "Returned" },
+    });
+  } else {
+    // ensure PartialReturned is set if not all returned
+    await prisma.dailyOrder.update({
+      where: { id: orderProduct.orderId! },
+      data: { status: "PartialReturned" },
+    });
+  }
+
+  return { message: "Product return processed successfully" };
+};
+
 export const orderServices = {
   createOrder,
+  returnOrderProduct,
   placeOrderCOD,
   placeOrderWallet,
   getUserDailyOrders,

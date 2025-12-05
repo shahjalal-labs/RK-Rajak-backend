@@ -105,6 +105,13 @@ const MarkOrderAsDeliveredSchema = z.object({
     .min(1, "At least one payment entry is required"),
 });
 
+
+const returnProductSchema = z.object({
+  returnWeight: z.number().positive("Return weight must be positive"),
+  returnPrice: z.number().positive("Return price must be positive"),
+});
+
+
 export const OrderValidation = {
   createOrderSchema,
   cancelOrderSchema,
@@ -114,5 +121,6 @@ export const OrderValidation = {
   orderAssignToDriverSchema,
   rejectProductSchema,
   adjustProductSchema,
+  returnProductSchema,
   MarkOrderAsDeliveredSchema,
 };

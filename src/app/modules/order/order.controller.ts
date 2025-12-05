@@ -263,6 +263,21 @@ const cancelOrderByCustomer = catchAsync(
     });
   }
 );
+const returnOrderProduct = catchAsync(
+  async (req: Request, res: Response) => {
+    const orderProductId  = req.params.orderProductId;
+    if(!orderProductId){
+      throw new ApiError(httpStatus.BAD_REQUEST, "Order Product ID is required");
+    }
+    const result = await orderServices.returnOrderProduct(orderProductId, req.body);
+    sendResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "Order returned successfully",
+      data: result,
+    });
+  }
+);
 
 export const orderControllers = {
   createOrder,
@@ -282,4 +297,5 @@ export const orderControllers = {
   getOrderDetailsForDriver,
   markOrderAsDelivered,
   cancelOrderByCustomer,
+  returnOrderProduct
 };

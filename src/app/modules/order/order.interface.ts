@@ -56,3 +56,10 @@ export interface ICancelOrderByCustomerPayload {
 // orderId
 // reason
 // productId
+
+
+export interface IOrderAdjustMent {
+orderProductId : string,
+returnWeight : number,
+returnPrice : number,
+}
