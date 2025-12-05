@@ -404,7 +404,31 @@ const getUserDailyOrders = async (userId: string, queryParams: any) => {
 
   return await prisma.dailyOrder.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      totalAmount: true,
+      totalWeight: true,
+      totalAcceptedWeight: true,
+      totalRejectedWeight: true,
+      totalReturnedWeight: true,
+      totalAcceptedPrice: true,
+      totalRejectedPrice: true,
+      totalReturnedPrice: true,
+      paymentMethod: true,
+      walletAmountUsed: true,
+      RemainingAmount: true,
+      status: true,
+      cancellationReason: true,
+      DeliveryProof: true,
+      shippingAddressId: true,
+      orderDate: true,
+      branchId: true,
+      isDues: true,
+      duesCleared: true,
+      duesClearedAt: true,
+      createdAt: true,
+      updatedAt: true,
       OrderProducts: {
         include: {
           product: true,
@@ -526,6 +550,7 @@ const rejectProductByAdmin = async (totalorderProductId: string) => {
 /**
  * Adjust product quantity (Driver)
  */
+
 const adjustProductQuantity = async (
   orderProductId: string,
   newWeight: number,
@@ -733,13 +758,24 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
 
 const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
   const driverId = user.id;
-  const today = getDateString();
+  const { date } = queryParams;
+
+  // Use today's date if no date provided
+  // If date is provided as "YYYY-MM-DD", convert it to a proper Date object
+  let targetDate: Date;
+  if (date) {
+    // Parse YYYY-MM-DD format
+    const parsedDate = new Date(date);
+    targetDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+  } else {
+    targetDate = new Date();
+  }
 
   let where: any = {
     driverId,
     assignedAt: {
-      gte: new Date(new Date(today).setHours(0, 0, 0, 0)),
-      lte: new Date(new Date(today).setHours(23, 59, 59, 999)),
+      gte: new Date(targetDate.setHours(0, 0, 0, 0)),
+      lte: new Date(targetDate.setHours(23, 59, 59, 999)),
     },
   };
   // queryParams.status === "Active" ? send all onTheWay
@@ -749,18 +785,21 @@ const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
   if (queryParams.status) {
     if (queryParams.status === "Active") {
       where = {
+        ...where,
         dailyOrder: {
           status: OrderStatus.OnTheWay,
         },
       };
     } else if (queryParams.status === "Cancelled") {
       where = {
+        ...where,
         dailyOrder: {
           status: OrderStatus.Cancelled,
         },
       };
     } else if (queryParams.status === "Delivered") {
       where = {
+        ...where,
         dailyOrder: {
           status: OrderStatus.Delivered,
         },
@@ -783,9 +822,11 @@ const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
           status: true,
           totalWeight: true,
           totalAcceptedWeight: true,
-          totalRejectedWeight: true,
-          totalReturnedWeight: true,
           totalAcceptedPrice: true,
+          totalRejectedWeight: true,
+          totalRejectedPrice: true,
+          totalReturnedWeight: true,
+          totalReturnedPrice: true,
           RemainingAmount: true,
           shippingAddress: {
             select: {
@@ -1015,15 +1056,15 @@ const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
       RemainingAmount: true,
       DeliveryProof: true,
       OrderProducts: {
-        where :{
-          status : {
-            not : "Cancelled"
-          }
+        where: {
+          status: {
+            not: "Cancelled",
+          },
         },
         include: {
           product: {
             select: {
-              id : true,
+              id: true,
               name: true,
               images: true,
             },
@@ -1076,6 +1117,7 @@ const markOrderAsDelivered = async (
   deliveryProof?: Express.Multer.File
 ) => {
   // Validate assignment
+  const deliveryDate = new Date();
   const assignment = await prisma.driverAssignment.findFirst({
     where: {
       dailyOrderId: orderId,
@@ -1149,11 +1191,23 @@ const markOrderAsDelivered = async (
       },
     });
   }
+  await prisma.driverAssignment.update({
+    where: { id: assignment.id },
+    data: {
+      deliveryDate: deliveryDate,
+    },
+  });
 };
 
 const cancelOrderByCustomer = async (
   payload: ICancelOrderByCustomerPayload
 ) => {
+  //! TODO : Refund After cancellation if paid by wallet
+
+  let refundAmount: number = 0;
+  let totalPrice: number = 0;
+  let decressRemaining: number = 0;
+
   const { orderId, productId, reason } = payload;
 
   // =================== FETCH ORDER ===================
@@ -1167,6 +1221,19 @@ const cancelOrderByCustomer = async (
   // =====================================================================================
   //   CASE 1: FULL ORDER CANCEL (ONLY orderId PROVIDED)
   // =====================================================================================
+
+  // check is Already delivered or cancelled
+  if (
+    order.status === "Delivered" ||
+    order.status === "Returned" ||
+    order.status === "Cancelled"
+  ) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Order is already ${order.status.toLowerCase()}`
+    );
+  }
+
   if (!productId) {
     await prisma.$transaction(async (tx) => {
       // Cancel main order
@@ -1206,22 +1273,6 @@ const cancelOrderByCustomer = async (
           "",
           order.branchId!
         );
-
-        // Update totalProductOrder
-        const dailyAgg = await tx.totalProductOrder.findFirst({
-          where: { orderIds: { has: orderId } },
-        });
-
-        if (dailyAgg) {
-          await tx.totalProductOrder.update({
-            where: { id: dailyAgg.id },
-            data: {
-              returnedWeight:
-                (dailyAgg.returnedWeight || 0) + op.acceptedWeight!,
-              returnedPrice: (dailyAgg.returnedPrice || 0) + op.acceptedPrice!,
-            },
-          });
-        }
       }
     });
 
@@ -1242,17 +1293,26 @@ const cancelOrderByCustomer = async (
       `Product ${productId} not found in this order`
     );
   }
+  // Find the specific product in the order and is already returned or Confirmed or rejected
+
+  if (
+    orderProduct.status === "Cancelled" ||
+    orderProduct.status === "Returned"
+  ) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Product ${productId} is already ${orderProduct.status.toLowerCase()}`
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
     // Full cancel product
     await tx.orderProduct.update({
       where: { id: orderProduct.id },
       data: {
-        status: "PartialReturned",
+        status: "Returned",
         returnedWeight: orderProduct.acceptedWeight,
         returnedPrice: orderProduct.acceptedPrice,
-        acceptedWeight: 0,
-        acceptedPrice: 0,
         returnedQuantity: orderProduct.acceptedQuantity,
       },
     });
@@ -1269,31 +1329,34 @@ const cancelOrderByCustomer = async (
       order.branchId!
     );
 
-    // Update totalProductOrder
-    const dailyAgg = await tx.totalProductOrder.findFirst({
-      where: { orderIds: { has: orderId } },
-    });
-
-    if (dailyAgg) {
-      await tx.totalProductOrder.update({
-        where: { id: dailyAgg.id },
-        data: {
-          returnedWeight:
-            (dailyAgg.returnedWeight || 0) + orderProduct.acceptedWeight!,
-          returnedPrice:
-            (dailyAgg.returnedPrice || 0) + orderProduct.acceptedPrice!,
-        },
-      });
-    }
-
     // Optional reason
-    if (reason) {
-      await tx.dailyOrder.update({
-        where: { id: orderId },
-        data: { cancellationReason: reason },
-      });
-    }
+    await tx.dailyOrder.update({
+      where: { id: orderId },
+      data: {
+        status: "PartialReturned",
+        cancellationReason: reason ?? "Cancelled by Customer",
+        totalReturnedWeight: { increment: orderProduct.acceptedWeight! },
+        totalReturnedPrice: { increment: orderProduct.acceptedPrice! },
+        RemainingAmount: { decrement: orderProduct.acceptedPrice! },
+      },
+    });
   });
+
+  // DONE : Check if all products are returned then update main order status to returned
+  const updatedOrder = await prisma.dailyOrder.findUnique({
+    where: { id: orderId },
+    include: { OrderProducts: true },
+  });
+  const allReturned = updatedOrder?.OrderProducts.every(
+    (op) => op.status === "Returned" || op.status === "Cancelled"
+  );
+
+  if (allReturned) {
+    await prisma.dailyOrder.update({
+      where: { id: orderId },
+      data: { status: "Returned" },
+    });
+  }
 
   return { message: "Product cancelled successfully" };
 };

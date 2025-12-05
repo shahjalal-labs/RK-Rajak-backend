@@ -253,8 +253,6 @@ export const updateDailyProductAggregation = async (
       data: {
         returnedWeight: { increment: weight },
         returnedPrice: { increment: price },
-        totalWeight: { decrement: weight },
-        totalPrice: { decrement: price },
       },
     });
   }
@@ -265,12 +263,15 @@ export const updateDailyProductAggregation = async (
  */
 export const recalculateDailyOrderTotal = async (
   dailyOrderId: string,
-  tx: any = prisma
+  tx: any = prisma,
+  decressRemaining : number = 0
 ) => {
+
+
+  console.log("after rejected hit the helpers!")
   const orderProducts = await tx.orderProduct.findMany({
     where: {
       orderId: dailyOrderId,
-      status: { in: ["Active", "Confirmed"] }, // Only count active/confirmed products
     },
   });
 
@@ -296,7 +297,7 @@ export const recalculateDailyOrderTotal = async (
     where: { id: dailyOrderId },
     data: {
       totalAmount,
-      RemainingAmount: remainingAmount,
+      RemainingAmount: remainingAmount - decressRemaining,
       isDues,
     },
   });
@@ -569,6 +570,8 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
       );
     }
 
+    let decressRemaining = 0;
+
     // 2) Mark the totalProductOrder as cancelled (status only).
     //    We will let updateDailyProductAggregation handle weight/price adjustments per order
     await tx.totalProductOrder.update({
@@ -668,8 +671,10 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
         user?.Wallet
       ) {
         const walletId = user.Wallet.id;
-        const refundAmount = orderRelation.totalWalletAmountUsed; /// this is wrong -
-        // const refundAmountUsingWallet = orderRelation // ai amount  ta ai order er sokol product er jonno wallet theke use kora hoyeche amd bujte hobe exactly ai product er jonno koto ta use hoyeche then sei amount ta refund korte hobe
+        const refundAmount = orderRelation.totalWalletAmountUsed; 
+        decressRemaining = orderTotalPrice - refundAmount;
+
+        //✅DONE : Ai amount  ta ai order er sokol product er jonno wallet theke use kora hoyeche amd bujte hobe exactly ai product er jonno koto ta use hoyeche then sei amount ta refund korte hobe
 
         if (refundAmount > 0) {
           await tx.wallet.update({
@@ -690,7 +695,7 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
       }
 
       // g) Recalculate daily order total (skip cancelled products internally)
-      await recalculateDailyOrderTotal(order.id, tx);
+      await recalculateDailyOrderTotal(order.id, tx , decressRemaining);
     }
 
     return { message: "Product(s) rejected successfully" };

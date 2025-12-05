@@ -445,6 +445,7 @@ enum OrderStatus {
   Delivered
   Cancelled
   Returned
+  PartialReturned
 }
 
 enum PaymentMethod {

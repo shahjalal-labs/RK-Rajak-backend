@@ -2,11 +2,8 @@ import prisma from "../../../shared/prisma";
 import ApiError from "../../../errors/ApiErrors";
 import { User, UserLocation, UserRole } from "@prisma/client";
 import generateOTP from "../../../helpers/generateOtp";
-import { uploadInSpace } from "../../../shared/UploadHelper";
-import httpStatus from "http-status";
 import { getDistance } from "./auth.helpers";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
-import { sendOTPViaTwilio } from "../../../helpers/twilioHelper";
 
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
@@ -39,13 +36,13 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
     });
 
     // Send OTP via Twilio
-    try {
-      await sendOTPViaTwilio(payload.phone, otp);
-      console.log(`📱 OTP sent to new user: ${payload.phone}`);
-    } catch (error) {
-      console.error("Failed to send OTP via Twilio:", error);
-      // Don't throw error - allow fallback to manual OTP entry
-    }
+    // try {
+    //   await sendOTPViaTwilio(payload.phone, otp);
+    //   console.log(`📱 OTP sent to new user: ${payload.phone}`);
+    // } catch (error) {
+    //   console.error("Failed to send OTP via Twilio:", error);
+    //   // Don't throw error - allow fallback to manual OTP entry
+    // }
 
     return { phone: payload.phone, otp, status: "new" };
   }
@@ -78,13 +75,13 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
   });
 
   // Send OTP via Twilio
-  try {
-    await sendOTPViaTwilio(payload.phone, otp);
-    console.log(`📱 OTP sent to existing user: ${payload.phone}`);
-  } catch (error) {
-    console.error("Failed to send OTP via Twilio:", error);
-    // Don't throw error - allow fallback to manual OTP entry
-  }
+  // try {
+  //   await sendOTPViaTwilio(payload.phone, otp);
+  //   console.log(`📱 OTP sent to existing user: ${payload.phone}`);
+  // } catch (error) {
+  //   console.error("Failed to send OTP via Twilio:", error);
+  //   // Don't throw error - allow fallback to manual OTP entry
+  // }
 
   return { phone: payload.phone, otp, status: "existing" };
 };
@@ -129,13 +126,13 @@ const authLoginIntoDB = async (payload: {
   });
 
   // Send OTP via Twilio
-  try {
-    await sendOTPViaTwilio(payload.phone, otp);
-    console.log(`📱 OTP sent to ${user.role}: ${payload.phone}`);
-  } catch (error) {
-    console.error("Failed to send OTP via Twilio:", error);
-    // Don't throw error - allow fallback to manual OTP entry
-  }
+  // try {
+  //   await sendOTPViaTwilio(payload.phone, otp);
+  //   console.log(`📱 OTP sent to ${user.role}: ${payload.phone}`);
+  // } catch (error) {
+  //   console.error("Failed to send OTP via Twilio:", error);
+  //   // Don't throw error - allow fallback to manual OTP entry
+  // }
 
   return { phone: payload.phone, otp };
 };
