@@ -103,10 +103,12 @@ const buyerOtpLogin = async (
       where: { referralCode: referralCode },
     });
     if (refUser) {
-      // send money to refUser account
-      const referralAmount = 50;
-      //!TODO
-      return;
+      await prisma.reffaralUsages.create({
+        data: {
+          userId: refUser.id,
+          usedBy: userPending.id,
+        },
+      });
     }
   }
 
@@ -123,11 +125,11 @@ const buyerOtpLogin = async (
       status: "Active",
       fcmToken: fcmToken ?? "",
       referralCode: raffaralCode,
-      Wallet : {
-        create : {  
-          balance : 0,
-        }
-      }
+      Wallet: {
+        create: {
+          balance: 0,
+        },
+      },
     },
   });
   // access token
@@ -219,11 +221,11 @@ const authOtpLogin = async (phone: string, otp: string, fcmToken?: string) => {
 const getSingleUserIntoDB = async (id: string) => {
   const user = await prisma.user.findUnique({
     where: { id },
-    include :{
-      dailyOrders : true,
-      shippingAddress : true,
-      UserLocation : true,
-    }
+    include: {
+      dailyOrders: true,
+      shippingAddress: true,
+      UserLocation: true,
+    },
   });
   if (!user) {
     throw new ApiError(404, "user not found!");
@@ -300,7 +302,7 @@ const getCustomersForBranch = async (query: any, branchId: string) => {
     result,
   };
 };
-const getAllAgentsFromDB = async (query: any,) => {
+const getAllAgentsFromDB = async (query: any) => {
   const keys = await getModelKeys("user");
   const agentQuery = new QueryBuilder(prisma.user, query, keys);
   let result;
@@ -350,22 +352,22 @@ const getAllAgentsFromDB = async (query: any,) => {
   };
 };
 
-//!TODO : optimize this function with delivery boy total orders total earnings etc 
-const getAllDriversFromDB = async (query: any,) => {
+//!TODO : optimize this function with delivery boy total orders total earnings etc
+const getAllDriversFromDB = async (query: any) => {
   const keys = await getModelKeys("user");
   const driverQuery = new QueryBuilder(prisma.user, query, keys);
   const result = await driverQuery
-      // if branchId exist then set branchId condition
-      .setCustomWhere({
-        role: UserRole.Driver,
-        branchId: query.branchId || undefined,
-      })
-      .search(["fullName", "email"])
-      .filter()
-      .sort()
-      .exclude()
-      .paginate()
-      .execute();
+    // if branchId exist then set branchId condition
+    .setCustomWhere({
+      role: UserRole.Driver,
+      branchId: query.branchId || undefined,
+    })
+    .search(["fullName", "email"])
+    .filter()
+    .sort()
+    .exclude()
+    .paginate()
+    .execute();
 
   const pagination = await driverQuery.countTotal();
   return {
@@ -507,12 +509,13 @@ const userCreateByOwner = async (payload: userCreationByOwner) => {
 
 const getMyCustomersFromDB = async (query: any, userId: string) => {
   const keys = await getModelKeys("user");
-  const customerQuery = new QueryBuilder(prisma.user, query, keys); 
+  const customerQuery = new QueryBuilder(prisma.user, query, keys);
   const result = await customerQuery
     .setCustomWhere({
       role: UserRole.Customer,
       agentId: userId,
-    }).search(["fullName", "email"])
+    })
+    .search(["fullName", "email"])
     .filter()
     .sort()
     .paginate()
@@ -525,7 +528,11 @@ const getMyCustomersFromDB = async (query: any, userId: string) => {
   };
 };
 
-const rateUser = async (payload: { userId: string; rating: number; review?: string }) => {
+const rateUser = async (payload: {
+  userId: string;
+  rating: number;
+  review?: string;
+}) => {
   const { userId, rating, review } = payload;
 
   await prisma.$transaction(async (tx) => {
@@ -556,13 +563,14 @@ const rateUser = async (payload: { userId: string; rating: number; review?: stri
     // 4) Update user with average rating
     await tx.user.update({
       where: { id: userId },
-      data: { buyerRating: _avg.rating ? parseFloat(_avg.rating.toFixed(2)) : 0 },
+      data: {
+        buyerRating: _avg.rating ? parseFloat(_avg.rating.toFixed(2)) : 0,
+      },
     });
   });
 
   return;
 };
-
 
 export const userService = {
   buyerOtpLogin,
@@ -580,5 +588,5 @@ export const userService = {
   getAllAgentsFromDB,
   getMyCustomersFromDB,
   getAllDriversFromDB,
-  rateUser
+  rateUser,
 };

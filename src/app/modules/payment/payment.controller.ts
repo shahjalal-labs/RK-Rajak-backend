@@ -20,28 +20,13 @@ const createWalletRecharge = catchAsync(async (req: Request, res: Response) => {
 /**
  * Create dues payment
  */
-const createDuesPayment = catchAsync(async (req: Request, res: Response) => {
-  const result = await PaymentServices.createDuesPayment(req.body , req.user.id);
+const clearDuesPayment = catchAsync(async (req: Request, res: Response) => {
+  const result = await PaymentServices.clearDuesPayment(req.body , req.user.id);
 
   sendResponse(res, {
     success: true,
     statusCode: 200,
     message: "Dues payment initiated successfully",
-    data: result,
-  });
-});
-
-/**
- * Get user dues
- */
-const getUserDues = catchAsync(async (req: Request, res: Response) => {
-  const { userId } = req.params;
-  const result = await PaymentServices.getUserDues(userId);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "User dues retrieved successfully",
     data: result,
   });
 });
@@ -74,10 +59,48 @@ const duesPaymentWebhook = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+// My -Peending Payments
+const getPendingPayments = catchAsync(async (req: Request, res: Response) => {
+  const result = await PaymentServices.getPendingPayments(req.user.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Pending payments retrieved successfully",
+    data: result,
+  });
+});
+
+// for sales agent to get their customers pending amounts
+const getSalesAgentCustomersPendingAmounts = catchAsync(async (req: Request, res: Response) => {
+  const result = await PaymentServices.getSalesAgentCustomersPendingAmounts(req.query,req.user.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Pending payments retrieved successfully",
+    data: result,
+  });
+});
+
+// get single payment details
+const getPaymentDetails = catchAsync(async (req: Request, res: Response) => {
+  console.log("first")
+  const { userId } = req.params;
+  const result = await PaymentServices.getPaymentDetails(userId);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Payment details retrieved successfully",
+    data: result,
+  });
+});
+
+
 export const PaymentControllers = {
   createWalletRecharge,
-  createDuesPayment,
-  getUserDues,
+  clearDuesPayment,
   walletRechargeWebhook,
   duesPaymentWebhook,
+  getPendingPayments,
+  getSalesAgentCustomersPendingAmounts,
+  getPaymentDetails
 };

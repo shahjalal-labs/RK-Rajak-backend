@@ -34,6 +34,7 @@ export default {
     api_version: process.env.CASHFREE_API_VERSION || "2023-08-01",
     environment: process.env.CASHFREE_ENV || "sandbox", // "sandbox" or "production"
     webhook_secret: process.env.CASHFREE_WEBHOOK_SECRET,
+    cashfree_base_api : process.env.CASHFREE_BASE_API,
   },
   do_space: {
     endpoints: process.env.DO_SPACE_ENDPOINT,

@@ -375,6 +375,24 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
  * Main order creation function
  */
 const createOrder = async (payload: ICreateOrderPayload) => {
+  // check if is they have 3 dues then throw error and do not allow to place order
+  const userDuesCount = await prisma.dailyOrder.count({
+    where: {
+      isDues: true,
+      RemainingAmount: {
+        gt: 0,
+      },
+      userId: payload.userId,
+    },
+  });
+
+  if (userDuesCount >= 3) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "You have 3 pending dues. Please clear your dues to place new orders."
+    );
+  }
+
   switch (payload.paymentMethod) {
     case "COD":
       return await placeOrderCOD(payload);
@@ -1177,11 +1195,11 @@ const markOrderAsDelivered = async (
     },
   });
 
-  //!TODO: Handle payment history logging if needed
   /*
   //** Check still remaing exist or not! if Exist then change the isDues : true with paymentMethod : "credit"*/
   const order = await prisma.dailyOrder.findUnique({
     where: { id: orderId },
+    select: { userId: true, RemainingAmount: true },
   });
   if (order && order.RemainingAmount > 0) {
     await prisma.dailyOrder.update({
@@ -1192,22 +1210,57 @@ const markOrderAsDelivered = async (
       },
     });
   }
-  await prisma.driverAssignment.update({
-    where: { id: assignment.id },
-    data: {
-      deliveryDate: deliveryDate,
+
+  // reffaral useges
+  const deliveredOrderCount = await prisma.dailyOrder.count({
+    where: {
+      userId: order?.userId,
+      status: OrderStatus.Delivered,
     },
   });
+  if (deliveredOrderCount) {
+    // first delivered order
+    const reffaralUser = await prisma.reffaralUsages.findFirst({
+      where: { userId: order?.userId! },
+      select: {
+        reffaralUser: {
+          select: { Wallet: { select: { id: true, balance: true } } },
+        },
+      },
+    });
+    await prisma.$transaction(async (tx) => {
+      if (reffaralUser?.reffaralUser!.Wallet) {
+        await tx.wallet.update({
+          where: { id: reffaralUser.reffaralUser.Wallet.id },
+          data: { balance: { increment: 40 } },
+        });
+      }
+      await tx.walletTransaction.create({
+        data: {
+          walletId: reffaralUser?.reffaralUser?.Wallet!.id!,
+          amount: 40,
+          type: "Credit",
+          description: `${
+            reffaralUser?.reffaralUser?.Wallet!.id
+          } Referral bonus for first order delivery`,
+          status: "Success",
+        },
+      });
+    });
+
+    // update assignment delivery date
+    await prisma.driverAssignment.update({
+      where: { id: assignment.id },
+      data: {
+        deliveryDate: deliveryDate,
+      },
+    });
+  }
 };
 
 const cancelOrderByCustomer = async (
   payload: ICancelOrderByCustomerPayload
 ) => {
-  //! TODO : Refund After cancellation if paid by wallet
-  let refundAmount: number = 0;
-  let totalPrice: number = 0;
-  let decressRemaining: number = 0;
-
   const { orderId, productId, reason } = payload;
 
   // =================== FETCH ORDER ===================
@@ -1398,8 +1451,11 @@ const cancelOrderByCustomer = async (
   return { message: "Product cancelled successfully" };
 };
 
-const returnOrderProduct = async (orderProductId: string, payload: IOrderAdjustMent) => {
-  const {returnWeight, returnPrice } = payload;
+const returnOrderProduct = async (
+  orderProductId: string,
+  payload: IOrderAdjustMent
+) => {
+  const { returnWeight, returnPrice } = payload;
 
   // 1) Fetch orderProduct with order and user wallet
   const orderProduct = await prisma.orderProduct.findUnique({
@@ -1468,7 +1524,9 @@ const returnOrderProduct = async (orderProductId: string, payload: IOrderAdjustM
     // - optionally update returnedQuantity/acceptedQuantity if you track quantity (left as is currently)
     // - set status based on whether fully returned
     const productStatus =
-      newAcceptedWeight === 0 && newAcceptedPrice === 0 ? "Returned" : "PartialReturned";
+      newAcceptedWeight === 0 && newAcceptedPrice === 0
+        ? "Returned"
+        : "PartialReturned";
 
     await tx.orderProduct.update({
       where: { id: orderProductId },
@@ -1523,11 +1581,17 @@ const returnOrderProduct = async (orderProductId: string, payload: IOrderAdjustM
     // Ensure RemainingAmount not become negative
     const orderRow = await tx.dailyOrder.findUnique({
       where: { id: orderProduct.orderId! },
-      select: { RemainingAmount: true, totalAcceptedPrice: true, totalAcceptedWeight: true },
+      select: {
+        RemainingAmount: true,
+        totalAcceptedPrice: true,
+        totalAcceptedWeight: true,
+      },
     });
 
     const prevRemaining = orderRow?.RemainingAmount || 0;
-    const newRemaining = round2(Math.max(0, prevRemaining - remainingDecrement));
+    const newRemaining = round2(
+      Math.max(0, prevRemaining - remainingDecrement)
+    );
 
     await tx.dailyOrder.update({
       where: { id: orderProduct.orderId! },
@@ -1535,8 +1599,14 @@ const returnOrderProduct = async (orderProductId: string, payload: IOrderAdjustM
         totalReturnedWeight: { increment: returnWeight },
         totalReturnedPrice: { increment: returnPrice },
         // optionally decrement totalAcceptedWeight/Price if you track those
-        totalAcceptedWeight: orderRow?.totalAcceptedWeight !== undefined ? { decrement: returnWeight } : undefined,
-        totalAcceptedPrice: orderRow?.totalAcceptedPrice !== undefined ? { decrement: returnPrice } : undefined,
+        totalAcceptedWeight:
+          orderRow?.totalAcceptedWeight !== undefined
+            ? { decrement: returnWeight }
+            : undefined,
+        totalAcceptedPrice:
+          orderRow?.totalAcceptedPrice !== undefined
+            ? { decrement: returnPrice }
+            : undefined,
         RemainingAmount: { set: newRemaining },
         status: "PartialReturned", // we'll finalize status check after transaction
       },

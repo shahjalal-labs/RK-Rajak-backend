@@ -34,11 +34,10 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
+app.use("/public", express.static(path.join(__dirname, "..", "public")));
 
 app.get("/", (req: Request, res: Response) => {
-  res.send({
-    Message: "🎉 Welcome RK-Razak-ABS-Fruits Backend",
-  });
+  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
 });
 
 app.use(
