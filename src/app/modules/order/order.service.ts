@@ -10,6 +10,7 @@ import {
   AssignOrdersPayload,
   ICancelOrderByCustomerPayload,
   ICreateOrderPayload,
+  ICreateOrderPayloadByAgentForCustomer,
   IOrderAdjustMent,
 } from "./order.interface";
 import {
@@ -402,6 +403,178 @@ const createOrder = async (payload: ICreateOrderPayload) => {
       throw new ApiError(httpStatus.BAD_REQUEST, "Invalid payment method");
   }
 };
+
+//** BULK ORDER BY AGNET FOR HIS OWN ASSIGNED CUSTOMERS */
+
+const createOrderByAgentForCustomer = async (
+  payload: ICreateOrderPayloadByAgentForCustomer
+) => {
+  const {
+    userId: agentId,
+    customerId,
+    products,
+    shippingAddressId,
+    paymentMethod,
+  } = payload;
+
+  // ================= VALIDATIONS =================
+  const customer = await prisma.user.findUnique({
+    where: { id: customerId },
+  });
+  if (!customer) throw new ApiError(404, "Customer not found");
+
+  if (customer.agentId !== agentId) {
+    throw new ApiError(403, "This customer does not belong to you");
+  }
+
+  const shipping = await prisma.shippingAddress.findUnique({
+    where: { id: shippingAddressId },
+  });
+  if (!shipping || shipping.userId !== customerId) {
+    throw new ApiError(400, "Invalid shipping address");
+  }
+
+  // ============== Fetch products for validation ==============
+  const productIds = products.map((p) => p.productId);
+  const dbProducts = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    include: {
+      productVariation: true,
+      category: true,
+    },
+  });
+
+  // ============== Validate products and prepare with agent-provided pricing =======================
+  const validatedProducts: Array<{
+    productId: string;
+    variationId: string;
+    categoryId: string;
+    quantity: number;
+    product: any;
+    variation: any;
+    perQuantityPrice: number; // Agent-provided price per quantity
+    snapshotWeightPerUnit: number;
+  }> = [];
+
+  for (const p of products) {
+    const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
+    if (!dbProduct) {
+      throw new ApiError(404, `Product not found: ${p.productId}`);
+    }
+
+    const variation = dbProduct.productVariation.find(
+      (v) => v.id === p.variationId
+    );
+
+    if (!variation) {
+      throw new ApiError(
+        404,
+        `Variation not found for product: ${dbProduct.name}`
+      );
+    }
+
+    if (variation.availableQuantity < p.quantity) {
+      throw new ApiError(
+        400,
+        `Insufficient quantity for ${dbProduct.name}`
+      );
+    }
+
+    // Use agent-provided price per quantity instead of product's selling price
+    const perQuantityPrice = p.price / p.quantity;
+
+    validatedProducts.push({
+      productId: p.productId,
+      categoryId: dbProduct.categoryId,
+      variationId: p.variationId,
+      quantity: p.quantity,
+      product: dbProduct,
+      variation: variation,
+      perQuantityPrice: perQuantityPrice, // Agent-provided price
+      snapshotWeightPerUnit: variation.weight,
+    });
+  }
+
+  // ================= TRANSACTION (Same pattern as placeOrderCOD) =================
+  const result = await prisma.$transaction(async (tx) => {
+    // Get or create today's DailyOrder for the customer
+    const dailyOrder = await getOrCreateDailyOrder(
+      customerId,
+      shippingAddressId,
+      customer.branchId!,
+      paymentMethod,
+      tx
+    );
+
+    // Merge or create OrderProducts with agent-provided pricing
+    const orderProducts = [];
+    for (const p of validatedProducts) {
+      const orderProduct = await mergeOrCreateOrderProduct(
+        dailyOrder.id,
+        p.productId,
+        p.variationId,
+        p.quantity,
+        p.perQuantityPrice, // Agent-provided price
+        p.snapshotWeightPerUnit,
+        tx,
+        paymentMethod === PaymentMethod.COD ? "COD" : "Wallet"
+      );
+      orderProducts.push(orderProduct);
+
+      // Update daily product aggregation
+      const weight = p.quantity * p.snapshotWeightPerUnit;
+      const price = p.quantity * p.perQuantityPrice; // Agent-provided total price
+      await updateDailyProductAggregation(
+        p.productId,
+        dailyOrder.id,
+        weight,
+        price,
+        "add",
+        tx,
+        p.categoryId,
+        customer.branchId!
+      );
+    }
+
+    // Recalculate total
+    await recalculateDailyOrderTotal(dailyOrder.id, tx);
+
+    // Fetch updated order
+    const updatedOrder = await tx.dailyOrder.findUnique({
+      where: { id: dailyOrder.id },
+      include: {
+        OrderProducts: {
+          include: {
+            product: true,
+            OrderProductVariation: true,
+          },
+        },
+        shippingAddress: true,
+        user: true,
+      },
+    });
+
+    return updatedOrder;
+  });
+
+  return result;
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /**
  * Get user's daily orders
@@ -1327,12 +1500,6 @@ const getTotalAssignedReturnedProducts = async (
 };
 
 
-
-
-
-
-
-
 const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
   // first validate is this order assigned to this driver
   const assignment = await prisma.driverAssignment.findFirst({
@@ -1965,4 +2132,5 @@ export const orderServices = {
   markOrderAsDelivered,
   cancelOrderByCustomer,
   getMyCustomerOrders,
+  createOrderByAgentForCustomer
 };

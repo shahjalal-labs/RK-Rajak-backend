@@ -293,6 +293,18 @@ const getMyCustomerOrders = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const createOrderByAgentForCustomer = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user.id; // Assuming auth middleware adds user to request
+  const result = await orderServices.createOrderByAgentForCustomer({ ...req.body, userId });
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 201,
+    message: "Order created successfully",
+    data: result,
+  });
+});
+
 export const orderControllers = {
   createOrder,
   getUserDailyOrders,
@@ -312,5 +324,6 @@ export const orderControllers = {
   markOrderAsDelivered,
   cancelOrderByCustomer,
   returnOrderProduct,
-  getMyCustomerOrders
+  getMyCustomerOrders,
+  createOrderByAgentForCustomer
 };

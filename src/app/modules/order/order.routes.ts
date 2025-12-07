@@ -3,7 +3,7 @@ import { orderControllers } from "./order.controller";
 import auth from "../../middlewares/auth";
 import validateRequest from "../../middlewares/validateRequest";
 import { OrderValidation } from "./order.validation";
-import { UserRole, User } from '@prisma/client';
+import { UserRole, User } from "@prisma/client";
 import { fileUploader } from "../../../helpers/fileUploadHelper";
 import { parseBodyData } from "../../middlewares/parseBodyData";
 
@@ -22,11 +22,22 @@ router.post(
   orderControllers.createOrder
 );
 
+router.post(
+  "/bulk-order-by-agent",
+  auth(UserRole.Agent),
+  validateRequest(OrderValidation.createOrderByAgentForCustomerSchema),
+  orderControllers.createOrderByAgentForCustomer
+);
+
 /**
  * GET /api/orders/my-orders
  * Get customer's daily orders
  */
-router.get("/my-customer-orders", auth(UserRole.Agent), orderControllers.getMyCustomerOrders);
+router.get(
+  "/my-customer-orders",
+  auth(UserRole.Agent),
+  orderControllers.getMyCustomerOrders
+);
 router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);
 /**
  * GET /api/orders/today
@@ -88,7 +99,6 @@ router.put(
 
 //** --------------------------------SuperAdmin calculations branch and day wised  ----------------------------------- */
 
-
 router.get(
   "/calculations/branchId/:branchId",
   auth(UserRole.SuperAdmin),
@@ -101,8 +111,6 @@ router.post(
   validateRequest(OrderValidation.orderAssignToDriverSchema),
   orderControllers.assignOrdersDeliveryToDriver
 );
-
-
 
 //**------------------------------- Driver Routes----------------------------------------- */
 
@@ -153,7 +161,7 @@ router.patch(
 
 router.post(
   "/cancel-order-by-driver",
-  auth(UserRole.Customer , UserRole.Driver),
+  auth(UserRole.Customer, UserRole.Driver),
   validateRequest(OrderValidation.cancelOrderSchema),
   orderControllers.cancelOrderByCustomer
 );
@@ -167,7 +175,7 @@ router.post(
 */
 router.put(
   "/products/:orderProductId/return",
-  auth(UserRole.Driver , UserRole.SuperAdmin , UserRole.Owner),
+  auth(UserRole.Driver, UserRole.SuperAdmin, UserRole.Owner),
   validateRequest(OrderValidation.returnProductSchema),
   orderControllers.returnOrderProduct
 );

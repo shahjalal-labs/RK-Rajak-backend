@@ -933,3 +933,50 @@ export const getDailyOrders = async (dateString?: string) => {
     },
   });
 };
+
+
+/**
+ * Generate unique order ID
+ */
+export const generateOrderId = (): string => {
+  return `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
+};
+
+/**
+ * Get or create MainOrder for today for a user
+ */
+export const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
+  const today = new Date();
+  const now = new Date();
+  today.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(today);
+  endOfDay.setHours(23, 59, 59, 999);
+  // Try to find existing ACTIVE MainOrder for today (not closed)
+  let mainOrder = await tx.mainOrder.findFirst({
+    where: {
+      userId,
+      orderDate: {
+        gte: today,
+        lte: endOfDay,
+      },
+    },
+  });
+
+  // Create new MainOrder if doesn't exist
+  if (!mainOrder) {
+    mainOrder = await tx.mainOrder.create({
+      data: {
+        userId,
+        totalAmount: 0,
+        pendingAmount: 0,
+        totalReturnedAmount: 0,
+        totalWalletUsed: 0,
+        totalDuesAmount: 0,
+        isDuesCleared: true,
+        orderDate: now,
+      },
+    });
+  }
+
+  return mainOrder;
+};
