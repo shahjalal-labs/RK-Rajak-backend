@@ -26,8 +26,8 @@ router.post(
  * GET /api/orders/my-orders
  * Get customer's daily orders
  */
+router.get("/my-customer-orders", auth(UserRole.Agent), orderControllers.getMyCustomerOrders);
 router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);
-
 /**
  * GET /api/orders/today
  * Get customer's today's order
@@ -130,7 +130,7 @@ router.get(
 );
 router.get(
   "/driver/total-assigned-returned-products",
-  auth(UserRole.Driver),
+  auth(UserRole.Driver, UserRole.Agent),
   orderControllers.getTotalAssignedReturnedProducts
 );
 router.get(

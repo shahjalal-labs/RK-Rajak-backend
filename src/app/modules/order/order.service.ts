@@ -616,6 +616,92 @@ const getOrderById = async (id: string) => {
   return order;
 };
 
+const getMyCustomerOrders = async (userId: string, queryParams: any) => {
+  const { startDate, endDate } = queryParams;
+
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  // Fetch all customers for this agent
+  const customers = await prisma.user.findMany({
+    where: { agentId: userId },
+    select: { id: true },
+  });
+
+  const customerIds = customers.map((c) => c.id);
+
+  if (customerIds.length === 0) {
+    return [];
+  }
+
+  const where: any = {
+    userId: { in: customerIds },
+  };
+
+  // Apply date filters
+  if (startDate && endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // end date midnight handling
+    end.setHours(23, 59, 59, 999);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Invalid date format. Please provide valid dates."
+      );
+    }
+
+    // since orderDate is STRING in DB → use ISO string
+    where.orderDate = {
+      gte: start.toISOString(),
+      lte: end.toISOString(),
+    };
+  } else if (startDate) {
+    const start = new Date(startDate);
+
+    if (isNaN(start.getTime())) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Invalid start date format. Please provide a valid date."
+      );
+    }
+
+    where.orderDate = {
+      gte: start.toISOString(),
+    };
+  } else if (endDate) {
+    const end = new Date(endDate);
+
+    if (isNaN(end.getTime())) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Invalid end date format. Please provide a valid date."
+      );
+    }
+
+    end.setHours(23, 59, 59, 999);
+
+    where.orderDate = {
+      lte: end.toISOString(),
+    };
+  }
+
+  // Fetch main orders with nested orders + products
+  const orders = await prisma.dailyOrder.findMany({
+    where,
+    include: {
+      OrderProducts: true,
+      user: true,
+    },
+    orderBy: { orderDate: "desc" },
+  });
+
+  return orders;
+};
+
 const getBranchDayWiseCalculations = async (
   branchId: string,
   queryParams?: any
@@ -958,33 +1044,225 @@ const getTotalAssignedOrderProducts = async (driverId: string) => {
     totalUniqueProducts: finalResult.length,
   };
 };
-const getTotalAssignedReturnedProducts = async (driverId: string) => {
-  // 1️ Get today's start and end times
+
+//** Reusable Function for Agent and Delivery Boy */
+
+// const getTotalAssignedReturnedProducts = async (
+//   user: JwtPayload,
+//   query: any
+// ) => {
+//   //** Query have startDate and endDate  if provide in query then use those date if no then use today .   */
+//   //** if user.role = "Driver then return his assigned orders return data if userRole is Agent then return his assigned Customers daily Orders Return data - hint : use switch case  */
+//   // 1️ Get today's start and end times
+//   const today = getDateString();
+//   const startOfDay = query.startDate
+//     ? new Date(new Date(query.startDate).setHours(0, 0, 0, 0))
+//     : new Date(new Date(today).setHours(0, 0, 0, 0));
+//   const endOfDay = query.endDate
+//     ? new Date(new Date(query.endDate).setHours(23, 59, 59, 999))
+//     : new Date(new Date(today).setHours(23, 59, 59, 999));
+
+//   // 2 Get all assigned orders of the driver for today
+//   let assignedOrders: string[] = [];
+//   switch (user.role) {
+//     case UserRole.Driver:
+//       const assignedOrders = await prisma.driverAssignment.findMany({
+//         where: {
+//           driverId: user.id,
+//           assignedAt: {
+//             gte: startOfDay,
+//             lte: endOfDay,
+//           },
+//         },
+//       });
+
+//       if (assignedOrders.length === 0) {
+//         return {
+//           totalAssignedProducts: [],
+//           totalUniqueProducts: 0,
+//         };
+//       }
+//       break;
+//     case UserRole.Agent:
+//       // Fetch all customers for this agent
+//       const customers = await prisma.user.findMany({
+//         where: { agentId: user.id },
+//         select: { id: true },
+//       });
+//       const customerIds = customers.map((c) => c.id);
+
+//       if (customerIds.length === 0) {
+//         return {
+//           totalReturnedProducts: [],
+//           totalUniqueProducts: 0,
+//         };
+//       }
+
+//       const orders = await prisma.dailyOrder.findMany({
+//         where: {
+//           userId: { in: customerIds },
+//           orderDate: {
+//             gte: startOfDay.toISOString(),
+//             lte: endOfDay.toISOString(),
+//           },
+//         },
+//       });
+//   }
+
+//   const orderIds = assignedOrders.map((o) => o.);
+
+//   // 3 Group products by productId from those order products
+//   const groupedProducts = await prisma.orderProduct.groupBy({
+//     by: ["productId"],
+//     where: {
+//       orderId: { in: orderIds },
+//     },
+//     _sum: {
+//       returnedWeight: true,
+//       returnedPrice: true,
+//     },
+//     _count: {
+//       orderId: true,
+//     },
+//   });
+
+//   // 4️ Fetch product details for each productId
+//   const productIds = groupedProducts.map((gp) => gp.productId);
+
+//   const products = await prisma.product.findMany({
+//     where: {
+//       id: { in: productIds as string[] },
+//     },
+//     select: {
+//       id: true,
+//       name: true,
+//       images: true,
+//     },
+//   });
+
+//   // Create a lookup map
+//   const productMap = new Map(products.map((p) => [p.id, p]));
+
+//   // 5️ Build final result array
+
+//   // Add On - If rturn weigth is 0 then do not include in the final result
+//   const filteredGroupedProducts = groupedProducts.filter(
+//     (gp) => (gp._sum.returnedWeight || 0) > 0
+//   );
+//   const finalResult = filteredGroupedProducts.map((gp) => {
+//     const product = productMap.get(gp.productId!);
+
+//     return {
+//       productId: gp.productId,
+//       productName: product?.name || "",
+//       productImage:
+//         product?.images && product.images.length > 0 ? product.images[0] : null,
+//       totalReturnedWeight: gp._sum.returnedWeight || 0,
+//       totalReturnedPrice: gp._sum.returnedPrice || 0,
+//       orderCount: gp._count.orderId,
+//     };
+//   });
+
+//   return {
+//     totalReturnedProducts: finalResult,
+//     totalUniqueProducts: finalResult.length,
+//   };
+// };
+
+
+
+const getTotalAssignedReturnedProducts = async (
+  user: JwtPayload,
+  query: any
+) => {
+  // Get today or query dates
   const today = getDateString();
-  const startOfDay = new Date(new Date(today).setHours(0, 0, 0, 0));
-  const endOfDay = new Date(new Date(today).setHours(23, 59, 59, 999));
 
-  // 2 Get all assigned orders of the driver for today
-  const assignedOrders = await prisma.driverAssignment.findMany({
-    where: {
-      driverId,
-      assignedAt: {
-        gte: startOfDay,
-        lte: endOfDay,
-      },
-    },
-  });
+  const startOfDay = query.startDate
+    ? new Date(new Date(query.startDate).setHours(0, 0, 0, 0))
+    : new Date(new Date(today).setHours(0, 0, 0, 0));
 
-  if (assignedOrders.length === 0) {
+  const endOfDay = query.endDate
+    ? new Date(new Date(query.endDate).setHours(23, 59, 59, 999))
+    : new Date(new Date(today).setHours(23, 59, 59, 999));
+
+  // Convert to ISO since DB stores String
+  const startISO = startOfDay.toISOString();
+  const endISO = endOfDay.toISOString();
+
+  let orderIds: string[] = [];
+
+  // ------------------------------------------
+  // ROLE BASED LOGIC
+  // ------------------------------------------
+
+  switch (user.role) {
+    case UserRole.Driver: {
+      const assigned = await prisma.driverAssignment.findMany({
+        where: {
+          driverId: user.id,
+          assignedAt: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+        },
+        select: { dailyOrderId: true },
+      });
+
+      if (assigned.length === 0) {
+        return {
+          totalReturnedProducts: [],
+          totalUniqueProducts: 0,
+        };
+      }
+
+      orderIds = assigned.map((a) => a.dailyOrderId);
+      break;
+    }
+
+    case UserRole.Agent: {
+      // Fetch agent's customers
+      const customers = await prisma.user.findMany({
+        where: { agentId: user.id },
+        select: { id: true },
+      });
+
+      const customerIds = customers.map((c) => c.id);
+      if (customerIds.length === 0) {
+        return {
+          totalReturnedProducts: [],
+          totalUniqueProducts: 0,
+        };
+      }
+
+      // Fetch customer orders
+      const orders = await prisma.dailyOrder.findMany({
+        where: {
+          userId: { in: customerIds },
+          orderDate: {
+            gte: startISO,
+            lte: endISO,
+          },
+        },
+        select: { id: true },
+      });
+
+      orderIds = orders.map((o) => o.id);
+      break;
+    }
+  }
+
+  // If no orders – return empty
+  if (orderIds.length === 0) {
     return {
-      totalAssignedProducts: [],
+      totalReturnedProducts: [],
       totalUniqueProducts: 0,
     };
   }
 
-  const orderIds = assignedOrders.map((o) => o.dailyOrderId);
-
-  // 3 Group products by productId from those order products
+  // ------------------------------------------
+  // GROUP RETURNED PRODUCTS
+  // ------------------------------------------
   const groupedProducts = await prisma.orderProduct.groupBy({
     by: ["productId"],
     where: {
@@ -999,9 +1277,20 @@ const getTotalAssignedReturnedProducts = async (driverId: string) => {
     },
   });
 
-  // 4️ Fetch product details for each productId
-  const productIds = groupedProducts.map((gp) => gp.productId);
+  // Filter only products with returned weight > 0
+  const filteredGroupedProducts = groupedProducts.filter(
+    (gp) => (gp._sum.returnedWeight || 0) > 0
+  );
 
+  if (filteredGroupedProducts.length === 0) {
+    return {
+      totalReturnedProducts: [],
+      totalUniqueProducts: 0,
+    };
+  }
+
+  // Fetch product details
+  const productIds = filteredGroupedProducts.map((gp) => gp.productId);
   const products = await prisma.product.findMany({
     where: {
       id: { in: productIds as string[] },
@@ -1013,15 +1302,9 @@ const getTotalAssignedReturnedProducts = async (driverId: string) => {
     },
   });
 
-  // Create a lookup map
   const productMap = new Map(products.map((p) => [p.id, p]));
 
-  // 5️ Build final result array
-
-  // Add On - If rturn weigth is 0 then do not include in the final result
-  const filteredGroupedProducts = groupedProducts.filter(
-    (gp) => (gp._sum.returnedWeight || 0) > 0
-  );
+  // Build final response
   const finalResult = filteredGroupedProducts.map((gp) => {
     const product = productMap.get(gp.productId!);
 
@@ -1030,6 +1313,7 @@ const getTotalAssignedReturnedProducts = async (driverId: string) => {
       productName: product?.name || "",
       productImage:
         product?.images && product.images.length > 0 ? product.images[0] : null,
+
       totalReturnedWeight: gp._sum.returnedWeight || 0,
       totalReturnedPrice: gp._sum.returnedPrice || 0,
       orderCount: gp._count.orderId,
@@ -1041,6 +1325,13 @@ const getTotalAssignedReturnedProducts = async (driverId: string) => {
     totalUniqueProducts: finalResult.length,
   };
 };
+
+
+
+
+
+
+
 
 const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
   // first validate is this order assigned to this driver
@@ -1223,7 +1514,7 @@ const markOrderAsDelivered = async (
 
   // give referral bonus only for first delivery
   if (deliveredOrderCount === 1) {
-    console.log('Hit the......!')
+    console.log("Hit the......!");
     const referralUser = await prisma.reffaralUsages.findFirst({
       where: { usedBy: order?.userId! },
       select: {
@@ -1233,10 +1524,10 @@ const markOrderAsDelivered = async (
       },
     });
 
-    console.log({referralUser})
+    console.log({ referralUser });
 
     if (referralUser?.reffaralUser?.Wallet) {
-      console.log("hit the reffaral wallet.....!")
+      console.log("hit the reffaral wallet.....!");
       const walletId = referralUser.reffaralUser.Wallet.id;
 
       await prisma.$transaction(async (tx) => {
@@ -1673,4 +1964,5 @@ export const orderServices = {
   getOrderDetailsForDriver,
   markOrderAsDelivered,
   cancelOrderByCustomer,
+  getMyCustomerOrders,
 };

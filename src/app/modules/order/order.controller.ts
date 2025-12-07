@@ -202,7 +202,8 @@ const getTotalAssignedOrderProducts = catchAsync(
 const getTotalAssignedReturnedProducts = catchAsync(
   async (req: Request, res: Response) => {
     const result = await orderServices.getTotalAssignedReturnedProducts(
-      req.user.id
+      req.user,
+      req.query
     );
     sendResponse(res, {
       success: true,
@@ -279,6 +280,19 @@ const returnOrderProduct = catchAsync(
   }
 );
 
+const getMyCustomerOrders = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getMyCustomerOrders(
+    req.user.id,
+    req.query
+  );
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Agent Cusotmer orders retrieved successfully",
+    data: result,
+  });
+});
+
 export const orderControllers = {
   createOrder,
   getUserDailyOrders,
@@ -297,5 +311,6 @@ export const orderControllers = {
   getOrderDetailsForDriver,
   markOrderAsDelivered,
   cancelOrderByCustomer,
-  returnOrderProduct
+  returnOrderProduct,
+  getMyCustomerOrders
 };
