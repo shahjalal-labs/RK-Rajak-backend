@@ -40,7 +40,7 @@ const buyerOtpLogin = async (
   phone: string,
   otp: string,
   fcmToken?: string,
-  referralCode?: string
+  reffaralCode?: string
 ) => {
   const userPending = await prisma.pendingUser.findUnique({
     where: { phone: phone, role: UserRole.Customer },
@@ -96,24 +96,8 @@ const buyerOtpLogin = async (
 
   ///----------- if your not existing user then create new user and calculate othes things ----------///
 
-  // reffaralCode calcualte + send money in raffaral useg account and add new user a random rafferal code 6 digit
-
-  if (referralCode) {
-    const refUser = await prisma.user.findFirst({
-      where: { referralCode: referralCode },
-    });
-    if (refUser) {
-      await prisma.reffaralUsages.create({
-        data: {
-          userId: refUser.id,
-          usedBy: userPending.id,
-        },
-      });
-    }
-  }
-
   // own Otp creation and saving
-  const raffaralCode = `${Math.random()
+  const UserReffaralCode = `${Math.random()
     .toString(36)
     .substring(2, 8)
     .toUpperCase()}`;
@@ -124,7 +108,7 @@ const buyerOtpLogin = async (
       role: userPending.role as UserRole,
       status: "Active",
       fcmToken: fcmToken ?? "",
-      referralCode: raffaralCode,
+      referralCode: UserReffaralCode,
       Wallet: {
         create: {
           balance: 0,
@@ -132,6 +116,23 @@ const buyerOtpLogin = async (
       },
     },
   });
+
+
+  // reffaralCode calcualte + send money in raffaral useg account and add new user a random rafferal code 6 digit
+
+  if (reffaralCode) {
+    const refUser = await prisma.user.findFirst({
+      where: { referralCode: reffaralCode },
+    });
+    if (refUser) {
+      await prisma.reffaralUsages.create({
+        data: {
+          userId: refUser.id,
+          usedBy: user.id,
+        },
+      });
+    }
+  }
   // access token
   const accessToken = jwtHelpers.generateToken(
     {

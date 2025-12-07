@@ -48,8 +48,8 @@ model User {
 
 model reffaralUsages {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId       String   @db.ObjectId
   usedBy       String   @db.ObjectId
+  userId       String   @db.ObjectId
   reffaralUser User?    @relation(fields: [userId], references: [id])
   createdAt    DateTime @default(now())
 }

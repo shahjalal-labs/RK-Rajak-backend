@@ -1211,51 +1211,58 @@ const markOrderAsDelivered = async (
     });
   }
 
-  // reffaral useges
-  const deliveredOrderCount = await prisma.dailyOrder.count({
-    where: {
-      userId: order?.userId,
-      status: OrderStatus.Delivered,
-    },
+  // calculate delivered orders AFTER update
+  const deliveredOrderCount = await prisma.$transaction(async (tx) => {
+    return await tx.dailyOrder.count({
+      where: {
+        userId: order?.userId!,
+        status: OrderStatus.Delivered,
+      },
+    });
   });
-  if (deliveredOrderCount) {
-    // first delivered order
-    const reffaralUser = await prisma.reffaralUsages.findFirst({
-      where: { userId: order?.userId! },
+
+  // give referral bonus only for first delivery
+  if (deliveredOrderCount === 1) {
+    console.log('Hit the......!')
+    const referralUser = await prisma.reffaralUsages.findFirst({
+      where: { usedBy: order?.userId! },
       select: {
         reffaralUser: {
           select: { Wallet: { select: { id: true, balance: true } } },
         },
       },
     });
-    await prisma.$transaction(async (tx) => {
-      if (reffaralUser?.reffaralUser!.Wallet) {
+
+    console.log({referralUser})
+
+    if (referralUser?.reffaralUser?.Wallet) {
+      console.log("hit the reffaral wallet.....!")
+      const walletId = referralUser.reffaralUser.Wallet.id;
+
+      await prisma.$transaction(async (tx) => {
         await tx.wallet.update({
-          where: { id: reffaralUser.reffaralUser.Wallet.id },
+          where: { id: walletId },
           data: { balance: { increment: 40 } },
         });
-      }
-      await tx.walletTransaction.create({
-        data: {
-          walletId: reffaralUser?.reffaralUser?.Wallet!.id!,
-          amount: 40,
-          type: "Credit",
-          description: `${
-            reffaralUser?.reffaralUser?.Wallet!.id
-          } Referral bonus for first order delivery`,
-          status: "Success",
-        },
+        console.log("Created wallet transaction for referral bonus");
+        await tx.walletTransaction.create({
+          data: {
+            walletId,
+            amount: 40,
+            type: "Credit",
+            description: `${walletId} Referral bonus for first order delivery`,
+            status: "Success",
+          },
+        });
       });
-    });
-
-    // update assignment delivery date
-    await prisma.driverAssignment.update({
-      where: { id: assignment.id },
-      data: {
-        deliveryDate: deliveryDate,
-      },
-    });
+    }
   }
+
+  // update assignment date always
+  await prisma.driverAssignment.update({
+    where: { id: assignment.id },
+    data: { deliveryDate },
+  });
 };
 
 const cancelOrderByCustomer = async (
