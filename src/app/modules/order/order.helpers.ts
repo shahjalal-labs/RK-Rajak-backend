@@ -251,6 +251,7 @@ export const updateDailyProductAggregation = async (
     await tx.totalProductOrder.update({
       where: { id: existing.id },
       data: {
+        totalWeight : { decrement: weight },
         returnedWeight: { increment: weight },
         returnedPrice: { increment: price },
       },
@@ -702,28 +703,31 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
   });
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /**
  * Adjust OrderProduct quantity by delivery driver
- * Can reduce quantity or fully cancel
+ * Can increase, reduce, or fully return products
+ * Handles wallet refunds correctly based on original payment method
  */
-export const adjustOrderProductByDriver = async (
+export const adjustOrderProduct = async (
   orderProductId: string,
   newWeight: number,
-  userId: string,
-  reason?: string
 ) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  if (!user || user.role !== UserRole.Driver) {
-    throw new ApiError(
-      httpStatus.FORBIDDEN,
-      "Only delivery driver can adjust quantities"
-    );
-  }
-
   return await prisma.$transaction(async (tx) => {
     const orderProduct = await tx.orderProduct.findUnique({
       where: { id: orderProductId },
@@ -735,6 +739,13 @@ export const adjustOrderProductByDriver = async (
             },
           },
         },
+        product: {
+          select: {
+            id: true,
+            categoryId: true,
+            branchId: true,
+          },
+        },
       },
     });
 
@@ -742,133 +753,255 @@ export const adjustOrderProductByDriver = async (
       throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
     }
 
-    const originalWeight = orderProduct.totalWeight;
-    const originalPrice = orderProduct.totalPrice;
+    const originalWeight = Number(orderProduct.totalWeight || 0);
+    const originalPrice = Number(orderProduct.totalPrice || 0);
+    const walletAmountUsed = Number(orderProduct.totalWalletAmountUsed || 0);
 
     if (newWeight < 0) {
       throw new ApiError(httpStatus.BAD_REQUEST, "Weight cannot be negative");
     }
 
+    // Calculate price per unit weight
+    const pricePerKg = originalWeight > 0 ? originalPrice / originalWeight : 0;
+
+    // ==========================================
+    // CASE 1: newWeight = 0 (Full Return)
+    // ==========================================
     if (newWeight === 0) {
-      // Fully cancel/return
       const returnedWeight = originalWeight;
       const returnedAmount = originalPrice;
 
+      // Calculate wallet refund amount (only refund what was paid via wallet)
+      const walletRefundAmount = Math.min(walletAmountUsed, returnedAmount);
+
+      // Update OrderProduct
       await tx.orderProduct.update({
         where: { id: orderProductId },
         data: {
           status: "Returned",
           returnedWeight: returnedWeight,
+          returnedPrice: returnedAmount,
           totalWeight: 0,
           totalPrice: 0,
+          totalWalletAmountUsed: 0,
         },
       });
 
       // Refund wallet if applicable
-      if (
-        orderProduct.order.paymentMethod === PaymentMethod.Wallet &&
-        orderProduct.order.user?.Wallet
-      ) {
+      if (walletRefundAmount > 0 && orderProduct.order.user?.Wallet) {
         await tx.wallet.update({
           where: { id: orderProduct.order.user.Wallet.id },
           data: {
-            balance: { increment: Number(returnedAmount) },
+            balance: { increment: walletRefundAmount },
           },
         });
 
         await tx.walletTransaction.create({
           data: {
             walletId: orderProduct.order.user.Wallet.id,
-            amount: Number(returnedAmount),
+            amount: walletRefundAmount,
             type: "Credit",
-            description: `Refund for returned product (${
-              reason || "Delivery return"
-            })`,
+            description: `Full refund for returned product`,
             status: "Success",
           },
         });
       }
 
-      // Update daily aggregation
-      await updateDailyProductAggregation(
-        orderProduct.productId!,
-        orderProduct.order.id,
-        Number(returnedWeight),
-        Number(returnedAmount),
-        "return",
-        tx
-      );
+      // // Update TotalProductOrder aggregation
+      // await updateDailyProductAggregation(
+      //   orderProduct.productId!,
+      //   orderProduct.order.id,
+      //   returnedWeight,
+      //   returnedAmount,
+      //   "return",
+      //   tx,
+      //   orderProduct.product?.categoryId,
+      //   orderProduct.product?.branchId
+      // );
+
+      // Update DailyOrder totals
+      await tx.dailyOrder.update({
+        where: { id: orderProduct.order.id },
+        data: {
+          totalReturnedWeight: { increment: returnedWeight },
+          totalReturnedPrice: { increment: returnedAmount },
+          totalWeight: { decrement: returnedWeight },
+          totalAmount: { decrement: returnedAmount },
+          walletAmountUsed: { decrement: walletRefundAmount },
+        },
+      });
 
       // Recalculate order total
       await recalculateDailyOrderTotal(orderProduct.order.id, tx);
 
       return {
         message: "Product fully returned",
+        returnedWeight,
         returnedAmount,
-        refunded: orderProduct.order.paymentMethod === PaymentMethod.Wallet,
+        walletRefunded: walletRefundAmount,
       };
-    } else {
-      // Partial reduction
-      const reducedWeight = Number(originalWeight) - newWeight;
-      const pricePerKg = Number(originalPrice) / Number(originalWeight);
-      const reducedPrice = reducedWeight * pricePerKg;
-      const newPrice = newWeight * pricePerKg;
+    }
 
+    // ==========================================
+    // CASE 2: newWeight > originalWeight (Weight Increased)
+    // ==========================================
+    if (newWeight > originalWeight) {
+      const additionalWeight = newWeight - originalWeight;
+      const additionalPrice = additionalWeight * pricePerKg;
+      const newTotalPrice = newWeight * pricePerKg;
+
+      // Update OrderProduct
       await tx.orderProduct.update({
         where: { id: orderProductId },
         data: {
           totalWeight: newWeight,
-          totalPrice: newPrice,
-          returnedWeight: { increment: reducedWeight },
+          totalPrice: newTotalPrice,
+          // Keep wallet amount same, additional is treated as COD
         },
       });
 
-      // Refund wallet for reduced amount
-      if (
-        orderProduct.order.paymentMethod === PaymentMethod.Wallet &&
-        orderProduct.order.user?.Wallet
-      ) {
+      // Update DailyOrder - add to remaining amount (COD)
+      await tx.dailyOrder.update({
+        where: { id: orderProduct.order.id },
+        data: {
+          totalWeight: { increment: additionalWeight },
+          totalAmount: { increment: additionalPrice },
+          RemainingAmount: { increment: additionalPrice },
+        },
+      });
+
+      //! already handled in daily order update above
+      // // Update TotalProductOrder (add operation)
+      // await updateDailyProductAggregation(
+      //   orderProduct.productId!,
+      //   orderProduct.order.id,
+      //   additionalWeight,
+      //   additionalPrice,
+      //   "add",
+      //   tx,
+      //   orderProduct.product?.categoryId,
+      //   orderProduct.product?.branchId
+      // );
+
+      return {
+        message: "Product weight increased",
+        additionalWeight,
+        additionalPrice,
+        note: "Additional amount treated as COD",
+      };
+    }
+
+    // ==========================================
+    // CASE 3: newWeight < originalWeight (Weight Decreased)
+    // ==========================================
+    if (newWeight < originalWeight) {
+      const reducedWeight = originalWeight - newWeight;
+      const reducedPrice = reducedWeight * pricePerKg;
+      const newTotalPrice = newWeight * pricePerKg;
+
+      // Calculate wallet refund (proportional to wallet usage)
+      const walletUsageRatio = walletAmountUsed / originalPrice;
+      const walletRefundAmount = reducedPrice * walletUsageRatio;
+      const newWalletAmountUsed = walletAmountUsed - walletRefundAmount;
+
+      // Update OrderProduct
+      await tx.orderProduct.update({
+        where: { id: orderProductId },
+        data: {
+          totalWeight: newWeight,
+          totalPrice: newTotalPrice,
+          returnedWeight: { increment: reducedWeight },
+          returnedPrice: { increment: reducedPrice },
+          totalWalletAmountUsed: newWalletAmountUsed,
+        },
+      });
+
+      // Refund wallet if applicable
+      if (walletRefundAmount > 0 && orderProduct.order.user?.Wallet) {
         await tx.wallet.update({
           where: { id: orderProduct.order.user.Wallet.id },
           data: {
-            balance: { increment: Number(reducedPrice) },
+            balance: { increment: walletRefundAmount },
           },
         });
 
         await tx.walletTransaction.create({
           data: {
             walletId: orderProduct.order.user.Wallet.id,
-            amount: Number(reducedPrice),
+            amount: walletRefundAmount,
             type: "Credit",
-            description: `Partial refund for reduced quantity (${
-              reason || "Delivery adjustment"
-            })`,
+            description: `Partial refund for reduced quantity`,
             status: "Success",
           },
         });
       }
 
-      // Update daily aggregation
-      await updateDailyProductAggregation(
-        orderProduct.productId!,
-        orderProduct.order.id,
-        reducedWeight,
-        reducedPrice,
-        "return",
-        tx
-      );
+      // Update TotalProductOrder aggregation
+      // await updateDailyProductAggregation(
+      //   orderProduct.productId!,
+      //   orderProduct.order.id,
+      //   reducedWeight,
+      //   reducedPrice,
+      //   "return",
+      //   tx,
+      //   orderProduct.product?.categoryId,
+      //   orderProduct.product?.branchId
+      // );
+
+      // Update DailyOrder totals
+      await tx.dailyOrder.update({
+        where: { id: orderProduct.order.id },
+        data: {
+          totalReturnedWeight: { increment: reducedWeight },
+          totalReturnedPrice: { increment: reducedPrice },
+          totalWeight: { decrement: reducedWeight },
+          totalAmount: { decrement: reducedPrice },
+          walletAmountUsed: { decrement: walletRefundAmount },
+        },
+      });
 
       // Recalculate order total
       await recalculateDailyOrderTotal(orderProduct.order.id, tx);
 
       return {
-        message: "Product quantity adjusted",
-        reducedAmount: reducedPrice,
-        refunded: orderProduct.order.paymentMethod === PaymentMethod.Wallet,
+        message: "Product weight decreased",
+        reducedWeight,
+        reducedPrice,
+        walletRefunded: walletRefundAmount,
       };
     }
+
+    // If newWeight equals originalWeight, no changes needed
+    return {
+      message: "No changes - weight remains the same",
+      currentWeight: originalWeight,
+      currentPrice: originalPrice,
+    };
   });
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /**
  * Get daily product summary (for admin dashboard)

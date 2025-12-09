@@ -21,7 +21,7 @@ import {
   getDateString,
   acceptOrderProduct,
   rejectOrderProduct,
-  adjustOrderProductByDriver,
+  adjustOrderProduct,
   getDailyProductSummary,
 } from "./order.helpers";
 import { JwtPayload } from "jsonwebtoken";
@@ -474,10 +474,7 @@ const createOrderByAgentForCustomer = async (
     }
 
     if (variation.availableQuantity < p.quantity) {
-      throw new ApiError(
-        400,
-        `Insufficient quantity for ${dbProduct.name}`
-      );
+      throw new ApiError(400, `Insufficient quantity for ${dbProduct.name}`);
     }
 
     // Use agent-provided price per quantity instead of product's selling price
@@ -559,22 +556,6 @@ const createOrderByAgentForCustomer = async (
 
   return result;
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /**
  * Get user's daily orders
@@ -746,14 +727,10 @@ const rejectProductByAdmin = async (totalorderProductId: string) => {
 const adjustProductQuantity = async (
   orderProductId: string,
   newWeight: number,
-  userId: string,
-  reason?: string
 ) => {
-  return await adjustOrderProductByDriver(
+  return await adjustOrderProduct(
     orderProductId,
     newWeight,
-    userId,
-    reason
   );
 };
 
@@ -1342,8 +1319,6 @@ const getTotalAssignedOrderProducts = async (driverId: string) => {
 //   };
 // };
 
-
-
 const getTotalAssignedReturnedProducts = async (
   user: JwtPayload,
   query: any
@@ -1498,7 +1473,178 @@ const getTotalAssignedReturnedProducts = async (
     totalUniqueProducts: finalResult.length,
   };
 };
+const getTotalAssignedReturnedProductsForSuperAdmin = async (query: any) => {
+  console.log("hitsssin")
+  const { startDate, endDate, branchId, productCategoryId } = query || {};
 
+  // Get today or query dates
+  const today = getDateString();
+
+  const startOfDay = query.startDate
+    ? new Date(new Date(query.startDate).setHours(0, 0, 0, 0))
+    : new Date(new Date(today).setHours(0, 0, 0, 0));
+
+  const endOfDay = query.endDate
+    ? new Date(new Date(query.endDate).setHours(23, 59, 59, 999))
+    : new Date(new Date(today).setHours(23, 59, 59, 999));
+
+  // Convert to ISO since DB stores String
+  const startISO = startOfDay.toISOString();
+  const endISO = endOfDay.toISOString();
+
+  let orderIds: string[] = [];
+
+  // ------------------------------------------
+  // Branch based Logic
+  // ------------------------------------------
+  let branch = null;
+  if (branchId) {
+    branch = await prisma.branch.findUnique({
+      where: { id: branchId },
+    });
+    if (!branch) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
+    }
+  }
+  const orders = await prisma.dailyOrder.findMany({
+    where: {
+      // if branchId is undefined, it will fetch orders without branch filter
+      ...(branchId && { branchId: branchId }),
+      orderDate: {
+        gte: startISO,
+        lte: endISO,
+      },
+      ...(productCategoryId && {
+        OrderProducts: {
+          some: {
+            product: {
+              categoryId: productCategoryId,
+            },
+          },
+        },
+      }),
+    },
+    select: { id: true, branchId: true },
+  });
+
+  orderIds = orders.map((o) => o.id);
+
+  // If no orders – return empty
+  if (orderIds.length === 0) {
+    return {
+      totalReturnedProducts: [],
+      totalUniqueProducts: 0,
+    };
+  }
+
+  // Create a map of orderId to branchId for later lookup
+  const orderBranchMap = new Map(orders.map((o) => [o.id, o.branchId]));
+
+  // ------------------------------------------
+  // GROUP RETURNED PRODUCTS
+  // ------------------------------------------
+  const groupedProducts = await prisma.orderProduct.groupBy({
+    by: ["productId", "orderId"],
+    where: {
+      orderId: { in: orderIds },
+    },
+    _sum: {
+      returnedWeight: true,
+      returnedPrice: true,
+    },
+  });
+
+  // Filter only products with returned weight > 0
+  const filteredGroupedProducts = groupedProducts.filter(
+    (gp) => (gp._sum.returnedWeight || 0) > 0
+  );
+
+  if (filteredGroupedProducts.length === 0) {
+    return {
+      totalReturnedProducts: [],
+      totalUniqueProducts: 0,
+    };
+  }
+
+  // Fetch product details including categoryId
+  const productIds = [
+    ...new Set(filteredGroupedProducts.map((gp) => gp.productId)),
+  ];
+  const products = await prisma.product.findMany({
+    where: {
+      id: { in: productIds as string[] },
+    },
+    select: {
+      id: true,
+      name: true,
+      images: true,
+      categoryId: true,
+    },
+  });
+
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  // Aggregate by productId across all orders to get totals
+  const productAggregates = new Map<
+    string,
+    {
+      totalReturnedWeight: number;
+      totalReturnedPrice: number;
+      orderCount: number;
+      branchIds: Set<string | null>;
+    }
+  >();
+
+  filteredGroupedProducts.forEach((gp) => {
+    const existing = productAggregates.get(gp.productId!);
+    const branchId = orderBranchMap.get(gp.orderId!);
+
+    if (existing) {
+      existing.totalReturnedWeight += gp._sum.returnedWeight || 0;
+      existing.totalReturnedPrice += gp._sum.returnedPrice || 0;
+      existing.orderCount += 1;
+      if (branchId) existing.branchIds.add(branchId);
+    } else {
+      productAggregates.set(gp.productId!, {
+        totalReturnedWeight: gp._sum.returnedWeight || 0,
+        totalReturnedPrice: gp._sum.returnedPrice || 0,
+        orderCount: 1,
+        branchIds: new Set(branchId ? [branchId] : []),
+      });
+    }
+  });
+
+  // Build final response
+  const finalResult = Array.from(productAggregates.entries()).map(
+    ([productId, aggregates]) => {
+      const product = productMap.get(productId);
+      // If multiple branches, take the first one or null
+      const branchIdValue =
+        aggregates.branchIds.size > 0
+          ? Array.from(aggregates.branchIds)[0]
+          : null;
+
+      return {
+        productId: productId,
+        productName: product?.name || "",
+        productImage:
+          product?.images && product.images.length > 0
+            ? product.images[0]
+            : null,
+        productCategoryId: product?.categoryId || null,
+        branchId: branchIdValue,
+        totalReturnedWeight: aggregates.totalReturnedWeight,
+        totalReturnedPrice: aggregates.totalReturnedPrice,
+        orderCount: aggregates.orderCount,
+      };
+    }
+  );
+
+  return {
+    totalReturnedProducts: finalResult,
+    totalUniqueProducts: finalResult.length,
+  };
+};
 
 const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
   // first validate is this order assigned to this driver
@@ -2132,5 +2278,6 @@ export const orderServices = {
   markOrderAsDelivered,
   cancelOrderByCustomer,
   getMyCustomerOrders,
-  createOrderByAgentForCustomer
+  createOrderByAgentForCustomer,
+  getTotalAssignedReturnedProductsForSuperAdmin,
 };

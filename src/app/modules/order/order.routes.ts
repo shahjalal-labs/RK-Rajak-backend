@@ -126,7 +126,7 @@ router.get(
  */
 router.put(
   "/products/:orderProductId/adjust",
-  auth(UserRole.Driver),
+  auth(UserRole.Driver , UserRole.SuperAdmin, UserRole.Owner),
   validateRequest(OrderValidation.adjustProductSchema),
   orderControllers.adjustProductQuantity
 );
@@ -140,6 +140,11 @@ router.get(
   "/driver/total-assigned-returned-products",
   auth(UserRole.Driver, UserRole.Agent),
   orderControllers.getTotalAssignedReturnedProducts
+);
+router.get(
+  "/superAdmin/total-assigned-returned-products",
+  auth(UserRole.SuperAdmin),
+  orderControllers.getTotalAssignedReturnedProductsForSuperAdmin
 );
 router.get(
   "/get-orderdetails-for-driver/:orderId",

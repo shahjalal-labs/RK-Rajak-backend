@@ -116,13 +116,10 @@ const rejectProductByAdmin = catchAsync(async (req: Request, res: Response) => {
 const adjustProductQuantity = catchAsync(
   async (req: Request, res: Response) => {
     const { orderProductId } = req.params;
-    const { newWeight, reason } = req.body;
-    const userId = req.user.id;
+    const { newWeight } = req.body;
     const result = await orderServices.adjustProductQuantity(
       orderProductId,
       newWeight,
-      userId,
-      reason
     );
 
     sendResponse(res, {
@@ -203,6 +200,19 @@ const getTotalAssignedReturnedProducts = catchAsync(
   async (req: Request, res: Response) => {
     const result = await orderServices.getTotalAssignedReturnedProducts(
       req.user,
+      req.query
+    );
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "My assigned returned products retrieved successfully",
+      data: result,
+    });
+  }
+);
+const getTotalAssignedReturnedProductsForSuperAdmin = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await orderServices.getTotalAssignedReturnedProductsForSuperAdmin(
       req.query
     );
     sendResponse(res, {
@@ -325,5 +335,6 @@ export const orderControllers = {
   cancelOrderByCustomer,
   returnOrderProduct,
   getMyCustomerOrders,
-  createOrderByAgentForCustomer
+  createOrderByAgentForCustomer,
+  getTotalAssignedReturnedProductsForSuperAdmin
 };

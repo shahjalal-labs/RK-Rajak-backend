@@ -84,7 +84,6 @@ const rejectProductSchema = z.object({
 // Adjust product schema
 const adjustProductSchema = z.object({
   newWeight: z.number().nonnegative("New weight must be non-negative"),
-  reason: z.string().optional(),
 });
 
 const orderAssignToDriverSchema = z.object({
