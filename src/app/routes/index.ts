@@ -16,6 +16,7 @@ import { PaymentRoutes } from "../modules/payment/payment.routes";
 import { bannerRoutes } from "../modules/banner/banner.routes";
 import { cartValueRoutes } from "../modules/cartvalue/cartValue.routes";
 import { handalingChargeRoutes } from "../modules/handalingcharge/handalingCharge.routes";
+import { incentivesRoutes } from "../modules/incentives/incentives.routes";
 
 const router = express.Router();
 
@@ -87,6 +88,10 @@ const moduleRoutes = [
   {
     path: "/handalingCharge",
     route: handalingChargeRoutes,
+  },
+  {
+    path: "/incentives",
+    route: incentivesRoutes,
   },
 ];
 

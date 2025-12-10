@@ -39,6 +39,8 @@ router.get(
   orderControllers.getMyCustomerOrders
 );
 router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);
+
+router.get("/superAdmin/sales-history", auth(UserRole.SuperAdmin), orderControllers.getSalesHistory);
 /**
  * GET /api/orders/today
  * Get customer's today's order

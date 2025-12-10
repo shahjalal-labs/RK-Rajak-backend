@@ -726,12 +726,9 @@ const rejectProductByAdmin = async (totalorderProductId: string) => {
 
 const adjustProductQuantity = async (
   orderProductId: string,
-  newWeight: number,
+  newWeight: number
 ) => {
-  return await adjustOrderProduct(
-    orderProductId,
-    newWeight,
-  );
+  return await adjustOrderProduct(orderProductId, newWeight);
 };
 
 /**
@@ -1474,7 +1471,7 @@ const getTotalAssignedReturnedProducts = async (
   };
 };
 const getTotalAssignedReturnedProductsForSuperAdmin = async (query: any) => {
-  console.log("hitsssin")
+  console.log("hitsssin");
   const { startDate, endDate, branchId, productCategoryId } = query || {};
 
   // Get today or query dates
@@ -2256,6 +2253,110 @@ const returnOrderProduct = async (
   return { message: "Product return processed successfully" };
 };
 
+const getSalesHistory = async (query: any) => {
+  const { branchId, startDate, endDate, page = 1, limit = 10 } = query || {};
+
+  const filters: any = { status: "Delivered" };
+
+  if (branchId) filters.branchId = branchId;
+
+  if (startDate) {
+    filters.orderDate = {
+      ...(filters.orderDate || {}),
+      gte: new Date(startDate + "T00:00:00.000Z"),
+    };
+  }
+
+  if (endDate) {
+    filters.orderDate = {
+      ...(filters.orderDate || {}),
+      lte: new Date(endDate + "T23:59:59.999Z"),
+    };
+  }
+
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const totalCount = await prisma.dailyOrder.count({
+    where: filters,
+  });
+
+  const rawData = await prisma.dailyOrder.findMany({
+    where: filters,
+    skip,
+    take: Number(limit),
+    orderBy: { orderDate: "desc" },
+    select: {
+      id: true,
+      orderDate: true,
+      totalAmount: true,
+      totalWeight: true,
+      branchId: true,
+      status: true,
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          profileImage: true,
+          phone: true,
+          agentId: true,
+        },
+      },
+      driverAssignments: {
+        select: {
+          driver: {
+            select: {
+              id: true,
+              fullName: true,
+              profileImage: true,
+            },
+          },
+        },
+      },
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  // 💥 Flatten the data here
+  const formattedData = rawData.map((item) => {
+    const driver = item.driverAssignments[0]?.driver;
+
+    return {
+      id: item.id,
+      orderDate: item.orderDate,
+      totalAmount: item.totalAmount,
+      totalWeight: item.totalWeight,
+      branchId: item.branchId,
+      status: item.status,
+
+      userId: item.user?.id || null,
+      userName: item.user?.fullName || null,
+      userPhone: item.user?.phone || null,
+      userImage: item.user?.profileImage || null,
+      agentId: item.user?.agentId || null,
+
+      driverId: driver?.id || null,
+      driverName: driver?.fullName || null,
+      driverImage: driver?.profileImage || null,
+
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    };
+  });
+
+  return {
+    metadata: {
+      page: Number(page),
+      limit: Number(limit),
+      totalCount,
+      totalPages: Math.ceil(totalCount / Number(limit)),
+    },
+    data: formattedData,
+  };
+};
+
+
+
 export const orderServices = {
   createOrder,
   returnOrderProduct,
@@ -2280,4 +2381,5 @@ export const orderServices = {
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
   getTotalAssignedReturnedProductsForSuperAdmin,
+  getSalesHistory,
 };

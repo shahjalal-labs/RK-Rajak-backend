@@ -117,7 +117,6 @@ const buyerOtpLogin = async (
     },
   });
 
-
   // reffaralCode calcualte + send money in raffaral useg account and add new user a random rafferal code 6 digit
 
   if (reffaralCode) {
@@ -226,6 +225,7 @@ const getSingleUserIntoDB = async (id: string) => {
       dailyOrders: true,
       shippingAddress: true,
       UserLocation: true,
+      Wallet: true,
     },
   });
   if (!user) {
@@ -573,6 +573,519 @@ const rateUser = async (payload: {
   return;
 };
 
+const getDriverTripsForSuperAdmin = async (query: any) => {
+  const {
+    startDate,
+    endDate,
+    branchId,
+    searchTerm,
+    page = 1,
+    limit = 10,
+  } = query || {};
+
+  const whereClause: any = {
+    role: UserRole.Driver,
+  };
+
+  if (searchTerm) {
+    whereClause.OR = [
+      { fullName: { contains: searchTerm, mode: "insensitive" } },
+      { phone: { contains: searchTerm, mode: "insensitive" } },
+    ];
+  }
+  if(branchId){
+    whereClause.branchId = branchId;
+  }
+
+  const skip = (page - 1) * limit;
+
+  const drivers = await prisma.user.findMany({
+    where: whereClause,
+    skip,
+    take: Number(limit),
+    orderBy: { createdAt: "desc" },
+    include: {
+      driverAssignments: {
+        include: {
+          dailyOrder: {
+            select: {
+              id: true,
+              status: true,
+              branchId: true,
+              orderDate: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const formatted = drivers.map((driver) => {
+    let driverOrders = driver.driverAssignments.map((d) => d.dailyOrder);
+
+    if (startDate) {
+      const sd = new Date(startDate + "T00:00:00.000Z");
+      driverOrders = driverOrders.filter((o) => o?.orderDate && new Date(o.orderDate) >= sd);
+    }
+
+    if (endDate) {
+      const ed = new Date(endDate + "T23:59:59.999Z");
+      driverOrders = driverOrders.filter((o) => o?.orderDate && new Date(o.orderDate) <= ed);
+    }
+
+    const totalTrips = driverOrders.length;
+    const deliveredTrips = driverOrders.filter(o => o?.status === "Delivered").length;
+
+    // ✔ Order Start Date
+    const orderStartDate =
+      driverOrders.length > 0
+        ? (() => {
+            const orderDates = driverOrders
+              .map((o) => o?.orderDate)
+              .filter((date): date is string => !!date);
+            return orderDates.length > 0
+              ? new Date(Math.min(...orderDates.map((date) => new Date(date).getTime())))
+              : null;
+          })()
+        : null;
+
+    // ✔ Order End Date
+    const orderEndDate =
+      driverOrders.length > 0
+        ? (() => {
+            const orderDates = driverOrders
+              .map((o) => o?.orderDate)
+              .filter((date): date is string => !!date);
+            return orderDates.length > 0
+              ? new Date(Math.max(...orderDates.map((date) => new Date(date).getTime())))
+              : null;
+          })()
+        : null;
+
+    // ✔ Latest Delivery Date (only delivered ones)
+    const deliveredOrderDates = driverOrders
+      .filter((o) => o?.status === "Delivered" && o?.orderDate)
+      .map((o) => new Date(o?.orderDate as string).getTime());
+
+    const latestDeliveryDate =
+      deliveredOrderDates.length > 0
+        ? new Date(Math.max(...deliveredOrderDates))
+        : null;
+
+    return {
+      driverId: driver.id,
+      driverName: driver.fullName,
+      phone: driver.phone,
+      profileImage: driver.profileImage,
+      branchId: driver.branchId,
+
+      totalTrips,
+      deliveredTrips,
+
+      orderStartDate,
+      orderEndDate,
+      latestDeliveryDate,
+    };
+  });
+
+  const totalDrivers = await prisma.user.count({ where: whereClause });
+
+  return {
+    metadata: {
+      total: totalDrivers,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(totalDrivers / Number(limit)),
+    },
+    data: formatted,
+  };
+};
+
+const getDriverTripsDetailsForSuperAdmin = async (query: any, driverId: string) => {
+  const {
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+  } = query || {};
+
+  // Verify driver exists
+  const driver = await prisma.user.findFirst({
+    where: {
+      id: driverId,
+      role: UserRole.Driver,
+    },
+  });
+
+  if (!driver) {
+    throw new ApiError(404, "Driver not found");
+  }
+
+  // Build where clause for date filtering
+  const dateFilter: any = {};
+  if (startDate) {
+    const sd = new Date(startDate + "T00:00:00.000Z");
+    dateFilter.gte = sd.toISOString().split('T')[0];
+  }
+  if (endDate) {
+    const ed = new Date(endDate + "T23:59:59.999Z");
+    dateFilter.lte = ed.toISOString().split('T')[0];
+  }
+
+  const whereClause: any = {
+    driverId: driverId,
+  };
+
+  if (Object.keys(dateFilter).length > 0) {
+    whereClause.dailyOrder = {
+      orderDate: dateFilter,
+    };
+  }
+
+  const skip = (page - 1) * limit;
+
+  // Get driver assignments with full order details
+  const assignments = await prisma.driverAssignment.findMany({
+    where: whereClause,
+    skip,
+    take: Number(limit),
+    orderBy: { assignedAt: "desc" },
+    include: {
+      dailyOrder: {
+        include: {
+          OrderProducts: {
+            where: {
+              status: {
+                not: "Cancelled",
+              },
+            },
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  images: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+            },
+          },
+          shippingAddress: {
+            select: {
+              shopName: true,
+              address: true,
+              landmark: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Format the response
+  const formatted = assignments.map((assignment) => {
+    const order = assignment.dailyOrder;
+    
+    if (!order) {
+      return null;
+    }
+
+    // Calculate delivered products (accepted + partially returned)
+    const deliveredProducts = order.OrderProducts.filter(
+      (op) => op.acceptedWeight && op.acceptedWeight > 0
+    ).map((op) => ({
+      productId: op.product?.id,
+      productName: op.product?.name,
+      weight: op.acceptedWeight,
+      quantity: op.acceptedQuantity,
+      price: op.acceptedPrice,
+    }));
+
+    // Calculate returned products
+    const returnedProducts = order.OrderProducts.filter(
+      (op) => op.returnedWeight && op.returnedWeight > 0
+    ).map((op) => ({
+      productId: op.product?.id,
+      productName: op.product?.name,
+      weight: op.returnedWeight,
+      quantity: op.returnedQuantity,
+      price: op.returnedPrice,
+    }));
+
+    // Calculate total dispatched weight
+    const totalDispatchedWeight = order.OrderProducts.reduce(
+      (sum, op) => sum + (op.totalWeight || 0),
+      0
+    );
+
+    // Estimate crates dispatched (assuming 1 crate = 10kg, adjust as needed)
+    const cratesDispatched = Math.ceil(totalDispatchedWeight / 10);
+
+    // Parse payment methods
+    const paymentMethods: string[] = [];
+    if (order.paymentMethod) {
+      paymentMethods.push(order.paymentMethod);
+    }
+    if (order.walletAmountUsed && order.walletAmountUsed > 0) {
+      if (!paymentMethods.includes("Wallet")) {
+        paymentMethods.push("Wallet");
+      }
+    }
+
+    // Count delivery proof photos (DeliveryProof could be a single URL or comma-separated URLs)
+    const photoCount = order.DeliveryProof 
+      ? order.DeliveryProof.split(',').filter(url => url.trim()).length 
+      : 0;
+
+    return {
+      tripNumber: order.id,
+      orderDate: order.orderDate,
+      driverName: driver.fullName,
+      driverId: driver.id,
+      customerName: order.user?.fullName,
+      customerPhone: order.user?.phone,
+      shopName: order.shippingAddress?.shopName,
+      address: order.shippingAddress?.address,
+      
+      totalDispatch: order.OrderProducts.length,
+      totalDispatchedWeight: totalDispatchedWeight,
+      
+      deliveredProducts: deliveredProducts,
+      returnedProducts: returnedProducts,
+      
+      totalAcceptedWeight: order.totalAcceptedWeight || 0,
+      totalReturnedWeight: order.totalReturnedWeight || 0,
+      totalRejectedWeight: order.totalRejectedWeight || 0,
+      
+      cratesDispatched: cratesDispatched,
+      
+      totalAmount: order.totalAmount,
+      totalAcceptedPrice: order.totalAcceptedPrice || 0,
+      totalReturnedPrice: order.totalReturnedPrice || 0,
+      
+      paymentMethods: paymentMethods,
+      paymentMethod: order.paymentMethod,
+      walletAmountUsed: order.walletAmountUsed || 0,
+      remainingAmount: order.RemainingAmount || 0,
+      
+      deliveryProofPhotos: order.DeliveryProof ? order.DeliveryProof.split(',').filter(url => url.trim()) : [],
+      photoCount: photoCount,
+      
+      status: order.status,
+      isDues: order.isDues || false,
+      duesCleared: order.duesCleared || false,
+      
+      assignedAt: assignment.assignedAt,
+      actualDeliveryDate: assignment.deliveryDate,
+    };
+  }).filter(item => item !== null);
+
+  // Count total assignments for pagination
+  const totalAssignments = await prisma.driverAssignment.count({
+    where: whereClause,
+  });
+
+  return {
+    metadata: {
+      total: totalAssignments,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(totalAssignments / Number(limit)),
+    },
+    driver: {
+      id: driver.id,
+      name: driver.fullName,
+      phone: driver.phone,
+      profileImage: driver.profileImage,
+      branchId: driver.branchId,
+    },
+    data: formatted,
+  };
+}
+
+
+const getSalesAgentPerformanceForSuperAdmin = async (query: any) => {
+  const {
+    startDate,
+    endDate,
+    branchId,
+    searchTerm,
+    page = 1,
+    limit = 10,
+  } = query || {};
+
+  // Build where clause for agents
+  const agentWhereClause: any = {
+    role: UserRole.Agent,
+  };
+
+  if (searchTerm) {
+    agentWhereClause.OR = [
+      { fullName: { contains: searchTerm, mode: "insensitive" } },
+      { phone: { contains: searchTerm, mode: "insensitive" } },
+    ];
+  }
+
+  if (branchId) {
+    agentWhereClause.branchId = branchId;
+  }
+
+  const skip = (page - 1) * limit;
+
+  // Get all agents with pagination
+  const agents = await prisma.user.findMany({
+    where: agentWhereClause,
+    skip,
+    take: Number(limit),
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      email: true,
+      profileImage: true,
+      branchId: true,
+    },
+  });
+
+  // Build date filter for orders
+  const orderDateFilter: any = {};
+  if (startDate) {
+    const sd = new Date(startDate + "T00:00:00.000Z");
+    orderDateFilter.gte = sd.toISOString().split('T')[0];
+  }
+  if (endDate) {
+    const ed = new Date(endDate + "T23:59:59.999Z");
+    orderDateFilter.lte = ed.toISOString().split('T')[0];
+  }
+
+  // Calculate performance for each agent
+  const performanceData = await Promise.all(
+    agents.map(async (agent) => {
+      // Get all customers for this agent
+      const customers = await prisma.user.findMany({
+        where: {
+          agentId: agent.id,
+          role: UserRole.Customer,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const customerIds = customers.map((c) => c.id);
+
+      if (customerIds.length === 0) {
+        return {
+          agentId: agent.id,
+          agentName: agent.fullName,
+          phone: agent.phone,
+          email: agent.email,
+          profileImage: agent.profileImage,
+          branchId: agent.branchId,
+          bookedQty: 0,
+          deliveredQty: 0,
+          returnsQty: 0,
+          cancelQty: 0,
+          orders: 0,
+          bookedAmt: 0,
+          deliveryAmt: 0,
+        };
+      }
+
+      // Build order where clause
+      const orderWhereClause: any = {
+        userId: { in: customerIds },
+      };
+
+      if (Object.keys(orderDateFilter).length > 0) {
+        orderWhereClause.orderDate = orderDateFilter;
+      }
+
+      // Get all orders for this agent's customers
+      const orders = await prisma.dailyOrder.findMany({
+        where: orderWhereClause,
+        include: {
+          OrderProducts: {
+            where: {
+              status: {
+                not: "Cancelled",
+              },
+            },
+          },
+        },
+      });
+
+      // Calculate metrics (using weight instead of quantity)
+      let bookedQty = 0;
+      let deliveredQty = 0;
+      let returnsQty = 0;
+      let cancelQty = 0;
+      let bookedAmt = 0;
+      let deliveryAmt = 0;
+
+      orders.forEach((order) => {
+        // Booked amount is the total amount
+        bookedAmt += order.totalAmount || 0;
+
+        // Delivery amount is the accepted amount
+        deliveryAmt += order.totalAcceptedPrice || 0;
+
+        // Calculate weights from OrderProducts
+        order.OrderProducts.forEach((product) => {
+          // Booked weight
+          bookedQty += product.totalWeight || 0;
+
+          // Delivered weight (accepted)
+          deliveredQty += product.acceptedWeight || 0;
+
+          // Returns weight
+          returnsQty += product.returnedWeight || 0;
+
+          // Cancel/Rejected weight
+          cancelQty += product.rejectedWeight || 0;
+        });
+      });
+
+      return {
+        agentId: agent.id,
+        agentName: agent.fullName,
+        phone: agent.phone,
+        email: agent.email,
+        profileImage: agent.profileImage,
+        branchId: agent.branchId,
+        bookedWeight: Math.round(bookedQty),
+        deliveredWeight: Math.round(deliveredQty),
+        returnsWeight: Math.round(returnsQty),
+        cancelWeight: Math.round(cancelQty),
+        orders: orders.length,
+        bookedAmt: Math.round(bookedAmt),
+        deliveryAmt: Math.round(deliveryAmt),
+      };
+    })
+  );
+
+  // Count total agents
+  const totalAgents = await prisma.user.count({ where: agentWhereClause });
+
+  return {
+    metadata: {
+      total: totalAgents,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(totalAgents / Number(limit)),
+    },
+    data: performanceData,
+  };
+}
+
+
 export const userService = {
   buyerOtpLogin,
   getUsers,
@@ -590,4 +1103,7 @@ export const userService = {
   getMyCustomersFromDB,
   getAllDriversFromDB,
   rateUser,
+  getDriverTripsForSuperAdmin,
+  getDriverTripsDetailsForSuperAdmin,
+  getSalesAgentPerformanceForSuperAdmin
 };

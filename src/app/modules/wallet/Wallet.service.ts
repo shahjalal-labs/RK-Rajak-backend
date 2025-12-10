@@ -35,7 +35,119 @@ const getWalletById = async (id: string) => {
   };
 };
 
+const getWalletTransactionForSuperAdmin = async (filters: any) => {
+  const { page = 1, limit = 10, branchId, startDate, endDate } = filters;
+
+  const whereClause: any = {};
+
+  // Filter by branch
+  if (branchId) {
+    whereClause.wallet = {
+      user: { branchId: branchId ? branchId : undefined },
+    };
+  }
+
+  // Full day date range filter
+  if (startDate) {
+    whereClause.createdAt = {
+      ...(whereClause.createdAt || {}),
+      gte: new Date(startDate + "T00:00:00.000Z"),
+    };
+  }
+
+  if (endDate) {
+    whereClause.createdAt = {
+      ...(whereClause.createdAt || {}),
+      lte: new Date(endDate + "T23:59:59.999Z"),
+    };
+  }
+
+  const skip = (Number(page) - 1) * Number(limit);
+
+  // Total count for pagination UI
+  const totalCount = await prisma.walletTransaction.count({
+    where: whereClause,
+  });
+
+  // Main query with pagination
+  const transactions = await prisma.walletTransaction.findMany({
+    where: whereClause,
+    include: {
+      wallet: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              profileImage: true,
+              branchId: true,
+            },
+          },
+        },
+      },
+    },
+    skip,
+    take: Number(limit),
+    orderBy: { createdAt: "desc" },
+  });
+
+  return {
+    metadata: {
+      page: Number(page),
+      limit: Number(limit),
+      totalCount,
+      totalPages: Math.ceil(totalCount / Number(limit)),
+    },
+    data: transactions,
+  };
+};
+
+const getTotalWalletUsagesForSuperAdmin = async (filters: any) => {
+  const { branchId, startDate, endDate } = filters;
+
+  const whereClause: any = {};
+
+  // Filter by branch
+  if (branchId) {
+    whereClause.wallet = {
+      user: { branchId: branchId ? branchId : undefined },
+    };
+  }
+
+  // Full day date range filter
+  if (startDate) {
+    whereClause.createdAt = {
+      ...(whereClause.createdAt || {}),
+      gte: new Date(startDate + "T00:00:00.000Z"),
+    };
+  }
+
+  if (endDate) {
+    whereClause.createdAt = {
+      ...(whereClause.createdAt || {}),
+      lte: new Date(endDate + "T23:59:59.999Z"),
+    };
+  }
+
+  const totalUsages = await prisma.walletTransaction.aggregate({
+    where: { type: "Debit", ...whereClause },
+    _count: { id: true },
+    _sum: {
+      amount: true,
+    },
+  });
+
+  return {
+    totalUsages: {
+      count: totalUsages._count.id,
+      totalAmount: totalUsages._sum.amount || 0,
+    },
+  };
+};
+
 export const WalletServices = {
   getAllWallets,
   getWalletById,
+  getWalletTransactionForSuperAdmin,
+  getTotalWalletUsagesForSuperAdmin,
 };

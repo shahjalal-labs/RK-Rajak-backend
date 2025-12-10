@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { query, Request, Response } from "express";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { userService } from "./user.services";
@@ -58,7 +58,7 @@ const getCustomersForBranch = catchAsync(async (req, res) => {
   if (!branchId) {
     throw new Error("Branch id is required");
   }
-  const users = await userService.getCustomersForBranch(req.query,branchId);
+  const users = await userService.getCustomersForBranch(req.query, branchId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -85,7 +85,7 @@ const getAllDrivers = catchAsync(async (req, res) => {
   });
 });
 const getMyCustomers = catchAsync(async (req, res) => {
-  const users = await userService.getMyCustomersFromDB(req.query , req.user.id);
+  const users = await userService.getMyCustomersFromDB(req.query, req.user.id);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -171,7 +171,13 @@ const verifyMyAccount = catchAsync(async (req, res) => {
   if (!shopPhoto || shopPhoto.length === 0) {
     throw new Error("Shop photo is required");
   }
-  await userService.verifyMyAccount(req.user.id, req.body, files , buyerPhoto[0], shopPhoto[0]);
+  await userService.verifyMyAccount(
+    req.user.id,
+    req.body,
+    files,
+    buyerPhoto[0],
+    shopPhoto[0]
+  );
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -180,25 +186,52 @@ const verifyMyAccount = catchAsync(async (req, res) => {
 });
 
 //------------------ User create by Owneer ---------------
-const createUserByOwner = catchAsync(async(req , res)=>{
-  const result = await userService.userCreateByOwner(req.body)
+const createUserByOwner = catchAsync(async (req, res) => {
+  const result = await userService.userCreateByOwner(req.body);
   sendResponse(res, {
     success: true,
     statusCode: 201,
     message: "User created successfully",
     data: result,
   });
-})
-const rateUser = catchAsync(async(req , res)=>{
-  const result = await userService.rateUser(req.body)
+});
+const rateUser = catchAsync(async (req, res) => {
+  const result = await userService.rateUser(req.body);
   sendResponse(res, {
     success: true,
     statusCode: 201,
     message: "User rated successfully",
     data: result,
   });
-})
-
+});
+const getDriverTripsForSuperAdmin = catchAsync(async (req, res) => {
+  const result = await userService.getDriverTripsForSuperAdmin(req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Driver trips retrieved successfully",
+    data: result,
+  });
+});
+const getDriverTripsDetailsForSuperAdmin = catchAsync(async (req, res) => {
+  const driverId = req.params.driverId;
+  const result = await userService.getDriverTripsDetailsForSuperAdmin(req.query, driverId);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Driver trips retrieved successfully",
+    data: result,
+  });
+});
+const getSalesAgentPerformanceForSuperAdmin = catchAsync(async (req, res) => {
+  const result = await userService.getSalesAgentPerformanceForSuperAdmin(req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Sales agent performance retrieved successfully",
+    data: result,
+  });
+});
 
 export const UserControllers = {
   buyerOtpLogin,
@@ -216,5 +249,8 @@ export const UserControllers = {
   getAllAgents,
   getMyCustomers,
   getAllDrivers,
-  rateUser
+  rateUser,
+  getDriverTripsForSuperAdmin,
+  getDriverTripsDetailsForSuperAdmin,
+  getSalesAgentPerformanceForSuperAdmin
 };

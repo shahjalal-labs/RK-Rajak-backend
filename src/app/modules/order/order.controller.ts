@@ -315,6 +315,17 @@ const createOrderByAgentForCustomer = catchAsync(async (req: Request, res: Respo
   });
 });
 
+const getSalesHistory = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getSalesHistory(req.query);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Sales history retrieved successfully",
+    data: result,
+  });
+});
+
 export const orderControllers = {
   createOrder,
   getUserDailyOrders,
@@ -336,5 +347,6 @@ export const orderControllers = {
   returnOrderProduct,
   getMyCustomerOrders,
   createOrderByAgentForCustomer,
-  getTotalAssignedReturnedProductsForSuperAdmin
+  getTotalAssignedReturnedProductsForSuperAdmin,
+  getSalesHistory,
 };

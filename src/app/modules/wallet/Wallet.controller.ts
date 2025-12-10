@@ -25,9 +25,29 @@ const getWalletById = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 })
+const getWalletTransactionForSuperAdmin = catchAsync(async (req: Request, res: Response) => {
+  const result = await WalletServices.getWalletTransactionForSuperAdmin(req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Wallet has been retrieved successfully",
+    data: result,
+  });
+})
+const getTotalWalletUsagesForSuperAdmin = catchAsync(async (req: Request, res: Response) => {
+  const result = await WalletServices.getTotalWalletUsagesForSuperAdmin(req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Wallet has been retrieved successfully",
+    data: result,
+  });
+})
   
 export const WalletControllers = {
   getAllWallets,
   getWalletById,
+  getWalletTransactionForSuperAdmin,
+  getTotalWalletUsagesForSuperAdmin
 }
   

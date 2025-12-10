@@ -90,4 +90,10 @@ router.post(
   UserControllers.rateUser
 );
 
+router.get("/S-A-driver-trips" , auth(UserRole.SuperAdmin , UserRole.Owner), UserControllers.getDriverTripsForSuperAdmin);
+router.get("/S-A-driver-trips/:driverId" , auth(UserRole.SuperAdmin , UserRole.Owner), UserControllers.getDriverTripsDetailsForSuperAdmin);
+
+router.get("/S-A-Sales-Agent-Performance" , auth(UserRole.SuperAdmin , UserRole.Owner), UserControllers.getSalesAgentPerformanceForSuperAdmin);
+
+
 export const userRoutes = router;
