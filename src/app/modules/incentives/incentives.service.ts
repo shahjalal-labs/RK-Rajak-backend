@@ -8,10 +8,11 @@ import httpStatus from "http-status";
 type CreateIncentiveInput = {
   role: UserRole;
   type: IncentiveType;
-  targetAmount: number;
+  targetAmount?: number;
   rewardAmount: number;
   branchId: string;
 };
+
 
 const createIncentives = async (data: CreateIncentiveInput) => {
   if(data.type ===  "Refar"){
@@ -29,19 +30,21 @@ const createIncentives = async (data: CreateIncentiveInput) => {
       );
     }
   }
+  if(data.role === "Agent" && !data.targetAmount){
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Target amount is required for Agent role."
+    );
+  }
   
   return await prisma.incentive.create({ data });
 };
 
 const getAllIncentivess = async (query?: {
-  role?: UserRole;
-  type?: IncentiveType;
   branchId?: string;
 }) => {
   const where: any = {};
 
-  if (query?.role) where.role = query.role;
-  if (query?.type) where.type = query.type;
   if (query?.branchId) where.branchId = query.branchId;
 
   return await prisma.incentive.findMany({
@@ -203,7 +206,7 @@ const updateIncentiveProgress = async (
     let rewardCreated = false;
     let reward = undefined;
 
-    if (progress.currentAmount >= incentive.targetAmount && !progress.completed) {
+    if (progress.currentAmount >= (incentive?.targetAmount || 0) && !progress.completed) {
       // Mark progress as completed
       progress = await tx.incentiveProgress.update({
         where: { id: progress.id },

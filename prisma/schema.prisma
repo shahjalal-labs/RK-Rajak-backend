@@ -618,7 +618,7 @@ model Incentive {
   role                UserRole
   // support multiple incentive types 2monthly , 3weekly , referral , zero returns
   type                IncentiveType
-  targetAmount        Float
+  targetAmount        Float?
   rewardAmount        Float
   branchId            String?             @db.ObjectId
   branch              branch?             @relation(fields: [branchId], references: [id])

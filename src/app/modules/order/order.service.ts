@@ -1829,7 +1829,10 @@ const markOrderAsDelivered = async (
       where: { usedBy: order?.userId! },
       select: {
         reffaralUser: {
-          select: { Wallet: { select: { id: true, balance: true } } },
+          select: {
+            branchId: true,
+            Wallet: { select: { id: true, balance: true } },
+          },
         },
       },
     });
@@ -1838,12 +1841,20 @@ const markOrderAsDelivered = async (
 
     if (referralUser?.reffaralUser?.Wallet) {
       console.log("hit the reffaral wallet.....!");
+
+      const refarBalance = await prisma.incentive.findFirst({
+        where: {
+          branchId: referralUser.reffaralUser.branchId || undefined,
+          type: "Refar",
+        },
+      });
+
       const walletId = referralUser.reffaralUser.Wallet.id;
 
       await prisma.$transaction(async (tx) => {
         await tx.wallet.update({
           where: { id: walletId },
-          data: { balance: { increment: 40 } },
+          data: { balance: { increment: refarBalance?.rewardAmount || 40 } },
         });
         console.log("Created wallet transaction for referral bonus");
         await tx.walletTransaction.create({
@@ -2354,8 +2365,6 @@ const getSalesHistory = async (query: any) => {
     data: formattedData,
   };
 };
-
-
 
 export const orderServices = {
   createOrder,
