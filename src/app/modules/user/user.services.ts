@@ -10,6 +10,10 @@ import QueryBuilder from "../../builder/QueryBuilder";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
 import { userCreationByOwner } from "./user.const";
 import httpStatus from "http-status";
+import {
+  initializeProgressForNewDriver,
+  initializeProgressForNewAgent,
+} from "../incentives/incentives.helper";
 
 const resendVerifyOTP = async (phone: string) => {
   console.log(phone);
@@ -505,6 +509,20 @@ const userCreateByOwner = async (payload: userCreationByOwner) => {
       status: "Active",
     },
   });
+
+  // =================== AUTO-INITIALIZE INCENTIVE PROGRESS ===================
+  // If the new user is a Driver or Agent, initialize their incentive progress
+  try {
+    if (user.role === UserRole.Driver && user.branchId) {
+      await initializeProgressForNewDriver(user.id, user.branchId);
+    } else if (user.role === UserRole.Agent && user.branchId) {
+      await initializeProgressForNewAgent(user.id, user.branchId);
+    }
+  } catch (error) {
+    console.error("Error initializing incentive progress for new user:", error);
+    // Don't fail user creation if incentive initialization fails
+  }
+
   return user;
 };
 

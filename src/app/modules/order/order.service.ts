@@ -26,6 +26,11 @@ import {
 } from "./order.helpers";
 import { JwtPayload } from "jsonwebtoken";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import {
+  updateDriverProgressOnDelivery,
+  updateDriverProgressOnAssignment,
+  updateAgentProgress,
+} from "../incentives/incentives.helper";
 
 const prisma = new PrismaClient();
 
@@ -1005,6 +1010,15 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
     return { updatedAssignments, updatedMainOrders };
   });
 
+  // =================== INCENTIVE TRACKING ===================
+  // Track driver progress when orders are assigned
+  try {
+    await updateDriverProgressOnAssignment(driverId, ordersIds.length);
+  } catch (error) {
+    console.error("Error updating driver incentive progress on assignment:", error);
+    // Don't fail the assignment if incentive tracking fails
+  }
+
   return;
 };
 
@@ -1875,6 +1889,39 @@ const markOrderAsDelivered = async (
     where: { id: assignment.id },
     data: { deliveryDate },
   });
+
+  // =================== INCENTIVE TRACKING ===================
+  // Track driver incentive progress for zero returns
+  try {
+    // Check if order has any returns (returned or rejected products)
+    const orderWithProducts = await prisma.dailyOrder.findUnique({
+      where: { id: orderId },
+      include: {
+        OrderProducts: true,
+        user: {
+          select: {
+            agentId: true,
+          },
+        },
+      },
+    });
+
+    const hasReturns =
+      (orderWithProducts?.totalReturnedWeight || 0) > 0 ||
+      (orderWithProducts?.totalRejectedWeight || 0) > 0;
+
+    // Update driver progress
+    await updateDriverProgressOnDelivery(driverId, orderId, hasReturns);
+
+    // Update agent progress if customer has an agent
+    if (orderWithProducts?.user?.agentId) {
+      const orderAmount = orderWithProducts.totalAcceptedPrice || 0;
+      await updateAgentProgress(orderWithProducts.user.agentId, orderAmount);
+    }
+  } catch (error) {
+    console.error("Error updating incentive progress:", error);
+    // Don't fail the delivery if incentive tracking fails
+  }
 };
 
 const cancelOrderByCustomer = async (

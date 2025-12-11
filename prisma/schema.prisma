@@ -34,17 +34,18 @@ model User {
   activeDuesCount Int   @default(0) // Current number of unpaid credit orders
   totalDuesAmount Float @default(0) // Total amount in dues
 
-  shippingAddress     shippingAddress[]
-  verificationUsers   verificationUsers?
-  UserLocation        UserLocation?
-  Wallet              Wallet?
-  Spin                Spin[]
-  Review              Review[]
-  dailyOrders         DailyOrder[]
-  reffaralUsages      reffaralUsages[]
-  driverAssignments   DriverAssignment[]
-  rewards             Reward[]
-  incentiveProgresses IncentiveProgress[]
+  shippingAddress           shippingAddress[]
+  verificationUsers         verificationUsers?
+  UserLocation              UserLocation?
+  Wallet                    Wallet?
+  Spin                      Spin[]
+  Review                    Review[]
+  dailyOrders               DailyOrder[]
+  reffaralUsages            reffaralUsages[]
+  driverAssignments         DriverAssignment[]
+  rewards                   Reward[]
+  driverIncentiveProgresses DriverIncentiveProgress[]
+  agentIncentiveProgresses  AgentIncentiveProgress[]
 
   @@map("users")
 }
@@ -613,19 +614,27 @@ model Notification {
 
 // ---------------------------------  Incentives and rewards Schema -------------------------///
 
+// ========================================================================================================//
+// ✅ Done :  Incentive CRUD For Owner Admin Superadmin 
+// after creating incentives for drivers and agents for individual branchs then need to create progress tracking for drivers and agents based on incentive type
+// for drivers zero returns for 1 day and for agents weekly or monthly target amount achievement
+// after target achievement need to create rewards for drivers and agents
+// after individual date or 7 days or 30 days need to reset progress for drivers and agents based on incentive type
+//=========================================================================================================//
 model Incentive {
-  id                  String              @id @default(auto()) @map("_id") @db.ObjectId
-  role                UserRole
+  id                        String                    @id @default(auto()) @map("_id") @db.ObjectId
+  role                      UserRole
   // support multiple incentive types 2monthly , 3weekly , referral , zero returns
-  type                IncentiveType
-  targetAmount        Float?
-  rewardAmount        Float
-  branchId            String?             @db.ObjectId
-  branch              branch?             @relation(fields: [branchId], references: [id])
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  rewards             Reward[]
-  incentiveProgresses IncentiveProgress[]
+  type                      IncentiveType
+  targetAmount              Float?
+  rewardAmount              Float
+  branchId                  String?                   @db.ObjectId
+  branch                    branch?                   @relation(fields: [branchId], references: [id])
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
+  rewards                   Reward[]
+  driverIncentiveProgresses DriverIncentiveProgress[]
+  agentIncentiveProgresses  AgentIncentiveProgress[]
 
   @@map("incentives")
 }
@@ -639,7 +648,49 @@ enum IncentiveType {
 
 ///------------- tracking user rewards ---------------///
 
-// DO I need to track like user need to see progress toward reward achievement?
+//===============   When Incentives create for drivers for individual Branches Then Create Driver Incentive Progress And one driver can only have one incentives progress after a day it will reset . if his 6 assigned order and all of zero return then he won a rewards (just save in rewards admin can see all driver achivements )  ==================//
+model DriverIncentiveProgress {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  driverId            String   @db.ObjectId
+  incentiveId         String   @db.ObjectId
+  totalAssignedOrders Int      @default(0) // Total orders assigned for the day
+  completedOrders     Int      @default(0) // Completed orders count
+  zeroReturnOrders    Int      @default(0) // Orders with zero returns
+  hasReturns          Boolean  @default(false) // Track if any order has returns
+  isEligibleForReward Boolean  @default(false) // True if all orders have zero returns
+  rewardClaimed       Boolean  @default(false) // True if reward already created
+  currentDate         String // YYYY-MM-DD format for daily tracking
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+
+  user      User?      @relation(fields: [driverId], references: [id])
+  incentive Incentive? @relation(fields: [incentiveId], references: [id])
+
+  @@unique([driverId, incentiveId, currentDate])
+  @@map("driver_incentive_progress")
+}
+
+// Agent incentives can 7 day i mean weekly or 30 days monthly based on target amount he achieve then he will get rewards after 7 days or 30 days reset his progress start from 0 again. need cron job to reset progress after 7 days or 30 days based on incentive type - Hint : use cron job
+model AgentIncentiveProgress {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  agentId       String   @db.ObjectId
+  incentiveId   String   @db.ObjectId
+  targetAmount  Float
+  currentAmount Float    @default(0)
+  startAt       DateTime
+  endAt         DateTime
+  isCompleted   Boolean  @default(false) // True if target achieved
+  rewardClaimed Boolean  @default(false) // True if reward already created
+  periodType    String // "weekly" or "monthly"
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  user      User?      @relation(fields: [agentId], references: [id])
+  incentive Incentive? @relation(fields: [incentiveId], references: [id])
+
+  @@unique([agentId, incentiveId, startAt])
+  @@map("agent_incentive_progress")
+}
 
 // Then reward model to track achieved rewards
 model Reward {
@@ -654,19 +705,4 @@ model Reward {
   updatedAt   DateTime   @updatedAt
 
   @@map("rewards")
-}
-
-model IncentiveProgress {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String   @db.ObjectId
-  incentiveId   String   @db.ObjectId
-  currentAmount Float    @default(0)
-  completed     Boolean  @default(false)
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
-
-  user      User?      @relation(fields: [userId], references: [id])
-  incentive Incentive? @relation(fields: [incentiveId], references: [id])
-
-  @@map("incentive_progress")
 }

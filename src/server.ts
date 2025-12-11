@@ -2,11 +2,15 @@ import { Server } from "http";
 import app from "./app";
 import config from "./config";
 import seedSuperAdmin from "./app/DB";
+import { startIncentiveCrons } from "./cron/incentives.cron";
 
 async function main() {
   const server: Server = app.listen(config.port, () => {
     console.log(" Server is running on port ", config.port);
     seedSuperAdmin();
+    
+    // Start incentive cron jobs
+    startIncentiveCrons();
   });
 
   const exitHandler = () => {

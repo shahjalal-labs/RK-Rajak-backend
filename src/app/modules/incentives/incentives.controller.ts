@@ -59,41 +59,6 @@ const deleteIncentives = catchAsync(async (req: Request, res: Response) => {
 
 // ==================== Progress & Rewards ====================
 
-const updateIncentiveProgress = catchAsync(
-  async (req: Request, res: Response) => {
-    const { userId, incentiveId, incrementAmount } = req.body;
-    const result = await incentivesServices.updateIncentiveProgress({
-      userId,
-      incentiveId,
-      incrementAmount,
-    });
-    sendResponse(res, {
-      success: true,
-      statusCode: 200,
-      message: result.rewardCreated
-        ? "Progress updated and reward earned!"
-        : "Progress updated successfully",
-      data: result,
-    });
-  }
-);
-
-const createReferralReward = catchAsync(
-  async (req: Request, res: Response) => {
-    const { userId, incentiveId } = req.body;
-    const result = await incentivesServices.createReferralReward(
-      userId,
-      incentiveId
-    );
-    sendResponse(res, {
-      success: true,
-      statusCode: 201,
-      message: "Referral reward created successfully",
-      data: result,
-    });
-  }
-);
-
 const getUserProgress = catchAsync(async (req: Request, res: Response) => {
   const userId = req.params.userId;
   const result = await incentivesServices.getUserProgress(userId);
@@ -157,8 +122,6 @@ export const incentivesControllers = {
   deleteIncentives,
 
   // Progress & Rewards
-  updateIncentiveProgress,
-  createReferralReward,
   getUserProgress,
   getMyProgress,
   getUserRewards,

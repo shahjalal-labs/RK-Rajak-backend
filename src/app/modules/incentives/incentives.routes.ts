@@ -39,21 +39,9 @@ router.delete(
   incentivesControllers.deleteIncentives
 );
 
+
+
 // ==================== Progress & Rewards ====================
-
-// Update progress (can be called by system/admin)
-router.post(
-  "/progress/update",
-  auth(UserRole.SuperAdmin, UserRole.Owner),
-  incentivesControllers.updateIncentiveProgress
-);
-
-// Create referral reward
-router.post(
-  "/rewards/referral",
-  auth(UserRole.SuperAdmin, UserRole.Owner),
-  incentivesControllers.createReferralReward
-);
 
 // Get all rewards (Admin)
 router.get(

@@ -2,6 +2,10 @@ import { Incentive, IncentiveType, UserRole } from "@prisma/client";
 import prisma from "../../../shared/prisma";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
+import {
+  initializeDriverProgressForIncentive,
+  initializeAgentProgressForIncentive,
+} from "./incentives.helper";
 
 // ==================== CRUD Operations ====================
 
@@ -13,10 +17,15 @@ type CreateIncentiveInput = {
   branchId: string;
 };
 
-
 const createIncentives = async (data: CreateIncentiveInput) => {
-  if(data.type ===  "Refar"){
-    // is refar exist for the branch
+  // Validate Referral incentive uniqueness
+  if (data.type === "Refar") {
+    if (data.role !== UserRole.Customer) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Referral incentives can only be created for Customer role."
+      );
+    }
     const isExist = await prisma.incentive.findFirst({
       where: {
         type: IncentiveType.Refar,
@@ -30,19 +39,66 @@ const createIncentives = async (data: CreateIncentiveInput) => {
       );
     }
   }
-  if(data.role === "Agent" && !data.targetAmount){
+
+  // Validate Agent incentives require target amount
+  if (data.role === "Agent" && !data.targetAmount) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       "Target amount is required for Agent role."
     );
   }
-  
-  return await prisma.incentive.create({ data });
+
+  // Validate Driver incentives are only Zero Returns
+  if (
+    data.role === UserRole.Driver &&
+    data.type !== IncentiveType.Zero_returns
+  ) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Driver incentives can only be of type Zero_returns."
+    );
+  }
+
+  // Validate Agent incentives are Weekly or Monthly
+  if (
+    data.role === UserRole.Agent &&
+    data.type !== IncentiveType.Weekly_achievement &&
+    data.type !== IncentiveType.Monthly_achievement
+  ) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Agent incentives must be either Weekly_achievement or Monthly_achievement."
+    );
+  }
+
+  // Create incentive
+  const incentive = await prisma.incentive.create({ data });
+
+  // Auto-initialize progress for existing users
+  if (
+    data.role === UserRole.Driver &&
+    data.type === IncentiveType.Zero_returns
+  ) {
+    await initializeDriverProgressForIncentive(incentive.id, data.branchId);
+  }
+
+  if (
+    data.role === UserRole.Agent &&
+    (data.type === IncentiveType.Weekly_achievement ||
+      data.type === IncentiveType.Monthly_achievement)
+  ) {
+    await initializeAgentProgressForIncentive(
+      incentive.id,
+      data.branchId,
+      data.targetAmount || 0,
+      data.type
+    );
+  }
+
+  return incentive;
 };
 
-const getAllIncentivess = async (query?: {
-  branchId?: string;
-}) => {
+const getAllIncentivess = async (query?: { branchId?: string }) => {
   const where: any = {};
 
   if (query?.branchId) where.branchId = query.branchId;
@@ -77,7 +133,10 @@ const getIncentivesById = async (id: string) => {
   return res;
 };
 
-const updateIncentives = async (id: string, data: Partial<CreateIncentiveInput>) => {
+const updateIncentives = async (
+  id: string,
+  data: Partial<CreateIncentiveInput>
+) => {
   const isExist = await prisma.incentive.findUnique({ where: { id } });
 
   if (!isExist) {
@@ -99,231 +158,109 @@ const deleteIncentives = async (id: string) => {
 
 // ==================== Progress & Reward System ====================
 
-type UpdateProgressInput = {
-  userId: string;
-  incentiveId: string;
-  incrementAmount: number;
-};
-
-type UpdateProgressResult = {
-  progress: {
-    id: string;
-    userId: string;
-    incentiveId: string;
-    currentAmount: number;
-    completed: boolean;
-  };
-  rewardCreated: boolean;
-  reward?: {
-    id: string;
-    amount: number;
-    achievedAt: Date;
-  };
-};
-
-/**
- * Updates incentive progress and creates reward if target is reached
- * @param userId - The user's ID
- * @param incentiveId - The incentive's ID
- * @param incrementAmount - Amount to add to current progress
- * @returns Progress update result with reward info if created
- */
-const updateIncentiveProgress = async (
-  input: UpdateProgressInput
-): Promise<UpdateProgressResult> => {
-  const { userId, incentiveId, incrementAmount } = input;
-
-  // Validate input
-  if (incrementAmount <= 0) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Increment amount must be positive"
-    );
-  }
-
-  // Get incentive details
-  const incentive = await prisma.incentive.findUnique({
-    where: { id: incentiveId },
-  });
-
-  if (!incentive) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Incentive not found");
-  }
-
-  // Refar type doesn't need progress tracking
-  if (incentive.type === IncentiveType.Refar) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Referral incentives do not require progress tracking"
-    );
-  }
-
-  // Use transaction to ensure atomicity
-  return await prisma.$transaction(async (tx) => {
-    // Find or create progress
-    let progress = await tx.incentiveProgress.findFirst({
-      where: {
-        userId,
-        incentiveId,
-      },
-    });
-
-    if (!progress) {
-      // Create new progress entry
-      progress = await tx.incentiveProgress.create({
-        data: {
-          userId,
-          incentiveId,
-          currentAmount: incrementAmount,
-          completed: false,
-        },
-      });
-    } else {
-      // If already completed, don't update
-      if (progress.completed) {
-        return {
-          progress: {
-            id: progress.id,
-            userId: progress.userId,
-            incentiveId: progress.incentiveId,
-            currentAmount: progress.currentAmount,
-            completed: progress.completed,
-          },
-          rewardCreated: false,
-        };
-      }
-
-      // Update existing progress
-      progress = await tx.incentiveProgress.update({
-        where: { id: progress.id },
-        data: {
-          currentAmount: progress.currentAmount + incrementAmount,
-        },
-      });
-    }
-
-    // Check if target is reached
-    let rewardCreated = false;
-    let reward = undefined;
-
-    if (progress.currentAmount >= (incentive?.targetAmount || 0) && !progress.completed) {
-      // Mark progress as completed
-      progress = await tx.incentiveProgress.update({
-        where: { id: progress.id },
-        data: { completed: true },
-      });
-
-      // Create reward
-      const newReward = await tx.reward.create({
-        data: {
-          userId,
-          incentiveId,
-          amount: incentive.rewardAmount,
-          achievedAt: new Date(),
-        },
-      });
-
-      rewardCreated = true;
-      reward = {
-        id: newReward.id,
-        amount: newReward.amount,
-        achievedAt: newReward.achievedAt,
-      };
-    }
-
-    return {
-      progress: {
-        id: progress.id,
-        userId: progress.userId,
-        incentiveId: progress.incentiveId,
-        currentAmount: progress.currentAmount,
-        completed: progress.completed,
-      },
-      rewardCreated,
-      reward,
-    };
-  });
-};
-
-/**
- * Create a reward for referral incentive (doesn't need progress tracking)
- */
-const createReferralReward = async (userId: string, incentiveId: string) => {
-  const incentive = await prisma.incentive.findUnique({
-    where: { id: incentiveId },
-  });
-
-  if (!incentive) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Incentive not found");
-  }
-
-  if (incentive.type !== IncentiveType.Refar) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "This function is only for referral incentives"
-    );
-  }
-
-  // Check if reward already exists
-  const existingReward = await prisma.reward.findFirst({
-    where: {
-      userId,
-      incentiveId,
-    },
-  });
-
-  if (existingReward) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Reward already claimed for this referral"
-    );
-  }
-
-  return await prisma.reward.create({
-    data: {
-      userId,
-      incentiveId,
-      amount: incentive.rewardAmount,
-      achievedAt: new Date(),
-    },
-  });
-};
-
 /**
  * Get user's progress for all incentives
  */
 const getUserProgress = async (userId: string) => {
-  const progress = await prisma.incentiveProgress.findMany({
-    where: { userId },
-    include: {
-      incentive: {
-        include: {
-          branch: {
-            select: {
-              id: true,
-              name: true,
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  console.log({ user });
+
+  // Get driver progress
+  if (user.role === UserRole.Driver) {
+    const driverProgress = await prisma.driverIncentiveProgress.findMany({
+      where: { driverId: userId },
+      include: {
+        incentive: {
+          include: {
+            branch: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
         },
       },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+      orderBy: { updatedAt: "desc" },
+    });
 
-  return progress.map((p) => ({
-    id: p.id,
-    currentAmount: p.currentAmount,
-    targetAmount: p.incentive?.targetAmount,
-    rewardAmount: p.incentive?.rewardAmount,
-    completed: p.completed,
-    percentageComplete: (p.currentAmount / (p.incentive?.targetAmount || 1)) * 100,
-    incentive: {
-      id: p.incentive?.id,
-      type: p.incentive?.type,
-      role: p.incentive?.role,
-      branch: p.incentive?.branch,
-    },
-  }));
+    return driverProgress.map((p) => ({
+      id: p.id,
+      type: "driver",
+      totalAssignedOrders: p.totalAssignedOrders,
+      completedOrders: p.completedOrders,
+      zeroReturnOrders: p.zeroReturnOrders,
+      hasReturns: p.hasReturns,
+      isEligibleForReward: p.isEligibleForReward,
+      rewardClaimed: p.rewardClaimed,
+      currentDate: p.currentDate,
+      rewardAmount: p.incentive?.rewardAmount,
+      incentive: {
+        id: p.incentive?.id,
+        type: p.incentive?.type,
+        role: p.incentive?.role,
+        branch: p.incentive?.branch,
+      },
+    }));
+  }
+
+  // Get agent progress
+  if (user.role === UserRole.Agent) {
+    const agentProgress = await prisma.agentIncentiveProgress.findMany({
+      where: { agentId: userId },
+      include: {
+        incentive: {
+          include: {
+            branch: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    console.log({ agentProgress });
+
+    return agentProgress.map((p) => {
+      // Cap percentage at 100% (even if currentAmount is 1000% of target)
+      const rawPercentage = (p.currentAmount / p.targetAmount) * 100;
+      const percentageComplete = Math.min(rawPercentage, 100);
+
+      return {
+        id: p.id,
+        type: "agent",
+        currentAmount: p.currentAmount,
+        targetAmount: p.targetAmount,
+        rewardAmount: p.incentive?.rewardAmount,
+        isCompleted: p.isCompleted,
+        rewardClaimed: p.rewardClaimed,
+        percentageComplete: percentageComplete, // Capped at 100%
+        periodType: p.periodType,
+        startAt: p.startAt,
+        endAt: p.endAt,
+        incentive: {
+          id: p.incentive?.id,
+          type: p.incentive?.type,
+          role: p.incentive?.role,
+          branch: p.incentive?.branch,
+        },
+      };
+    });
+  }
+
+  return [];
 };
 
 /**
@@ -351,28 +288,24 @@ const getUserRewards = async (userId: string) => {
  * Get all rewards (for admin)
  */
 const getAllRewards = async (query?: {
-  userId?: string;
-  incentiveId?: string;
+  userRole?: string;
+  searchTerm?: string;
   startDate?: string;
   endDate?: string;
 }) => {
-  const where: any = {};
-
-  if (query?.userId) where.userId = query.userId;
-  if (query?.incentiveId) where.incentiveId = query.incentiveId;
-
-  if (query?.startDate || query?.endDate) {
-    where.achievedAt = {};
-    if (query.startDate) {
-      where.achievedAt.gte = new Date(query.startDate);
-    }
-    if (query.endDate) {
-      where.achievedAt.lte = new Date(query.endDate);
-    }
-  }
-
   return await prisma.reward.findMany({
-    where,
+    where: {
+      user: {
+        fullName: query?.searchTerm
+          ? { contains: query.searchTerm, mode: "insensitive" }
+          : undefined,
+        role: query?.userRole ? (query.userRole as UserRole) : undefined,
+      },
+      createdAt: {
+        gte: query?.startDate ? new Date(query.startDate) : undefined,
+        lte: query?.endDate ? new Date(query.endDate) : undefined,
+      },
+    },
     include: {
       user: {
         select: {
@@ -405,10 +338,7 @@ export const incentivesServices = {
   deleteIncentives,
 
   // Progress & Rewards
-  updateIncentiveProgress,
-  createReferralReward,
   getUserProgress,
   getUserRewards,
   getAllRewards,
 };
-  
