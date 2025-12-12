@@ -38,6 +38,11 @@ router.get(
   auth(UserRole.Agent),
   orderControllers.getMyCustomerOrders
 );
+// GET full Overview of customer's all orders
+
+router.get("/overview/my-orders", auth(UserRole.Agent), orderControllers.getUserOrdersOverview);
+
+
 router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);
 
 router.get("/superAdmin/sales-history", auth(UserRole.SuperAdmin), orderControllers.getSalesHistory);

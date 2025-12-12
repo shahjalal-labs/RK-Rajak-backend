@@ -325,6 +325,16 @@ const getSalesHistory = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 });
+const getUserOrdersOverview = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getUserOrdersOverview(req.query , req.user.id);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "User orders overview retrieved successfully",
+    data: result,
+  });
+});
 
 export const orderControllers = {
   createOrder,
@@ -349,4 +359,5 @@ export const orderControllers = {
   createOrderByAgentForCustomer,
   getTotalAssignedReturnedProductsForSuperAdmin,
   getSalesHistory,
+  getUserOrdersOverview,
 };

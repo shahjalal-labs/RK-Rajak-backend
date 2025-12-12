@@ -1015,7 +1015,10 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   try {
     await updateDriverProgressOnAssignment(driverId, ordersIds.length);
   } catch (error) {
-    console.error("Error updating driver incentive progress on assignment:", error);
+    console.error(
+      "Error updating driver incentive progress on assignment:",
+      error
+    );
     // Don't fail the assignment if incentive tracking fails
   }
 
@@ -2413,6 +2416,64 @@ const getSalesHistory = async (query: any) => {
   };
 };
 
+const getUserOrdersOverview = async (query: any, agentId: string) => {
+  const { startDate, endDate } = query || {};
+
+  const dateFilter = {
+    gte: startDate
+      ? new Date(new Date(startDate).setHours(0, 0, 0, 0))
+      : undefined,
+    lte: endDate
+      ? new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      : undefined,
+  };
+
+  // Fetch agent's customers
+  const customers = await prisma.user.findMany({
+    where: { agentId },
+    select: { id: true },
+  });
+
+  const customerIds = customers.map((c) => c.id);
+
+  // Helper function
+  const getOrderSummary = (status: string) =>
+    prisma.dailyOrder.aggregate({
+      where: {
+        userId: { in: customerIds },
+        status: status as OrderStatus,
+        createdAt: dateFilter,
+      },
+      _sum: {
+        totalWeight: true,
+        totalAmount: true,
+      },
+    });
+
+  const totalPendingOrdersWeight = await getOrderSummary("Pending");
+  const totalDeliveredOrdersWeight = await getOrderSummary("Delivered");
+  const totalReturnedOrdersWeight = await getOrderSummary("Returned");
+
+  return {
+    Booked: {
+      totalPendingOrdersWeight: totalPendingOrdersWeight._sum.totalWeight || 0,
+      totalPendingOrdersAmount: totalPendingOrdersWeight._sum.totalAmount || 0,
+    },
+    Delivered: {
+      totalDeliveredOrdersWeight:
+        totalDeliveredOrdersWeight._sum.totalWeight || 0,
+      totalDeliveredOrdersAmount:
+        totalDeliveredOrdersWeight._sum.totalAmount || 0,
+    },
+    Returned: {
+      totalReturnedOrdersWeight:
+        totalReturnedOrdersWeight._sum.totalWeight || 0,
+      totalReturnedOrdersAmount:
+        totalReturnedOrdersWeight._sum.totalAmount || 0,
+    },
+  };
+};
+
 export const orderServices = {
   createOrder,
   returnOrderProduct,
@@ -2438,4 +2499,5 @@ export const orderServices = {
   createOrderByAgentForCustomer,
   getTotalAssignedReturnedProductsForSuperAdmin,
   getSalesHistory,
+  getUserOrdersOverview,
 };
