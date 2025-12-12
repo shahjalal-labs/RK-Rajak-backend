@@ -335,6 +335,16 @@ const getUserOrdersOverview = catchAsync(async (req: Request, res: Response) => 
     data: result,
   });
 });
+const getAssignOrderOverviewForDriver = catchAsync(async (req: Request, res: Response) => {
+  const result = await orderServices.getAssignOrderOverviewForDriver(req.query , req.user.id);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "User orders overview retrieved successfully",
+    data: result,
+  });
+});
 
 export const orderControllers = {
   createOrder,
@@ -360,4 +370,5 @@ export const orderControllers = {
   getTotalAssignedReturnedProductsForSuperAdmin,
   getSalesHistory,
   getUserOrdersOverview,
+  getAssignOrderOverviewForDriver
 };

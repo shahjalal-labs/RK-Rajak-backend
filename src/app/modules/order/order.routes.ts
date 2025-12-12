@@ -41,6 +41,7 @@ router.get(
 // GET full Overview of customer's all orders
 
 router.get("/overview/my-orders", auth(UserRole.Agent), orderControllers.getUserOrdersOverview);
+router.get("/overview/my-orders-driver", auth(UserRole.Driver), orderControllers.getAssignOrderOverviewForDriver);
 
 
 router.get("/my-orders", auth("Customer"), orderControllers.getUserDailyOrders);

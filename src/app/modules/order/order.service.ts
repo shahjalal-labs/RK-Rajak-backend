@@ -2474,6 +2474,228 @@ const getUserOrdersOverview = async (query: any, agentId: string) => {
   };
 };
 
+const getAssignOrderOverviewForDriver = async (
+  query: any,
+  driverId: string
+) => {
+  let { startDate, endDate } = query || {};
+
+  // If no date provided → use today's date
+  const today = new Date();
+  if (!startDate || !endDate) {
+    startDate = today;
+    endDate = today;
+  }
+
+  const dateFilter = {
+    gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
+    lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
+  };
+
+  // 1. Get assigned order IDs for the driver
+  const assignedOrders = await prisma.driverAssignment.findMany({
+    where: {
+      driverId,
+      createdAt: dateFilter,
+    },
+    select: {
+      dailyOrderId: true,
+    },
+  });
+
+  const assignedOrderIds = assignedOrders.map((o) => o.dailyOrderId);
+  if (query.type === "overview") {
+    // 2. Helper function
+    const getOrderSummary = (statuses: string[] | string) => {
+      return prisma.dailyOrder.aggregate({
+        where: {
+          id: { in: assignedOrderIds },
+          status: Array.isArray(statuses)
+            ? {
+                in: (statuses as string[]).map(
+                  (s) => OrderStatus[s as keyof typeof OrderStatus]
+                ),
+              }
+            : (OrderStatus as any)[statuses as keyof typeof OrderStatus],
+          createdAt: dateFilter,
+        },
+        _sum: {
+          totalWeight: true,
+          totalAmount: true,
+        },
+        _count: {
+          id: true,
+        },
+      });
+    };
+
+    const dispatched = await getOrderSummary("OnTheWay");
+    const delivered = await getOrderSummary("Delivered");
+    const cancelled = await getOrderSummary("Cancelled");
+    const returned = await getOrderSummary(["Returned", "PartialReturned"]);
+
+    // 3. Return final result
+    return {
+      dispatched: {
+        totalAmount: dispatched._sum.totalAmount || 0,
+        totalWeight: dispatched._sum.totalWeight || 0,
+        orderCount: dispatched._count.id || 0,
+      },
+      delivered: {
+        totalAmount: delivered._sum.totalAmount || 0,
+        totalWeight: delivered._sum.totalWeight || 0,
+        orderCount: delivered._count.id || 0,
+      },
+      cancelled: {
+        totalAmount: cancelled._sum.totalAmount || 0,
+        totalWeight: cancelled._sum.totalWeight || 0,
+        orderCount: cancelled._count.id || 0,
+      },
+      returned: {
+        totalAmount: returned._sum.totalAmount || 0,
+        totalWeight: returned._sum.totalWeight || 0,
+        orderCount: returned._count.id || 0,
+      },
+    };
+  } else if (query.type === "detailed") {
+    // Fetch all detailed order information for assigned orders
+    const orders = await prisma.dailyOrder.findMany({
+      where: { id: { in: assignedOrderIds } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            email: true,
+            profileImage: true,
+          },
+        },
+        shippingAddress: {
+          select: {
+            shopName: true,
+            address: true,
+            landmark: true,
+            latitude: true,
+            longitude: true,
+          },
+        },
+        OrderProducts: {
+          where: {
+            status: {
+              not: "Cancelled",
+            },
+          },
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                images: true,
+              },
+            },
+            OrderProductVariation: true,
+          },
+        },
+        driverAssignments: {
+          where: {
+            driverId,
+          },
+          select: {
+            assignedAt: true,
+            deliveryDate: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!orders || orders.length === 0) {
+      return [];
+    }
+
+    // Transform each order into the detailed format
+    const detailedOrders = orders.map((order) => {
+      // Calculate delivered and returned products
+      const deliveredProducts = order.OrderProducts.filter(
+        (op) => (op.acceptedWeight || 0) > 0
+      ).map((op) => {
+        const productName = op.product?.name || "";
+        const weight = op.acceptedWeight || 0;
+        return `${weight}kg (${productName})`;
+      });
+
+      const returnedProducts = order.OrderProducts.filter(
+        (op) => (op.returnedWeight || 0) > 0 || (op.rejectedWeight || 0) > 0
+      ).map((op) => {
+        const productName = op.product?.name || "";
+        const weight = (op.returnedWeight || 0) + (op.rejectedWeight || 0);
+        return `${weight}kg (${productName})`;
+      });
+
+      // Calculate total crates dispatched (using total quantity of all products)
+      const totalCrates = order.OrderProducts.reduce(
+        (sum, op) => sum + (op.totalQuantity || 0),
+        0
+      );
+
+      // Determine payment methods based on order data
+      const paymentMethods: string[] = [];
+      
+      if (order.paymentMethod === PaymentMethod.Cash) {
+        paymentMethods.push("Cash");
+      }
+      if (order.paymentMethod === PaymentMethod.Credit || order.isDues) {
+        paymentMethods.push("Credit");
+      }
+      if (order.paymentMethod === PaymentMethod.Pre_Paid) {
+        paymentMethods.push("Pre-paid");
+      }
+      if (order.paymentMethod === PaymentMethod.QrCode) {
+        paymentMethods.push("QR Code");
+      }
+      if (order.paymentMethod === PaymentMethod.Wallet) {
+        paymentMethods.push("Wallet");
+      }
+      if (order.paymentMethod === PaymentMethod.COD) {
+        paymentMethods.push("Cash");
+      }
+      if (order.paymentMethod === PaymentMethod.Online) {
+        paymentMethods.push("Online");
+      }
+
+      // If wallet amount was used, add it to payment methods
+      if ((order.walletAmountUsed || 0) > 0 && !paymentMethods.includes("Wallet")) {
+        paymentMethods.push("Wallet");
+      }
+
+      // Return comprehensive trip summary
+      return {
+        tripNumber: `#${order.id.slice(-8).toUpperCase()}`,
+        deliveryDate: order.orderDate || "",
+        driversName: order.user?.fullName || "N/A",
+        totalDispatch: order.OrderProducts.length.toString().padStart(2, "0"),
+        deliveredProduct: deliveredProducts,
+        returnedProduct: returnedProducts,
+        cratesDispatched: `${Math.ceil(totalCrates)} Crates`,
+        totalAmount: `₹${(order.totalAcceptedPrice || order.totalAmount || 0).toFixed(2)}`,
+        payment: paymentMethods,
+        photo: order.DeliveryProof
+          ? Array.isArray(order.DeliveryProof)
+            ? order.DeliveryProof
+            : [order.DeliveryProof]
+          : [],
+      };
+    });
+
+    return detailedOrders;
+  } else {
+    return {};
+  }
+};
+
 export const orderServices = {
   createOrder,
   returnOrderProduct,
@@ -2500,4 +2722,5 @@ export const orderServices = {
   getTotalAssignedReturnedProductsForSuperAdmin,
   getSalesHistory,
   getUserOrdersOverview,
+  getAssignOrderOverviewForDriver,
 };
