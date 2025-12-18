@@ -344,6 +344,7 @@ model DailyOrder {
   totalReturnedPrice  Float?           @default(0) // calculated total returned price from OrderProducts
   status              OrderStatus      @default(Pending)
   cancellationReason  String?
+  handlingCharge      Float?           @default(0)
   DeliveryProof       String?
   shippingAddressId   String?          @db.ObjectId
   shippingAddress     shippingAddress? @relation(fields: [shippingAddressId], references: [id])

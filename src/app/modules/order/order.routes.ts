@@ -109,7 +109,7 @@ router.put(
 
 router.get(
   "/calculations/branchId/:branchId",
-  auth(UserRole.SuperAdmin),
+  auth(UserRole.SuperAdmin, UserRole.Owner),
   orderControllers.getBranchDayWiseCalculations
 );
 

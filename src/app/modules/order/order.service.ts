@@ -24,8 +24,9 @@ import {
   adjustOrderProduct,
   getDailyProductSummary,
 } from "./order.helpers";
-import { JwtPayload } from "jsonwebtoken";
+import { JwtHeader, JwtPayload } from "jsonwebtoken";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { handalingCharge } from '@prisma/client';
 import {
   updateDriverProgressOnDelivery,
   updateDriverProgressOnAssignment,
@@ -106,6 +107,15 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     const weight = p.quantity * variation.weight;
     const price = p.quantity * variation.sellingPrice;
     orderTotal += price;
+    const handalingCharge = await prisma.handalingCharge.findFirst({
+      where : {
+        branchId : user.branchId
+      },
+      select :{
+        charge : true,
+        condition : true
+      }
+    })
 
     // Snapshot pricing - capture current price
     validatedProducts.push({
@@ -855,64 +865,81 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
 };
 
 const getBranchDayWiseCalculations = async (
-  branchId: string,
+  user: JwtPayload,
+  branchId?: string,
   queryParams?: any
 ) => {
+  const { startDate, endDate } = queryParams || {};
   // Implement the logic to get branch day-wise calculations
-  const date = queryParams?.dateString || getDateString();
 
-  // total orders of the day
-  const orderOfTheDay = await prisma.dailyOrder.count({
-    where: {
-      branchId: branchId,
-      orderDate: date,
-    },
-  });
-  // total order product of the day
-  const orderProductsOfTheDay = await prisma.totalProductOrder.count({
-    where: {
-      branchId: branchId,
-      createdAt: {
-        gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
-        lte: new Date(new Date(date).setHours(23, 59, 59, 999)),
+  const startDateString = startDate || getDateString();
+  const endDateString = endDate || getDateString();
+
+  if (user.role === UserRole.SuperAdmin) {
+    // total orders of the day
+    const orderOfTheDay = await prisma.dailyOrder.count({
+      where: {
+        branchId: branchId ?? undefined,
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
       },
-    },
-  });
-  // total revenue of the day
-  const revenueOfTheDayAgg = await prisma.dailyOrder.aggregate({
-    where: {
-      branchId: branchId,
-      orderDate: date,
-    },
-    _sum: {
-      totalAmount: true,
-    },
-  });
+    });
+    // total order product of the day
+    const orderProductsOfTheDay = await prisma.totalProductOrder.count({
+      where: {
+        branchId: branchId ?? undefined,
+        createdAt: {
+          gte: new Date(new Date(startDateString).setHours(0, 0, 0, 0)),
+          lte: new Date(new Date(endDateString).setHours(23, 59, 59, 999)),
+        },
+      },
+    });
+    // total revenue of the day
+    const revenueOfTheDayAgg = await prisma.dailyOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+      },
+      _sum: {
+        totalAmount: true,
+      },
+    });
 
-  // total return products of the day
-  // totalProductOrder
-  const returnProductsOfTheDay = await prisma.totalProductOrder.aggregate({
-    where: {
-      branchId: branchId,
-      orderDateString: date,
-      status: "Returned",
-    },
-    _count: {
-      _all: true,
-    },
-    _sum: {
-      returnedWeight: true,
-      returnedPrice: true,
-    },
-  });
+    // total return products of the day
+    // totalProductOrder
+    const returnProductsOfTheDay = await prisma.totalProductOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        orderDateString: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+        status: "Returned",
+      },
+      _count: {
+        _all: true,
+      },
+      _sum: {
+        returnedWeight: true,
+        returnedPrice: true,
+      },
+    });
 
-  return {
-    totalOrders: orderOfTheDay,
-    totalOrderProducts: orderProductsOfTheDay,
-    totalRevenue: revenueOfTheDayAgg._sum.totalAmount || 0,
-    totalReturnedWeight: returnProductsOfTheDay._sum.returnedWeight || 0, // KG
-    totalReturnedPrice: returnProductsOfTheDay._sum.returnedPrice || 0,
-  };
+    return {
+      totalOrders: orderOfTheDay,
+      totalOrderProducts: orderProductsOfTheDay,
+      totalRevenue: revenueOfTheDayAgg._sum.totalAmount || 0,
+      totalReturnedWeight: returnProductsOfTheDay._sum.returnedWeight || 0, // KG
+      totalReturnedPrice: returnProductsOfTheDay._sum.returnedPrice || 0,
+    };
+  } else if (user.role === UserRole.Owner) {
+    // Implement logic for Owner role if needed
+  }
 
   // This is a placeholder implementation
 };
@@ -2643,7 +2670,7 @@ const getAssignOrderOverviewForDriver = async (
 
       // Determine payment methods based on order data
       const paymentMethods: string[] = [];
-      
+
       if (order.paymentMethod === PaymentMethod.Cash) {
         paymentMethods.push("Cash");
       }
@@ -2667,7 +2694,10 @@ const getAssignOrderOverviewForDriver = async (
       }
 
       // If wallet amount was used, add it to payment methods
-      if ((order.walletAmountUsed || 0) > 0 && !paymentMethods.includes("Wallet")) {
+      if (
+        (order.walletAmountUsed || 0) > 0 &&
+        !paymentMethods.includes("Wallet")
+      ) {
         paymentMethods.push("Wallet");
       }
 
@@ -2680,7 +2710,11 @@ const getAssignOrderOverviewForDriver = async (
         deliveredProduct: deliveredProducts,
         returnedProduct: returnedProducts,
         cratesDispatched: `${Math.ceil(totalCrates)} Crates`,
-        totalAmount: `₹${(order.totalAcceptedPrice || order.totalAmount || 0).toFixed(2)}`,
+        totalAmount: `₹${(
+          order.totalAcceptedPrice ||
+          order.totalAmount ||
+          0
+        ).toFixed(2)}`,
         payment: paymentMethods,
         photo: order.DeliveryProof
           ? Array.isArray(order.DeliveryProof)
