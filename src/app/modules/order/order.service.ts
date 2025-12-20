@@ -869,11 +869,27 @@ const getBranchDayWiseCalculations = async (
   branchId?: string,
   queryParams?: any
 ) => {
-  const { startDate, endDate } = queryParams || {};
+  const { startDate, endDate, type } = queryParams || {};
   // Implement the logic to get branch day-wise calculations
 
   const startDateString = startDate || getDateString();
   const endDateString = endDate || getDateString();
+
+  // Create proper Date objects for createdAt filtering
+  const startDateTime = new Date(startDateString);
+  const endDateTime = new Date(endDateString);
+
+  // Validate dates
+  if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Invalid date format. Please provide valid dates."
+    );
+  }
+
+  // Set hours for start and end of day
+  startDateTime.setHours(0, 0, 0, 0);
+  endDateTime.setHours(23, 59, 59, 999);
 
   if (user.role === UserRole.SuperAdmin) {
     // total orders of the day
@@ -891,8 +907,8 @@ const getBranchDayWiseCalculations = async (
       where: {
         branchId: branchId ?? undefined,
         createdAt: {
-          gte: new Date(new Date(startDateString).setHours(0, 0, 0, 0)),
-          lte: new Date(new Date(endDateString).setHours(23, 59, 59, 999)),
+          gte: startDateTime,
+          lte: endDateTime,
         },
       },
     });

@@ -61,6 +61,7 @@ interface GetAllProductsParams {
   limit?: number;
   sort?: string;
   tag?: string;
+  packageType?: "Bulk" | "Mini";
   category?: string;
   subcategory?: string;
   searchTerm?: string;
@@ -78,6 +79,7 @@ const getAllProducts = async (
     tag,
     category,
     subcategory,
+    packageType,
     searchTerm,
     status,
   }: GetAllProductsParams = query;
@@ -117,6 +119,10 @@ const getAllProducts = async (
   if (searchTerm) {
     where.name = { contains: searchTerm, mode: "insensitive" };
     where.tag = { contains: searchTerm, mode: "insensitive" };
+  }
+
+  if(packageType){
+    where.packageType = packageType
   }
 
   // Sort order
@@ -173,6 +179,7 @@ const getAllProductsForBuyer = async (
     subcategory,
     searchTerm,
     status,
+    packageType
   }: GetAllProductsParams = query;
 
   // Calculate pagination
@@ -220,6 +227,10 @@ const getAllProductsForBuyer = async (
   if (searchTerm) {
     where.name = { contains: searchTerm, mode: "insensitive" };
     where.tag = { contains: searchTerm, mode: "insensitive" };
+  }
+
+  if(packageType){
+    where.packageType = packageType;
   }
 
   // Sort order

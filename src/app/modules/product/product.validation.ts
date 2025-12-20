@@ -28,6 +28,7 @@ export const productVariationSchema = z.object({
 export const createProductSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   tag: z.string().min(1, "Tag is required"),
+  packageType: z.enum(["Bulk", "Mini"]).optional(),
   categoryId: z.string({required_error: "Category ID is required"}),
   branchId: z.string({
     required_error: "Branch ID is required",

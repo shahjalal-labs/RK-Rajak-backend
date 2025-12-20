@@ -260,15 +260,16 @@ model horizontalBannerSlider {
 //-//-------------------------------------- Product and Order Models --------------------//
 
 model product {
-  id         String          @id @default(auto()) @map("_id") @db.ObjectId
-  name       String
-  images     String[]
-  tag        String
-  status     Boolean         @default(true)
-  branchId   String          @db.ObjectId
-  branch     branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  categoryId String          @db.ObjectId
-  category   productCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  images      String[]
+  tag         String
+  status      Boolean         @default(true)
+  packageType packageType     @default(Bulk)
+  branchId    String          @db.ObjectId
+  branch      branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  categoryId  String          @db.ObjectId
+  category    productCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -277,6 +278,11 @@ model product {
   totalProductOrders totalProductOrder[]
 
   @@map("products")
+}
+
+enum packageType {
+  Bulk
+  Mini
 }
 
 model productVariation {
