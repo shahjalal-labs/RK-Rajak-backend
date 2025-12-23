@@ -46,8 +46,19 @@ model User {
   rewards                   Reward[]
   driverIncentiveProgresses DriverIncentiveProgress[]
   agentIncentiveProgresses  AgentIncentiveProgress[]
+  userAccesses              UserAccess[]
 
   @@map("users")
+}
+
+//** user access track
+model UserAccess {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String    @unique @db.ObjectId
+  user       User?     @relation(fields: [userId], references: [id])
+  isLoggedIn Boolean   @default(true)
+  loginAt    DateTime  @default(now())
+  logoutAt   DateTime?
 }
 
 model reffaralUsages {
@@ -295,8 +306,9 @@ model productVariation {
   unit              unit
   weight            Float
 
-  product   product? @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId String?  @db.ObjectId
+  product                product?                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId              String?                 @db.ObjectId
+  orderProductVariations OrderProductVariation[]
 }
 
 enum unit {
@@ -407,10 +419,11 @@ model OrderProduct {
 }
 
 model OrderProductVariation {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  orderProduct   OrderProduct @relation(fields: [orderProductId], references: [id], onDelete: Cascade)
-  orderProductId String       @db.ObjectId
-  variationId    String       @db.ObjectId
+  id             String            @id @default(auto()) @map("_id") @db.ObjectId
+  orderProduct   OrderProduct      @relation(fields: [orderProductId], references: [id], onDelete: Cascade)
+  orderProductId String            @db.ObjectId
+  variationId    String            @db.ObjectId
+  variation      productVariation? @relation(fields: [variationId], references: [id])
   quantity       Float
 
   createdAt DateTime @default(now())

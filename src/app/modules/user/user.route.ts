@@ -21,6 +21,8 @@ router.post(
   UserControllers.authOtpLogin
 );
 
+router.put("/logout", auth(), UserControllers.logout);
+
 //------------------  User creation by Owner ------------------//
 
 router.post(

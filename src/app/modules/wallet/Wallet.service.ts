@@ -36,30 +36,56 @@ const getWalletById = async (id: string) => {
 };
 
 const getWalletTransactionForSuperAdmin = async (filters: any) => {
-  const { page = 1, limit = 10, branchId, startDate, endDate } = filters;
+  const {
+    page = 1,
+    limit = 10,
+    branchId,
+    startDate,
+    endDate,
+    agentId,
+  } = filters;
 
-  const whereClause: any = {};
+  const whereClause: any = {
+    AND: [],
+  };
 
   // Filter by branch
   if (branchId) {
-    whereClause.wallet = {
-      user: { branchId: branchId ? branchId : undefined },
-    };
+    whereClause.AND.push({
+      wallet: {
+        user: {
+          branchId: branchId,
+        },
+      },
+    });
+  }
+
+  if (agentId) {
+    const isAgentExists = await prisma.user.findFirst({
+      where: { id: agentId, role: "Agent" },
+    });
+
+    if (!isAgentExists) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Agent not found");
+    }
+
+    whereClause.AND.push({
+      wallet: {
+        user: {
+          agentId: agentId,
+        },
+      },
+    });
   }
 
   // Full day date range filter
-  if (startDate) {
-    whereClause.createdAt = {
-      ...(whereClause.createdAt || {}),
-      gte: new Date(startDate + "T00:00:00.000Z"),
-    };
-  }
-
-  if (endDate) {
-    whereClause.createdAt = {
-      ...(whereClause.createdAt || {}),
-      lte: new Date(endDate + "T23:59:59.999Z"),
-    };
+  if (startDate || endDate) {
+    whereClause.AND.push({
+      createdAt: {
+        ...(startDate && { gte: new Date(`${startDate}T00:00:00.000Z`) }),
+        ...(endDate && { lte: new Date(`${endDate}T23:59:59.999Z`) }),
+      },
+    });
   }
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -81,6 +107,7 @@ const getWalletTransactionForSuperAdmin = async (filters: any) => {
               fullName: true,
               profileImage: true,
               branchId: true,
+              agentId: true,
             },
           },
         },
@@ -91,6 +118,30 @@ const getWalletTransactionForSuperAdmin = async (filters: any) => {
     orderBy: { createdAt: "desc" },
   });
 
+  const agentIds = [
+  ...new Set(
+    transactions
+      .map(t => t.wallet?.user?.agentId)
+      .filter((id): id is string => Boolean(id))
+  ),
+];
+
+const agents = await prisma.user.findMany({
+  where: { id: { in: agentIds } },
+  select: { id: true, fullName: true, profileImage: true },
+});
+
+const agentMap = Object.fromEntries(
+  agents.map(a => [a.id, a])
+);
+
+const finalData = transactions.map(t => ({
+  ...t,
+  salesAgent: t.wallet?.user?.agentId
+    ? agentMap[t.wallet.user.agentId]
+    : null,
+}));
+
   return {
     metadata: {
       page: Number(page),
@@ -98,7 +149,7 @@ const getWalletTransactionForSuperAdmin = async (filters: any) => {
       totalCount,
       totalPages: Math.ceil(totalCount / Number(limit)),
     },
-    data: transactions,
+    data: finalData,
   };
 };
 

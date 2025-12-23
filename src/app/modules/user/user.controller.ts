@@ -129,6 +129,15 @@ const updateUser = catchAsync(async (req, res) => {
     message: "User updated successfully",
   });
 });
+//logout user
+const logout = catchAsync(async (req, res) => {
+  await userService.logout(req.user.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "User logged out successfully",
+  });
+});
 
 //delete user
 const deleteMyAccount = catchAsync(async (req, res) => {
@@ -252,5 +261,6 @@ export const UserControllers = {
   rateUser,
   getDriverTripsForSuperAdmin,
   getDriverTripsDetailsForSuperAdmin,
-  getSalesAgentPerformanceForSuperAdmin
+  getSalesAgentPerformanceForSuperAdmin,
+  logout
 };

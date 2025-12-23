@@ -148,7 +148,6 @@ const getBranchDayWiseCalculations = catchAsync(
   async (req: Request, res: Response) => {
     const result = await orderServices.getBranchDayWiseCalculations(
       req.user,
-      req.params.branchId,
       req.query
     );
     sendResponse(res, {

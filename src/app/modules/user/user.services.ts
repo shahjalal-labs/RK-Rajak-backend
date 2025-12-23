@@ -90,6 +90,21 @@ const buyerOtpLogin = async (
       config.jwt.jwt_secret as string,
       config.jwt.expires_in as string
     );
+    // update his login track
+    await prisma.userAccess.upsert({
+      where: { userId: isExistingUser.id },
+      create: {
+        userId: isExistingUser.id,
+        isLoggedIn: true,
+        loginAt: new Date(),
+        logoutAt: null,
+      },
+      update: {
+        isLoggedIn: true,
+        loginAt: new Date(),
+        logoutAt: null,
+      },
+    });
     return {
       accessToken,
       id: isExistingUser.id,
@@ -147,6 +162,22 @@ const buyerOtpLogin = async (
     config.jwt.jwt_secret as string,
     config.jwt.expires_in as string
   );
+
+  await prisma.userAccess.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      isLoggedIn: true,
+      loginAt: new Date(),
+      logoutAt: null,
+    },
+    update: {
+      isLoggedIn: true,
+      loginAt: new Date(),
+      logoutAt: null,
+    },
+  });
+
   return {
     accessToken,
     id: user.id,
@@ -611,7 +642,7 @@ const getDriverTripsForSuperAdmin = async (query: any) => {
       { phone: { contains: searchTerm, mode: "insensitive" } },
     ];
   }
-  if(branchId){
+  if (branchId) {
     whereClause.branchId = branchId;
   }
 
@@ -643,16 +674,22 @@ const getDriverTripsForSuperAdmin = async (query: any) => {
 
     if (startDate) {
       const sd = new Date(startDate + "T00:00:00.000Z");
-      driverOrders = driverOrders.filter((o) => o?.orderDate && new Date(o.orderDate) >= sd);
+      driverOrders = driverOrders.filter(
+        (o) => o?.orderDate && new Date(o.orderDate) >= sd
+      );
     }
 
     if (endDate) {
       const ed = new Date(endDate + "T23:59:59.999Z");
-      driverOrders = driverOrders.filter((o) => o?.orderDate && new Date(o.orderDate) <= ed);
+      driverOrders = driverOrders.filter(
+        (o) => o?.orderDate && new Date(o.orderDate) <= ed
+      );
     }
 
     const totalTrips = driverOrders.length;
-    const deliveredTrips = driverOrders.filter(o => o?.status === "Delivered").length;
+    const deliveredTrips = driverOrders.filter(
+      (o) => o?.status === "Delivered"
+    ).length;
 
     // ✔ Order Start Date
     const orderStartDate =
@@ -662,7 +699,11 @@ const getDriverTripsForSuperAdmin = async (query: any) => {
               .map((o) => o?.orderDate)
               .filter((date): date is string => !!date);
             return orderDates.length > 0
-              ? new Date(Math.min(...orderDates.map((date) => new Date(date).getTime())))
+              ? new Date(
+                  Math.min(
+                    ...orderDates.map((date) => new Date(date).getTime())
+                  )
+                )
               : null;
           })()
         : null;
@@ -675,7 +716,11 @@ const getDriverTripsForSuperAdmin = async (query: any) => {
               .map((o) => o?.orderDate)
               .filter((date): date is string => !!date);
             return orderDates.length > 0
-              ? new Date(Math.max(...orderDates.map((date) => new Date(date).getTime())))
+              ? new Date(
+                  Math.max(
+                    ...orderDates.map((date) => new Date(date).getTime())
+                  )
+                )
               : null;
           })()
         : null;
@@ -719,13 +764,11 @@ const getDriverTripsForSuperAdmin = async (query: any) => {
   };
 };
 
-const getDriverTripsDetailsForSuperAdmin = async (query: any, driverId: string) => {
-  const {
-    startDate,
-    endDate,
-    page = 1,
-    limit = 10,
-  } = query || {};
+const getDriverTripsDetailsForSuperAdmin = async (
+  query: any,
+  driverId: string
+) => {
+  const { startDate, endDate, page = 1, limit = 10 } = query || {};
 
   // Verify driver exists
   const driver = await prisma.user.findFirst({
@@ -743,11 +786,11 @@ const getDriverTripsDetailsForSuperAdmin = async (query: any, driverId: string) 
   const dateFilter: any = {};
   if (startDate) {
     const sd = new Date(startDate + "T00:00:00.000Z");
-    dateFilter.gte = sd.toISOString().split('T')[0];
+    dateFilter.gte = sd.toISOString().split("T")[0];
   }
   if (endDate) {
     const ed = new Date(endDate + "T23:59:59.999Z");
-    dateFilter.lte = ed.toISOString().split('T')[0];
+    dateFilter.lte = ed.toISOString().split("T")[0];
   }
 
   const whereClause: any = {
@@ -807,102 +850,106 @@ const getDriverTripsDetailsForSuperAdmin = async (query: any, driverId: string) 
   });
 
   // Format the response
-  const formatted = assignments.map((assignment) => {
-    const order = assignment.dailyOrder;
-    
-    if (!order) {
-      return null;
-    }
+  const formatted = assignments
+    .map((assignment) => {
+      const order = assignment.dailyOrder;
 
-    // Calculate delivered products (accepted + partially returned)
-    const deliveredProducts = order.OrderProducts.filter(
-      (op) => op.acceptedWeight && op.acceptedWeight > 0
-    ).map((op) => ({
-      productId: op.product?.id,
-      productName: op.product?.name,
-      weight: op.acceptedWeight,
-      quantity: op.acceptedQuantity,
-      price: op.acceptedPrice,
-    }));
-
-    // Calculate returned products
-    const returnedProducts = order.OrderProducts.filter(
-      (op) => op.returnedWeight && op.returnedWeight > 0
-    ).map((op) => ({
-      productId: op.product?.id,
-      productName: op.product?.name,
-      weight: op.returnedWeight,
-      quantity: op.returnedQuantity,
-      price: op.returnedPrice,
-    }));
-
-    // Calculate total dispatched weight
-    const totalDispatchedWeight = order.OrderProducts.reduce(
-      (sum, op) => sum + (op.totalWeight || 0),
-      0
-    );
-
-    // Estimate crates dispatched (assuming 1 crate = 10kg, adjust as needed)
-    const cratesDispatched = Math.ceil(totalDispatchedWeight / 10);
-
-    // Parse payment methods
-    const paymentMethods: string[] = [];
-    if (order.paymentMethod) {
-      paymentMethods.push(order.paymentMethod);
-    }
-    if (order.walletAmountUsed && order.walletAmountUsed > 0) {
-      if (!paymentMethods.includes("Wallet")) {
-        paymentMethods.push("Wallet");
+      if (!order) {
+        return null;
       }
-    }
 
-    // Count delivery proof photos (DeliveryProof could be a single URL or comma-separated URLs)
-    const photoCount = order.DeliveryProof 
-      ? order.DeliveryProof.split(',').filter(url => url.trim()).length 
-      : 0;
+      // Calculate delivered products (accepted + partially returned)
+      const deliveredProducts = order.OrderProducts.filter(
+        (op) => op.acceptedWeight && op.acceptedWeight > 0
+      ).map((op) => ({
+        productId: op.product?.id,
+        productName: op.product?.name,
+        weight: op.acceptedWeight,
+        quantity: op.acceptedQuantity,
+        price: op.acceptedPrice,
+      }));
 
-    return {
-      tripNumber: order.id,
-      orderDate: order.orderDate,
-      driverName: driver.fullName,
-      driverId: driver.id,
-      customerName: order.user?.fullName,
-      customerPhone: order.user?.phone,
-      shopName: order.shippingAddress?.shopName,
-      address: order.shippingAddress?.address,
-      
-      totalDispatch: order.OrderProducts.length,
-      totalDispatchedWeight: totalDispatchedWeight,
-      
-      deliveredProducts: deliveredProducts,
-      returnedProducts: returnedProducts,
-      
-      totalAcceptedWeight: order.totalAcceptedWeight || 0,
-      totalReturnedWeight: order.totalReturnedWeight || 0,
-      totalRejectedWeight: order.totalRejectedWeight || 0,
-      
-      cratesDispatched: cratesDispatched,
-      
-      totalAmount: order.totalAmount,
-      totalAcceptedPrice: order.totalAcceptedPrice || 0,
-      totalReturnedPrice: order.totalReturnedPrice || 0,
-      
-      paymentMethods: paymentMethods,
-      paymentMethod: order.paymentMethod,
-      walletAmountUsed: order.walletAmountUsed || 0,
-      remainingAmount: order.RemainingAmount || 0,
-      
-      deliveryProofPhotos: order.DeliveryProof ? order.DeliveryProof.split(',').filter(url => url.trim()) : [],
-      photoCount: photoCount,
-      
-      status: order.status,
-      isDues: order.isDues || false,
-      duesCleared: order.duesCleared || false,
-      
-      assignedAt: assignment.assignedAt,
-      actualDeliveryDate: assignment.deliveryDate,
-    };
-  }).filter(item => item !== null);
+      // Calculate returned products
+      const returnedProducts = order.OrderProducts.filter(
+        (op) => op.returnedWeight && op.returnedWeight > 0
+      ).map((op) => ({
+        productId: op.product?.id,
+        productName: op.product?.name,
+        weight: op.returnedWeight,
+        quantity: op.returnedQuantity,
+        price: op.returnedPrice,
+      }));
+
+      // Calculate total dispatched weight
+      const totalDispatchedWeight = order.OrderProducts.reduce(
+        (sum, op) => sum + (op.totalWeight || 0),
+        0
+      );
+
+      // Estimate crates dispatched (assuming 1 crate = 10kg, adjust as needed)
+      const cratesDispatched = Math.ceil(totalDispatchedWeight / 10);
+
+      // Parse payment methods
+      const paymentMethods: string[] = [];
+      if (order.paymentMethod) {
+        paymentMethods.push(order.paymentMethod);
+      }
+      if (order.walletAmountUsed && order.walletAmountUsed > 0) {
+        if (!paymentMethods.includes("Wallet")) {
+          paymentMethods.push("Wallet");
+        }
+      }
+
+      // Count delivery proof photos (DeliveryProof could be a single URL or comma-separated URLs)
+      const photoCount = order.DeliveryProof
+        ? order.DeliveryProof.split(",").filter((url) => url.trim()).length
+        : 0;
+
+      return {
+        tripNumber: order.id,
+        orderDate: order.orderDate,
+        driverName: driver.fullName,
+        driverId: driver.id,
+        customerName: order.user?.fullName,
+        customerPhone: order.user?.phone,
+        shopName: order.shippingAddress?.shopName,
+        address: order.shippingAddress?.address,
+
+        totalDispatch: order.OrderProducts.length,
+        totalDispatchedWeight: totalDispatchedWeight,
+
+        deliveredProducts: deliveredProducts,
+        returnedProducts: returnedProducts,
+
+        totalAcceptedWeight: order.totalAcceptedWeight || 0,
+        totalReturnedWeight: order.totalReturnedWeight || 0,
+        totalRejectedWeight: order.totalRejectedWeight || 0,
+
+        cratesDispatched: cratesDispatched,
+
+        totalAmount: order.totalAmount,
+        totalAcceptedPrice: order.totalAcceptedPrice || 0,
+        totalReturnedPrice: order.totalReturnedPrice || 0,
+
+        paymentMethods: paymentMethods,
+        paymentMethod: order.paymentMethod,
+        walletAmountUsed: order.walletAmountUsed || 0,
+        remainingAmount: order.RemainingAmount || 0,
+
+        deliveryProofPhotos: order.DeliveryProof
+          ? order.DeliveryProof.split(",").filter((url) => url.trim())
+          : [],
+        photoCount: photoCount,
+
+        status: order.status,
+        isDues: order.isDues || false,
+        duesCleared: order.duesCleared || false,
+
+        assignedAt: assignment.assignedAt,
+        actualDeliveryDate: assignment.deliveryDate,
+      };
+    })
+    .filter((item) => item !== null);
 
   // Count total assignments for pagination
   const totalAssignments = await prisma.driverAssignment.count({
@@ -925,8 +972,7 @@ const getDriverTripsDetailsForSuperAdmin = async (query: any, driverId: string) 
     },
     data: formatted,
   };
-}
-
+};
 
 const getSalesAgentPerformanceForSuperAdmin = async (query: any) => {
   const {
@@ -976,11 +1022,11 @@ const getSalesAgentPerformanceForSuperAdmin = async (query: any) => {
   const orderDateFilter: any = {};
   if (startDate) {
     const sd = new Date(startDate + "T00:00:00.000Z");
-    orderDateFilter.gte = sd.toISOString().split('T')[0];
+    orderDateFilter.gte = sd.toISOString().split("T")[0];
   }
   if (endDate) {
     const ed = new Date(endDate + "T23:59:59.999Z");
-    orderDateFilter.lte = ed.toISOString().split('T')[0];
+    orderDateFilter.lte = ed.toISOString().split("T")[0];
   }
 
   // Calculate performance for each agent
@@ -1101,8 +1147,19 @@ const getSalesAgentPerformanceForSuperAdmin = async (query: any) => {
     },
     data: performanceData,
   };
-}
+};
 
+const logout = async (userId: string) => {
+  await prisma.userAccess.updateMany({
+    where: {
+      userId: userId,
+    },
+    data: {
+      isLoggedIn: false,
+      logoutAt: new Date(),
+    },
+  });
+};
 
 export const userService = {
   buyerOtpLogin,
@@ -1123,5 +1180,6 @@ export const userService = {
   rateUser,
   getDriverTripsForSuperAdmin,
   getDriverTripsDetailsForSuperAdmin,
-  getSalesAgentPerformanceForSuperAdmin
+  getSalesAgentPerformanceForSuperAdmin,
+  logout,
 };

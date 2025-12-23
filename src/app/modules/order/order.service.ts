@@ -26,7 +26,7 @@ import {
 } from "./order.helpers";
 import { JwtHeader, JwtPayload } from "jsonwebtoken";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
-import { handalingCharge } from '@prisma/client';
+import { handalingCharge } from "@prisma/client";
 import {
   updateDriverProgressOnDelivery,
   updateDriverProgressOnAssignment,
@@ -108,14 +108,14 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     const price = p.quantity * variation.sellingPrice;
     orderTotal += price;
     const handalingCharge = await prisma.handalingCharge.findFirst({
-      where : {
-        branchId : user.branchId
+      where: {
+        branchId: user.branchId,
       },
-      select :{
-        charge : true,
-        condition : true
-      }
-    })
+      select: {
+        charge: true,
+        condition: true,
+      },
+    });
 
     // Snapshot pricing - capture current price
     validatedProducts.push({
@@ -866,10 +866,9 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
 
 const getBranchDayWiseCalculations = async (
   user: JwtPayload,
-  branchId?: string,
   queryParams?: any
 ) => {
-  const { startDate, endDate, type } = queryParams || {};
+  const { startDate, endDate, type , branchId } = queryParams || {};
   // Implement the logic to get branch day-wise calculations
 
   const startDateString = startDate || getDateString();
@@ -890,8 +889,8 @@ const getBranchDayWiseCalculations = async (
   // Set hours for start and end of day
   startDateTime.setHours(0, 0, 0, 0);
   endDateTime.setHours(23, 59, 59, 999);
-
-  if (user.role === UserRole.SuperAdmin) {
+  //overview || summary
+  if (type === "overview") {
     // total orders of the day
     const orderOfTheDay = await prisma.dailyOrder.count({
       where: {
@@ -953,11 +952,164 @@ const getBranchDayWiseCalculations = async (
       totalReturnedWeight: returnProductsOfTheDay._sum.returnedWeight || 0, // KG
       totalReturnedPrice: returnProductsOfTheDay._sum.returnedPrice || 0,
     };
-  } else if (user.role === UserRole.Owner) {
-    // Implement logic for Owner role if needed
-  }
+  } else if (type === "summary") {
+    // Implement summary logic
+    // 1. Fetch all delivered orders for the branch and date
+    const deliveredOrders = await prisma.dailyOrder.findMany({
+      where: {
+        branchId: branchId ?? undefined,
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+        status: "Delivered",
+      },
+      include: {
+        driverAssignments: { include: { driver: true } },
+        OrderProducts: {
+          include: { product: true },
+        },
+        user: true,
+      },
+    });
 
-  // This is a placeholder implementation
+    // 2. Aggregate summary data
+    let totalDispatch = deliveredOrders.length;
+    let deliveredProducts: any[] = [];
+    let returnedProducts: any[] = [];
+    let totalAmount = 0;
+    let paymentMethods: Set<string> = new Set();
+    let driverNames: Set<string> = new Set();
+
+    deliveredOrders.forEach((order) => {
+      // Driver name(s)
+      if (order.driverAssignments && order.driverAssignments.length > 0) {
+        order.driverAssignments.forEach((da) => {
+          if (da.driver && da.driver.fullName)
+            driverNames.add(da.driver.fullName);
+        });
+      }
+      // Payment method(s)
+      if (order.paymentMethod) paymentMethods.add(order.paymentMethod);
+      // Total amount
+      totalAmount += order.totalAmount || 0;
+      // Delivered products
+      order.OrderProducts.forEach((op) => {
+        if (op.acceptedWeight && op.acceptedWeight > 0) {
+          deliveredProducts.push({
+            name: op.product?.name || "",
+            weight: op.acceptedWeight,
+          });
+        }
+        if (op.returnedWeight && op.returnedWeight > 0) {
+          returnedProducts.push({
+            name: op.product?.name || "",
+            weight: op.returnedWeight,
+          });
+        }
+      });
+    });
+
+    // Group by product name for delivered and returned
+    const groupByProduct = (arr: any[]) => {
+      const map = new Map();
+      arr.forEach((item) => {
+        if (!map.has(item.name)) map.set(item.name, 0);
+        map.set(item.name, map.get(item.name) + item.weight);
+      });
+      return Array.from(map.entries()).map(([name, weight]) => ({
+        name,
+        weight,
+      }));
+    };
+
+    const deliveredSummary = groupByProduct(deliveredProducts);
+    const returnedSummary = groupByProduct(returnedProducts);
+
+    // Format payment methods
+    const paymentMethodList = Array.from(paymentMethods);
+    // Format driver names
+    const driverNameList = Array.from(driverNames);
+
+    // Use the first delivery date in the range (or today)
+    const deliveryDate = startDateString;
+
+    return {
+      deliveryDate,
+      driverNames: driverNameList,
+      totalDispatch,
+      deliveredProducts: deliveredSummary,
+      returnedProducts: returnedSummary,
+      totalAmount,
+      paymentMethods: paymentMethodList,
+    };
+  } else if (type === "salesOverview") {
+    // total orders of the day
+    const orderOfTheDay = await prisma.dailyOrder.count({
+      where: {
+        branchId: branchId ?? undefined,
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+      },
+    });
+    // total order product of the day
+    const orderProductsOfTheDay = await prisma.totalProductOrder.count({
+      where: {
+        branchId: branchId ?? undefined,
+        createdAt: {
+          gte: startDateTime,
+          lte: endDateTime,
+        },
+      },
+    });
+    // total revenue of the day
+    const revenueOfTheDayAgg = await prisma.dailyOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+      },
+      _sum: {
+        totalAmount: true,
+        handlingCharge: true,
+        RemainingAmount: true,
+      },
+    });
+
+    // total return products of the day
+    // totalProductOrder
+    const returnProductsOfTheDay = await prisma.totalProductOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        orderDateString: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+        status: "Returned",
+      },
+      _count: {
+        _all: true,
+      },
+      _sum: {
+        returnedWeight: true,
+        returnedPrice: true,
+      },
+    });
+
+    return {
+      totalOrders: orderOfTheDay,
+      totalRevenue: revenueOfTheDayAgg._sum.totalAmount || 0,
+      totalOrderProducts: orderProductsOfTheDay,
+      totalReturnedWeight: returnProductsOfTheDay._sum.returnedWeight || 0, // KG
+      totalReturnedPrice: returnProductsOfTheDay._sum.returnedPrice || 0,
+      totaHandalingCharge: revenueOfTheDayAgg._sum.handlingCharge || 0,
+      totalRemainingAmount: revenueOfTheDayAgg._sum.RemainingAmount || 0,
+    };
+  }
 };
 
 /// ----------------------- /// Assign orders to delivery Driver -----------------///
@@ -2358,7 +2510,14 @@ const returnOrderProduct = async (
 };
 
 const getSalesHistory = async (query: any) => {
-  const { branchId, startDate, endDate, page = 1, limit = 10 } = query || {};
+  const {
+    branchId,
+    startDate,
+    agentId,
+    endDate,
+    page = 1,
+    limit = 10,
+  } = query || {};
 
   const filters: any = { status: "Delivered" };
 
@@ -2367,15 +2526,32 @@ const getSalesHistory = async (query: any) => {
   if (startDate) {
     filters.orderDate = {
       ...(filters.orderDate || {}),
-      gte: new Date(startDate + "T00:00:00.000Z"),
+      gte: startDate + "T00:00:00.000Z",
     };
   }
 
   if (endDate) {
     filters.orderDate = {
       ...(filters.orderDate || {}),
-      lte: new Date(endDate + "T23:59:59.999Z"),
+      lte: endDate + "T23:59:59.999Z",
     };
+  }
+
+  if (agentId) {
+    // is Agent exists
+    const agent = await prisma.user.findUnique({
+      where: { id: agentId },
+    });
+
+    if (!agent || agent.role !== UserRole.Agent) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Agent not found");
+    }
+    // Fetch agent's customers
+    const customers = await prisma.user.findMany({
+      where: { agentId },
+      select: { id: true },
+    });
+    filters.userId = { in: customers.map((c) => c.id) };
   }
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -2421,10 +2597,25 @@ const getSalesHistory = async (query: any) => {
     },
   });
 
-  // 💥 Flatten the data here
+
+  // 💥 Flatten the data here and add agent name/image
+  const agentIds = Array.from(new Set(rawData.map(item => item.user?.agentId).filter(Boolean))) as string[];
+  let agentMap: Record<string, { id: string; fullName: string | null; profileImage: string | null }> = {};
+  if (agentIds.length > 0) {
+    const agents = await prisma.user.findMany({
+      where: { id: { in: agentIds } },
+      select: { id: true, fullName: true, profileImage: true },
+    });
+    agentMap = agents.reduce((acc, agent) => {
+      acc[agent.id] = agent;
+      return acc;
+    }, {} as Record<string, { id: string; fullName: string | null; profileImage: string | null }>);
+  }
+
   const formattedData = rawData.map((item) => {
     const driver = item.driverAssignments[0]?.driver;
-
+    const agentId = item.user?.agentId || null;
+    const agent = agentId ? agentMap[agentId] : null;
     return {
       id: item.id,
       orderDate: item.orderDate,
@@ -2437,7 +2628,9 @@ const getSalesHistory = async (query: any) => {
       userName: item.user?.fullName || null,
       userPhone: item.user?.phone || null,
       userImage: item.user?.profileImage || null,
-      agentId: item.user?.agentId || null,
+      agentId,
+      agentName: agent?.fullName || null,
+      agentImage: agent?.profileImage || null,
 
       driverId: driver?.id || null,
       driverName: driver?.fullName || null,
