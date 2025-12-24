@@ -9,7 +9,8 @@ router.get('/overview', auth(UserRole.Owner), ownerControllers.getOverview);
 router.get('/earning-reports', auth(UserRole.Owner), ownerControllers.getEarningReports);
 router.get('/product-calculations',auth(UserRole.Owner), ownerControllers.getProductCalculations);
 router.get('/highestSellingProducts',auth(UserRole.Owner), ownerControllers.getHighestSellingProducts);
-router.delete('/:id',auth(UserRole.Owner), ownerControllers.deleteOwner);
+router.get('/overall-profit',auth(UserRole.Owner), ownerControllers.getOverallProfit);
+router.get('/tonnage-calculaton',auth(UserRole.Owner), ownerControllers.getTonnageCalculation);
  
 export const ownerRoutes = router;
     

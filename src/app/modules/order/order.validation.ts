@@ -24,6 +24,8 @@ export const createOrderSchema = z.object({
   paymentMethod: z.enum(["COD", "Online", "Wallet"], {
     required_error: "Payment method is required",
   }),
+  handlingCharge : z.number().nonnegative("Handling charge must be non-negative").optional(),
+  note : z.string().optional(),
 });
 
 // Cancel order schema (supports partial or full cancellation)

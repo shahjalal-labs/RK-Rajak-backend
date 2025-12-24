@@ -108,7 +108,7 @@ router.put(
 //** --------------------------------SuperAdmin calculations branch and day wised  ----------------------------------- */
 
 router.get(
-  "/calculations",
+  "/calculations/branch-day-wise",
   auth(UserRole.SuperAdmin, UserRole.Owner),
   orderControllers.getBranchDayWiseCalculations
 );

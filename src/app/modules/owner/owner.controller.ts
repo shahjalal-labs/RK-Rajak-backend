@@ -45,12 +45,22 @@ const getHighestSellingProducts = catchAsync(async (req: Request, res: Response)
   });
 })
  
-const deleteOwner = catchAsync(async (req: Request, res: Response) => {
-  await ownerServices.deleteOwner(req.params.id);
+const getOverallProfit = catchAsync(async (req: Request, res: Response) => {
+  const result = await ownerServices.getOverallProfit(req.query);
   sendResponse(res, {
     success: true,
     statusCode: 200,
-    message: "owner has been deleted successfully",
+    message: "Overall profit has been retrieved successfully",
+    data : result
+  });
+})
+const getTonnageCalculation = catchAsync(async (req: Request, res: Response) => {
+  const result = await ownerServices.getTonnageCalculation(req.query);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Tonnage calculation has been retrieved successfully",
+    data : result
   });
 })
  
@@ -59,6 +69,7 @@ export const ownerControllers = {
   getEarningReports,
   getProductCalculations,
   getHighestSellingProducts,
-  deleteOwner,
+  getOverallProfit,
+  getTonnageCalculation
 }
   

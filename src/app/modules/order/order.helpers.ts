@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, PaymentMethod, product } from "@prisma/client";
+import { PrismaClient, UserRole, PaymentMethod, product, packageType } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 
@@ -55,6 +55,8 @@ export const getOrCreateDailyOrder = async (
         walletAmountUsed: 0,
         RemainingAmount: 0,
         status: "Pending",
+        handlingCharge: 0,
+        note: "",
       },
       include: {
         OrderProducts: {
@@ -79,13 +81,14 @@ export const mergeOrCreateOrderProduct = async (
   productId: string,
   variationId: string,
   quantity: number,
-  perQuantityPrice: number,
+  perQuantitySellingPrice: number,
+  perQuantityRealPrice: number,
   snapshotWeightPerUnit: number,
   tx: any = prisma,
   method: "COD" | "Wallet"
 ) => {
   const totalWeight = quantity * snapshotWeightPerUnit;
-  const totalPrice = quantity * perQuantityPrice;
+  const totalPrice = quantity * perQuantitySellingPrice;
 
   // Check if OrderProduct exists for this product in this order
   const existingOrderProduct = await tx.orderProduct.findUnique({
@@ -122,6 +125,8 @@ export const mergeOrCreateOrderProduct = async (
           orderProductId: existingOrderProduct.id,
           variationId,
           quantity,
+          OrderTimeRealPrice: perQuantityRealPrice,
+          OrderTimeSellingPrice: perQuantitySellingPrice,
         },
       });
     }
@@ -155,6 +160,8 @@ export const mergeOrCreateOrderProduct = async (
           create: {
             variationId,
             quantity,
+            OrderTimeRealPrice: perQuantityRealPrice,
+            OrderTimeSellingPrice: perQuantitySellingPrice,
           },
         },
       },
@@ -251,7 +258,7 @@ export const updateDailyProductAggregation = async (
     await tx.totalProductOrder.update({
       where: { id: existing.id },
       data: {
-        totalWeight : { decrement: weight },
+        totalWeight: { decrement: weight },
         returnedWeight: { increment: weight },
         returnedPrice: { increment: price },
       },
@@ -265,11 +272,10 @@ export const updateDailyProductAggregation = async (
 export const recalculateDailyOrderTotal = async (
   dailyOrderId: string,
   tx: any = prisma,
-  decressRemaining : number = 0
+  decressRemaining: number = 0,
+  handlingCharge?: number,
+  note?: string
 ) => {
-
-
-  console.log("after rejected hit the helpers!")
   const orderProducts = await tx.orderProduct.findMany({
     where: {
       orderId: dailyOrderId,
@@ -280,7 +286,7 @@ export const recalculateDailyOrderTotal = async (
     return sum + product.totalPrice;
   }, 0);
 
-  console.log({totalAmount})
+  console.log({ totalAmount });
 
   const dailyOrder = await tx.dailyOrder.findUnique({
     where: { id: dailyOrderId },
@@ -289,8 +295,9 @@ export const recalculateDailyOrderTotal = async (
   if (!dailyOrder) return;
 
   // Calculate remaining amount based on payment method
-  let remainingAmount = Number(totalAmount) - (Number(dailyOrder.walletAmountUsed) || 0);
-  console.log({remainingAmount})
+  let remainingAmount =
+    Number(totalAmount) - (Number(dailyOrder.walletAmountUsed) || 0);
+  console.log({ remainingAmount });
   // Check if it's a dues order
   const isDues = dailyOrder.paymentMethod === "Credit" && remainingAmount > 0;
 
@@ -300,6 +307,9 @@ export const recalculateDailyOrderTotal = async (
       totalAmount,
       RemainingAmount: remainingAmount - decressRemaining,
       isDues,
+      // increment handling charge if provided
+      handlingCharge: handlingCharge !== undefined ? dailyOrder.handlingCharge + handlingCharge : dailyOrder.handlingCharge,
+      note: `${dailyOrder.note}\n${note || ""}`.trim(),
     },
   });
 };
@@ -672,7 +682,7 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
         user?.Wallet
       ) {
         const walletId = user.Wallet.id;
-        const refundAmount = orderRelation.totalWalletAmountUsed; 
+        const refundAmount = orderRelation.totalWalletAmountUsed;
         decressRemaining = orderTotalPrice - refundAmount;
 
         //✅DONE : Ai amount  ta ai order er sokol product er jonno wallet theke use kora hoyeche amd bujte hobe exactly ai product er jonno koto ta use hoyeche then sei amount ta refund korte hobe
@@ -696,28 +706,12 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
       }
 
       // g) Recalculate daily order total (skip cancelled products internally)
-      await recalculateDailyOrderTotal(order.id, tx , decressRemaining);
+      await recalculateDailyOrderTotal(order.id, tx, decressRemaining);
     }
 
     return { message: "Product(s) rejected successfully" };
   });
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /**
  * Adjust OrderProduct quantity by delivery driver
@@ -726,7 +720,7 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
  */
 export const adjustOrderProduct = async (
   orderProductId: string,
-  newWeight: number,
+  newWeight: number
 ) => {
   return await prisma.$transaction(async (tx) => {
     const orderProduct = await tx.orderProduct.findUnique({
@@ -980,45 +974,22 @@ export const adjustOrderProduct = async (
   });
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /**
  * Get daily product summary (for admin dashboard)
  */
 export const getDailyProductSummary = async (
   dateString?: any,
   branchId?: string,
-  productCategoryId?: string
+  productCategoryId?: string,
+  packageType?: packageType
 ) => {
   const targetDate = dateString || getDateString();
-
-  console.log({ targetDate });
   return await prisma.totalProductOrder.findMany({
     where: {
       orderDateString: targetDate ? targetDate : undefined,
       branchId: branchId ? branchId : undefined,
       productCategoryId: productCategoryId ? productCategoryId : undefined,
+      
     },
     include: {
       product: {
@@ -1067,7 +1038,6 @@ export const getDailyOrders = async (dateString?: string) => {
   });
 };
 
-
 /**
  * Generate unique order ID
  */
@@ -1078,7 +1048,10 @@ export const generateOrderId = (): string => {
 /**
  * Get or create MainOrder for today for a user
  */
-export const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma) => {
+export const getOrCreateTodayMainOrder = async (
+  userId: string,
+  tx: any = prisma
+) => {
   const today = new Date();
   const now = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1113,3 +1086,5 @@ export const getOrCreateTodayMainOrder = async (userId: string, tx: any = prisma
 
   return mainOrder;
 };
+
+

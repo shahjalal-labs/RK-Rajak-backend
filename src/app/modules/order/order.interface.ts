@@ -11,6 +11,8 @@ export interface ICreateOrderPayload {
   shippingAddressId: string;
   branchId: string;
   paymentMethod: "COD" | "Online" | "Wallet";
+  handlingCharge?: number;
+  note?: string;
 }
 export interface ICreateOrderPayloadByAgentForCustomer {
   userId: string;
@@ -19,6 +21,8 @@ export interface ICreateOrderPayloadByAgentForCustomer {
   shippingAddressId: string;
   branchId: string;
   paymentMethod: "COD";
+  handlingCharge?: number;
+  note?: string;
 }
 
 export interface IReturnOrderPayload {
@@ -57,9 +61,8 @@ export interface ICancelOrderByCustomerPayload {
 // reason
 // productId
 
-
 export interface IOrderAdjustMent {
-orderProductId : string,
-returnWeight : number,
-returnPrice : number,
+  orderProductId: string;
+  returnWeight: number;
+  returnPrice: number;
 }

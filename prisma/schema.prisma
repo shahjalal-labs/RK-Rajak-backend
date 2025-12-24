@@ -18,7 +18,7 @@ model User {
   buyerRating       Float?     @default(0)
   fcmToken          String?
   profileImage      String?    @default("https://i.ibb.co.com/nrs3FjM/images.png")
-  shopOpeningTime   String?
+  PreferredTime     String?
   role              UserRole
   status            UserStatus @default(Active)
   referralCode      String?    @unique
@@ -363,6 +363,7 @@ model DailyOrder {
   status              OrderStatus      @default(Pending)
   cancellationReason  String?
   handlingCharge      Float?           @default(0)
+  note                String?
   DeliveryProof       String?
   shippingAddressId   String?          @db.ObjectId
   shippingAddress     shippingAddress? @relation(fields: [shippingAddressId], references: [id])
@@ -386,6 +387,16 @@ model DailyOrder {
   driverAssignments DriverAssignment[]
 
   @@map("orders")
+}
+
+enum PaymentMethod {
+  COD // cash on delivery
+  Cash // cash payment
+  Wallet // wallet amount used
+  Pre_Paid // pre-paid online payment
+  Credit // delivery boy assign as credit and user clear dues later
+  QrCode // delivery boy show scanner and collects payment
+  Online // after clearing dues
 }
 
 // order products  collection for user 
@@ -419,15 +430,16 @@ model OrderProduct {
 }
 
 model OrderProductVariation {
-  id             String            @id @default(auto()) @map("_id") @db.ObjectId
-  orderProduct   OrderProduct      @relation(fields: [orderProductId], references: [id], onDelete: Cascade)
-  orderProductId String            @db.ObjectId
-  variationId    String            @db.ObjectId
-  variation      productVariation? @relation(fields: [variationId], references: [id])
-  quantity       Float
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                    String            @id @default(auto()) @map("_id") @db.ObjectId
+  orderProduct          OrderProduct      @relation(fields: [orderProductId], references: [id], onDelete: Cascade)
+  orderProductId        String            @db.ObjectId
+  variationId           String            @db.ObjectId
+  variation             productVariation? @relation(fields: [variationId], references: [id])
+  quantity              Float
+  OrderTimeRealPrice    Float
+  OrderTimeSellingPrice Float
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 }
 
 // total order product collection for admin adn superadmin for one day
@@ -480,16 +492,6 @@ enum OrderStatus {
   Cancelled
   Returned
   PartialReturned
-}
-
-enum PaymentMethod {
-  COD // cash on delivery
-  Cash // cash payment
-  Wallet // wallet amount used
-  Pre_Paid // pre-paid online payment
-  Credit // delivery boy assign as credit and user clear dues later
-  QrCode // delivery boy show scanner and collects payment
-  Online // after clearing dues
 }
 
 /// ----------------------------- /// Assign main orders to delivery Driver // under one driver assign multiple main orders -----------------///

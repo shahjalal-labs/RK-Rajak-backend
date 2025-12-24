@@ -24,9 +24,8 @@ import {
   adjustOrderProduct,
   getDailyProductSummary,
 } from "./order.helpers";
-import { JwtHeader, JwtPayload } from "jsonwebtoken";
+import { JwtPayload } from "jsonwebtoken";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
-import { handalingCharge } from "@prisma/client";
 import {
   updateDriverProgressOnDelivery,
   updateDriverProgressOnAssignment,
@@ -40,7 +39,13 @@ const prisma = new PrismaClient();
  * Merges products into daily order with snapshot pricing
  */
 const placeOrderCOD = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId } = payload;
+  const {
+    userId,
+    products,
+    shippingAddressId,
+    handlingCharge = 0,
+    note = "",
+  } = payload;
 
   // Validate user
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -80,7 +85,8 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     quantity: number;
     product: any;
     variation: any;
-    perQuantityPrice: number;
+    perQuantitySellingPrice: number;
+    perQuantityRealPrice: number;
     snapshotWeightPerUnit: number;
   }> = [];
   let orderTotal = 0;
@@ -104,18 +110,8 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       );
     }
 
-    const weight = p.quantity * variation.weight;
     const price = p.quantity * variation.sellingPrice;
     orderTotal += price;
-    const handalingCharge = await prisma.handalingCharge.findFirst({
-      where: {
-        branchId: user.branchId,
-      },
-      select: {
-        charge: true,
-        condition: true,
-      },
-    });
 
     // Snapshot pricing - capture current price
     validatedProducts.push({
@@ -125,7 +121,8 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       quantity: p.quantity,
       product: dbProduct,
       variation: variation,
-      perQuantityPrice: variation.sellingPrice,
+      perQuantitySellingPrice: variation.sellingPrice,
+      perQuantityRealPrice: variation.realPrice,
       snapshotWeightPerUnit: variation.weight,
     });
   }
@@ -151,7 +148,8 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         p.productId,
         p.variationId,
         p.quantity,
-        p.perQuantityPrice,
+        p.perQuantitySellingPrice,
+        p.perQuantityRealPrice,
         p.snapshotWeightPerUnit,
         tx,
         "COD"
@@ -160,7 +158,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
       // Update daily product aggregation
       const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = p.quantity * p.perQuantityPrice;
+      const price = p.quantity * p.perQuantitySellingPrice;
       await updateDailyProductAggregation(
         p.productId,
         dailyOrder.id,
@@ -174,7 +172,13 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     }
 
     // Recalculate total
-    await recalculateDailyOrderTotal(dailyOrder.id, tx);
+    await recalculateDailyOrderTotal(
+      dailyOrder.id,
+      tx,
+      0,
+      handlingCharge,
+      note
+    );
 
     // Fetch updated order
     const updatedOrder = await tx.dailyOrder.findUnique({
@@ -201,7 +205,13 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
  * Place order with Wallet payment
  */
 const placeOrderWallet = async (payload: ICreateOrderPayload) => {
-  const { userId, products, shippingAddressId } = payload;
+  const {
+    userId,
+    products,
+    shippingAddressId,
+    handlingCharge = 0,
+    note = "",
+  } = payload;
 
   // Validate user and wallet
   const user = await prisma.user.findUnique({
@@ -249,7 +259,8 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     quantity: number;
     product: any;
     variation: any;
-    perQuantityPrice: number;
+    perQuantitySellingPrice: number;
+    perQuantityRealPrice: number;
     snapshotWeightPerUnit: number;
   }> = [];
   let orderTotal = 0;
@@ -273,7 +284,6 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       );
     }
 
-    const weight = p.quantity * variation.weight;
     const price = p.quantity * variation.sellingPrice;
     orderTotal += price;
 
@@ -284,7 +294,8 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       quantity: p.quantity,
       product: dbProduct,
       variation: variation,
-      perQuantityPrice: variation.sellingPrice,
+      perQuantitySellingPrice: variation.sellingPrice,
+      perQuantityRealPrice: variation.realPrice,
       snapshotWeightPerUnit: variation.weight,
     });
   }
@@ -331,7 +342,8 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         p.productId,
         p.variationId,
         p.quantity,
-        p.perQuantityPrice,
+        p.perQuantitySellingPrice,
+        p.perQuantityRealPrice,
         p.snapshotWeightPerUnit,
         tx,
         "Wallet"
@@ -339,7 +351,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
 
       // Update aggregation
       const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = p.quantity * p.perQuantityPrice;
+      const price = p.quantity * p.perQuantitySellingPrice;
       await updateDailyProductAggregation(
         p.productId,
         dailyOrder.id,
@@ -353,7 +365,13 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     }
 
     // Recalculate total
-    await recalculateDailyOrderTotal(dailyOrder.id, tx);
+    await recalculateDailyOrderTotal(
+      dailyOrder.id,
+      tx,
+      0,
+      handlingCharge,
+      note
+    );
 
     // Record wallet transaction
     await tx.walletTransaction.create({
@@ -430,6 +448,8 @@ const createOrderByAgentForCustomer = async (
     products,
     shippingAddressId,
     paymentMethod,
+    handlingCharge = 0,
+    note = "",
   } = payload;
 
   // ================= VALIDATIONS =================
@@ -467,7 +487,8 @@ const createOrderByAgentForCustomer = async (
     quantity: number;
     product: any;
     variation: any;
-    perQuantityPrice: number; // Agent-provided price per quantity
+    perQuantitySellingPrice: number;
+    perQuantityRealPrice: number; // Agent-provided price per quantity
     snapshotWeightPerUnit: number;
   }> = [];
 
@@ -502,7 +523,8 @@ const createOrderByAgentForCustomer = async (
       quantity: p.quantity,
       product: dbProduct,
       variation: variation,
-      perQuantityPrice: perQuantityPrice, // Agent-provided price
+      perQuantitySellingPrice: perQuantityPrice, // Agent-provided price
+      perQuantityRealPrice: variation.realPrice,
       snapshotWeightPerUnit: variation.weight,
     });
   }
@@ -526,7 +548,8 @@ const createOrderByAgentForCustomer = async (
         p.productId,
         p.variationId,
         p.quantity,
-        p.perQuantityPrice, // Agent-provided price
+        p.perQuantitySellingPrice, // Agent-provided price
+        p.perQuantityRealPrice,
         p.snapshotWeightPerUnit,
         tx,
         paymentMethod === PaymentMethod.COD ? "COD" : "Wallet"
@@ -535,7 +558,7 @@ const createOrderByAgentForCustomer = async (
 
       // Update daily product aggregation
       const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = p.quantity * p.perQuantityPrice; // Agent-provided total price
+      const price = p.quantity * p.perQuantitySellingPrice; // Agent-provided total price
       await updateDailyProductAggregation(
         p.productId,
         dailyOrder.id,
@@ -549,7 +572,13 @@ const createOrderByAgentForCustomer = async (
     }
 
     // Recalculate total
-    await recalculateDailyOrderTotal(dailyOrder.id, tx);
+    await recalculateDailyOrderTotal(
+      dailyOrder.id,
+      tx,
+      0,
+      handlingCharge,
+      note
+    );
 
     // Fetch updated order
     const updatedOrder = await tx.dailyOrder.findUnique({
@@ -606,6 +635,8 @@ const getUserDailyOrders = async (userId: string, queryParams: any) => {
       paymentMethod: true,
       walletAmountUsed: true,
       RemainingAmount: true,
+      handlingCharge: true,
+      note: true,
       status: true,
       cancellationReason: true,
       DeliveryProof: true,
@@ -695,6 +726,10 @@ const getAllDailyOrders = async (queryParams: any) => {
       totalReturnedWeight: true,
       totalReturnedPrice: true,
       RemainingAmount: true,
+      handlingCharge: true,
+      note: true,
+      paymentMethod: true,
+      createdAt: true,
       orderDate: true,
       status: true,
       shippingAddress: {
@@ -716,8 +751,8 @@ const getAllDailyOrders = async (queryParams: any) => {
  * Get daily product summary
  */
 const getDailyDispatch = async (queryParams?: any) => {
-  const { dateString, branchId, productCategoryId } = queryParams || {};
-  return await getDailyProductSummary(dateString, branchId, productCategoryId);
+  const { dateString, branchId, productCategoryId , packageType } = queryParams || {};
+  return await getDailyProductSummary(dateString, branchId, productCategoryId, packageType);
 };
 /**
 
@@ -868,7 +903,7 @@ const getBranchDayWiseCalculations = async (
   user: JwtPayload,
   queryParams?: any
 ) => {
-  const { startDate, endDate, type , branchId } = queryParams || {};
+  const { startDate, endDate, type, branchId } = queryParams || {};
   // Implement the logic to get branch day-wise calculations
 
   const startDateString = startDate || getDateString();
@@ -1075,8 +1110,60 @@ const getBranchDayWiseCalculations = async (
       },
       _sum: {
         totalAmount: true,
-        handlingCharge: true,
         RemainingAmount: true,
+      },
+    });
+
+    const totalDeliveredHandlingCharge = await prisma.dailyOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        status: "Delivered",
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+      },
+      _sum: {
+        handlingCharge: true,
+      },
+    });
+    const totalReturnedHandlingCharge = await prisma.dailyOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        status: "Returned",
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+      },
+      _sum: {
+        handlingCharge: true,
+      },
+    });
+    const totalCancelledHandlingCharge = await prisma.dailyOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        status: "Cancelled",
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+      },
+      _sum: {
+        handlingCharge: true,
+      },
+    });
+    const totalActiveHandlingCharge = await prisma.dailyOrder.aggregate({
+      where: {
+        branchId: branchId ?? undefined,
+        status: { in: ["Pending", "OnTheWay", "Active"] },
+        orderDate: {
+          gte: startDateString,
+          lte: endDateString,
+        },
+      },
+      _sum: {
+        handlingCharge: true,
       },
     });
 
@@ -1106,8 +1193,17 @@ const getBranchDayWiseCalculations = async (
       totalOrderProducts: orderProductsOfTheDay,
       totalReturnedWeight: returnProductsOfTheDay._sum.returnedWeight || 0, // KG
       totalReturnedPrice: returnProductsOfTheDay._sum.returnedPrice || 0,
-      totaHandalingCharge: revenueOfTheDayAgg._sum.handlingCharge || 0,
       totalRemainingAmount: revenueOfTheDayAgg._sum.RemainingAmount || 0,
+      handalingChargeControllers: {
+        totalDeliveredHandlingCharge:
+          totalDeliveredHandlingCharge._sum.handlingCharge || 0,
+        totalReturnedHandlingCharge:
+          totalReturnedHandlingCharge._sum.handlingCharge || 0,
+        totalCancelledHandlingCharge:
+          totalCancelledHandlingCharge._sum.handlingCharge || 0,
+        totalActiveHandlingCharge:
+          totalActiveHandlingCharge._sum.handlingCharge || 0,
+      },
     };
   }
 };
@@ -1292,6 +1388,8 @@ const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
           totalReturnedWeight: true,
           totalReturnedPrice: true,
           RemainingAmount: true,
+          handlingCharge: true,
+          note: true,
           shippingAddress: {
             select: {
               id: true,
@@ -1886,6 +1984,8 @@ const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
       paymentMethod: true,
       walletAmountUsed: true,
       RemainingAmount: true,
+      handlingCharge: true,
+      note: true,
       DeliveryProof: true,
       OrderProducts: {
         where: {
@@ -1977,19 +2077,11 @@ const markOrderAsDelivered = async (
     0
   );
 
-  // Priority logic
-  const hasCredit = payload.payments.some((p) => p.method === "Credit");
-  const hasWallet = payload.payments.some((p) => p.method === "Wallet");
+  let PaymentMethodPriority: PaymentMethod;
 
-  let primaryMethod: PaymentMethod;
-
-  if (hasCredit) {
-    primaryMethod = "Credit";
-  } else if (hasWallet) {
-    primaryMethod = "Wallet"; // or "Wallet"
-  } else {
-    primaryMethod = payload.payments[0].method as PaymentMethod;
-  }
+  //** ---- Jei payment use kore max amount pay korse seta assign korbo ------------------ */
+  const sortPayments = payload.payments.sort((a, b) => b.amount - a.amount);
+  PaymentMethodPriority = sortPayments[0].method as PaymentMethod;
 
   let deliveryProofUrl: string | undefined = undefined;
 
@@ -2002,13 +2094,13 @@ const markOrderAsDelivered = async (
     where: { id: orderId },
     data: {
       status: OrderStatus.Delivered,
-      paymentMethod: primaryMethod,
+      paymentMethod: PaymentMethodPriority,
       RemainingAmount: { decrement: totalPaid },
       DeliveryProof: deliveryProofUrl,
     },
   });
 
-  /*
+  //* -------------  Jodi remaining value thake tahole payment method ke credit e convert korte hobe jeno credit order hisebe pawa jai ------------- *//
   //** Check still remaing exist or not! if Exist then change the isDues : true with paymentMethod : "credit"*/
   const order = await prisma.dailyOrder.findUnique({
     where: { id: orderId },
@@ -2570,6 +2662,7 @@ const getSalesHistory = async (query: any) => {
       orderDate: true,
       totalAmount: true,
       totalWeight: true,
+      handlingCharge: true,
       branchId: true,
       status: true,
       user: {
@@ -2597,10 +2690,14 @@ const getSalesHistory = async (query: any) => {
     },
   });
 
-
   // 💥 Flatten the data here and add agent name/image
-  const agentIds = Array.from(new Set(rawData.map(item => item.user?.agentId).filter(Boolean))) as string[];
-  let agentMap: Record<string, { id: string; fullName: string | null; profileImage: string | null }> = {};
+  const agentIds = Array.from(
+    new Set(rawData.map((item) => item.user?.agentId).filter(Boolean))
+  ) as string[];
+  let agentMap: Record<
+    string,
+    { id: string; fullName: string | null; profileImage: string | null }
+  > = {};
   if (agentIds.length > 0) {
     const agents = await prisma.user.findMany({
       where: { id: { in: agentIds } },
@@ -2758,6 +2855,7 @@ const getAssignOrderOverviewForDriver = async (
         _sum: {
           totalWeight: true,
           totalAmount: true,
+          handlingCharge: true,
         },
         _count: {
           id: true,
@@ -2791,6 +2889,10 @@ const getAssignOrderOverviewForDriver = async (
         totalAmount: returned._sum.totalAmount || 0,
         totalWeight: returned._sum.totalWeight || 0,
         orderCount: returned._count.id || 0,
+      },
+      // handling cherge only delivered . couse we collect handling charge when delivered
+      handlingCharge: {
+        totalHandlingCharge: delivered._sum.handlingCharge || 0,
       },
     };
   } else if (query.type === "detailed") {
