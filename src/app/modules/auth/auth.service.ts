@@ -156,7 +156,7 @@ const getProfileFromDB = async (userId: string) => {
       agentId: true,
       referralCode: true,
       fcmToken: true,
-      shopOpeningTime: true,
+      PreferredTime: true,
       threshold: true,
       discount: true,
       createdAt: true,
