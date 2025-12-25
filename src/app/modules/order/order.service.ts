@@ -31,6 +31,7 @@ import {
   updateDriverProgressOnAssignment,
   updateAgentProgress,
 } from "../incentives/incentives.helper";
+import { sendSingleNotification } from "../notifications/notification.services";
 
 const prisma = new PrismaClient();
 
@@ -197,6 +198,20 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
     return updatedOrder;
   });
+
+  // Send notification to customer
+  try {
+    if (result) {
+      await sendSingleNotification(
+        userId,
+        `Your order has been placed successfully! Total amount: ₹${result.totalAmount}. We'll notify you once it's confirmed.`,
+        undefined,
+        "Order Placed"
+      );
+    }
+  } catch (error) {
+    console.error("Failed to send order placed notification:", error);
+  }
 
   return result;
 };
@@ -1313,6 +1328,31 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
     // Don't fail the assignment if incentive tracking fails
   }
 
+  // =================== NOTIFICATIONS ===================
+  // Notify driver about new assignments
+  try {
+    await sendSingleNotification(
+      driverId,
+      `You have been assigned ${ordersIds.length} new order${ordersIds.length > 1 ? 's' : ''} for delivery. Check your delivery list!`,
+      undefined,
+      "New Orders Assigned"
+    );
+
+    // Notify customers that their order is on the way
+    for (const order of existingOrders) {
+      if (order.userId) {
+        await sendSingleNotification(
+          order.userId,
+          `Good news! Your order is now on the way. Our delivery driver will reach you soon.`,
+          undefined,
+          "Order Out for Delivery"
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Failed to send assignment notifications:", error);
+  }
+
   return;
 };
 
@@ -2212,6 +2252,21 @@ const markOrderAsDelivered = async (
     console.error("Error updating incentive progress:", error);
     // Don't fail the delivery if incentive tracking fails
   }
+
+  // =================== NOTIFICATIONS ===================
+  // Notify customer about successful delivery
+  try {
+    if (order?.userId) {
+      await sendSingleNotification(
+        order.userId,
+        `Your order has been delivered successfully! Total paid: ₹${totalPaid}. Thank you for your business!`,
+        undefined,
+        "Order Delivered"
+      );
+    }
+  } catch (error) {
+    console.error("Failed to send delivery notification:", error);
+  }
 };
 
 const cancelOrderByCustomer = async (
@@ -2302,6 +2357,21 @@ const cancelOrderByCustomer = async (
         });
       }
     });
+
+    // Send notification to customer about order cancellation
+    try {
+      if (order.userId) {
+        await sendSingleNotification(
+          order.userId,
+          `Your order has been cancelled. ${order.walletAmountUsed! > 0 ? `₹${order.walletAmountUsed} has been refunded to your wallet.` : ''}`,
+          undefined,
+          "Order Cancelled"
+        );
+      }
+    } catch (error) {
+      console.error("Failed to send order cancellation notification:", error);
+    }
+
     return { message: "Full order cancelled successfully" };
   }
 

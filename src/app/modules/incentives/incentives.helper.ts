@@ -1,6 +1,7 @@
 import { IncentiveType, UserRole } from "@prisma/client";
 import prisma from "../../../shared/prisma";
 import { format, addDays, addMonths, startOfDay, endOfDay } from "date-fns";
+import { sendSingleNotification } from "../notifications/notification.services";
 
 /**
  * ========================================
@@ -189,6 +190,18 @@ export const resetDriverProgressDaily = async () => {
         progress.incentive?.rewardAmount || 0
       );
 
+      // Send notification to driver about reward
+      try {
+        await sendSingleNotification(
+          progress.driverId,
+          `Congratulations! You achieved zero returns for all ${progress.totalAssignedOrders} orders today. Your incentive reward of ₹${progress.incentive?.rewardAmount} has been recorded! 🎉`,
+          undefined,
+          "Incentive Reward Achieved"
+        );
+      } catch (error) {
+        console.error("Failed to send driver incentive notification:", error);
+      }
+
       // Mark as claimed
       await prisma.driverIncentiveProgress.update({
         where: { id: progress.id },
@@ -336,6 +349,18 @@ export const updateAgentProgress = async (
       });
       
       console.log(`[Incentives] Agent ${agentId} achieved target! Reward created for period ${progress.periodType}`);
+
+      // Send notification to agent about reward achievement
+      try {
+        await sendSingleNotification(
+          agentId,
+          `Congratulations! You achieved your ${progress.periodType.toLowerCase()} target of ₹${updatedProgress.targetAmount}. Your incentive reward of ₹${incentive.rewardAmount} has been recorded! 🎉`,
+          undefined,
+          "Target Achieved!"
+        );
+      } catch (error) {
+        console.error("Failed to send agent incentive notification:", error);
+      }
     }
     // If already claimed, do nothing - agent gets ONLY ONE reward per period
   }

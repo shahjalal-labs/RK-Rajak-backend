@@ -988,8 +988,7 @@ export const getDailyProductSummary = async (
     where: {
       orderDateString: targetDate ? targetDate : undefined,
       branchId: branchId ? branchId : undefined,
-      productCategoryId: productCategoryId ? productCategoryId : undefined,
-      
+      productCategoryId: productCategoryId ? productCategoryId : undefined
     },
     include: {
       product: {

@@ -2,6 +2,7 @@ import { query, Request, Response } from "express";
 import catchAsync from "../../../shared/catchAsync";
 import sendResponse from "../../../shared/sendResponse";
 import { userService } from "./user.services";
+import { customerForBranchQuery } from "./user.const";
 
 // resend OTP
 const resendOTP = catchAsync(async (req, res) => {
@@ -53,12 +54,19 @@ const getUsers = catchAsync(async (req, res) => {
     data: users,
   });
 });
+
+
 const getCustomersForBranch = catchAsync(async (req, res) => {
-  const branchId = req.params.branchId;
-  if (!branchId) {
-    throw new Error("Branch id is required");
-  }
-  const users = await userService.getCustomersForBranch(req.query, branchId);
+  const { branchId, searchTerm, page, limit, statusType } = req.query;
+  
+  const users = await userService.getCustomersForBranch({
+    branchId: branchId as string,
+    searchTerm: searchTerm as string | undefined,
+    page: page ? Number(page) : undefined,
+    limit: limit ? Number(limit) : undefined,
+    statusType: statusType as any,
+  });
+  
   sendResponse(res, {
     success: true,
     statusCode: 200,

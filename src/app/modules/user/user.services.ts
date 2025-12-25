@@ -14,6 +14,7 @@ import {
   initializeProgressForNewDriver,
   initializeProgressForNewAgent,
 } from "../incentives/incentives.helper";
+import { sendSingleNotification } from "../notifications/notification.services";
 
 const resendVerifyOTP = async (phone: string) => {
   console.log(phone);
@@ -312,32 +313,415 @@ const getUsers = async (query: any) => {
   };
 };
 
-const getCustomersForBranch = async (query: any, branchId: string) => {
-  const keys = await getModelKeys("user");
-  const customerQuery = new QueryBuilder(prisma.user, query, keys);
-  const result = await customerQuery
-    .setCustomWhere({
-      role: UserRole.Customer,
-      branchId: branchId,
+// const getCustomersForBranch = async (query: {
+//   branchId: string;
+//   searchTerm: string;
+//   page: number;
+//   limit: number;
+//   statusType:
+//     | "All"
+//     | "Active"
+//     | "Inactive"
+//     | "New"
+//     | "reloggedin"
+//     | "Reactivated"
+//     | "OneOrderCustomer"
+//     | "OnlineCustomer"
+//     | "OfflineCustomer"
+//     | "NoOrderCustomer";
+// }) => {
+//   const page = Number(query.page) || 1;
+//   const limit = Number(query.limit) || 10;
+//   const skip = (page - 1) * limit;
+
+//   const tenDaysAgo = new Date();
+//   tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+
+//   let whereCondition: any = {
+//     role: "Customer",
+//     branchId: query.branchId ?? undefined,
+//   };
+
+// whereCondition.OR = [
+//   { fullName: { contains: query.searchTerm, mode: "insensitive" } },
+//   { phone: { contains: query.searchTerm } },
+// ];
+
+
+//   switch (query.statusType) {
+//     case "All":
+//       break;
+
+//     case "Active":
+//       whereCondition.userAccesses = {
+//         some: {
+//           isLoggedIn: true,
+//         },
+//       };
+//       break;
+
+//     case "Inactive":
+//       whereCondition.userAccesses = {
+//         none: {
+//           isLoggedIn: true,
+//         },
+//       };
+//       break;
+
+//     case "New":
+//       whereCondition = {
+//         ...whereCondition,
+//         // and signupped last 10 days
+//         createdAt: {
+//           gte: tenDaysAgo,
+//         },
+//         dailyOrders: {
+//           none: {},
+//         },
+//       };
+//       break;
+
+//     case "OfflineCustomer":
+//       whereCondition.agentId = { not: null };
+//       break;
+
+//     case "OnlineCustomer":
+//       whereCondition.agentId = null;
+//       break;
+
+//     case "OneOrderCustomer":
+//       whereCondition.dailyOrders = {
+//         _count: {
+//           equals: 1,
+//         },
+//       };
+//       break;
+
+//       case "NoOrderCustomer":
+//         whereCondition.dailyOrders = {
+//           none: {},
+//         };
+//         break;
+
+//     case "reloggedin":
+//       whereCondition.userAccesses = {
+//         some: {
+//           loginAt: { gte: tenDaysAgo },
+//           logoutAt: { lte: tenDaysAgo },
+//         },
+//       };
+//       break;
+
+//     case "Reactivated":
+//       whereCondition.dailyOrders = {
+//         some: {
+//           createdAt: { gte: tenDaysAgo },
+//         },
+//       };
+//       whereCondition.userAccesses = {
+//         some: {
+//           logoutAt: { lte: tenDaysAgo },
+//         },
+//       };
+//       break;
+//   }
+
+//   const [customerData, total] = await Promise.all([
+//     prisma.user.findMany({
+//       where: whereCondition,
+//       take: limit,
+//       skip: skip,
+//       orderBy: {
+//         createdAt: "desc",
+//       },
+//       include: {
+//         userAccesses: true,
+//         dailyOrders: true,
+//       },
+//     }),
+//     prisma.user.count({
+//       where: whereCondition,
+//     }),
+//   ]);
+
+//   return {
+//     meta: {
+//       page,
+//       limit,
+//       total,
+//     },
+//     result: customerData,
+//   };
+// };
+
+
+const getCustomersForBranch = async (query: {
+  branchId: string;
+  searchTerm?: string;
+  page?: number;
+  limit?: number;
+  statusType:
+    | "All"
+    | "Active"
+    | "Inactive"
+    | "New"
+    | "reloggedin"
+    | "Reactivated"
+    | "OneOrderCustomer"
+    | "OnlineCustomer"
+    | "OfflineCustomer"
+    | "NoOrderCustomer";
+}) => {
+
+//** */ targetted return value for individual customer 
+// CustomerName, CustomerImage, AssignedAgent, WalletAmount, PendingAmount, TotalOrders, lastOrderDuration
+
+
+  const page = Number(query.page) || 1;
+  const limit = Number(query.limit) || 10;
+  const skip = (page - 1) * limit;
+
+  const tenDaysAgo = new Date();
+  tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+
+  /** -------------------------
+   * Base where condition
+   * ------------------------- */
+  const whereCondition: any = {
+    role: "Customer",
+    branchId: query.branchId,
+  };
+
+  /** -------------------------
+   * Search (OR condition)
+   * ------------------------- */
+  if (query.searchTerm) {
+    whereCondition.OR = [
+      { fullName: { contains: query.searchTerm, mode: "insensitive" } },
+      { phone: { contains: query.searchTerm } },
+    ];
+  }
+
+  /** -------------------------
+   * OneOrderCustomer handling
+   * (groupBy workaround)
+   * ------------------------- */
+  let oneOrderUserIds: string[] = [];
+
+  if (query.statusType === "OneOrderCustomer") {
+    const groupedOrders = await prisma.dailyOrder.groupBy({
+      by: ["userId"],
+      where: {
+        user: {
+          role: "Customer",
+          branchId: query.branchId,
+        },
+      },
+      having: {
+        userId: {
+          _count: {
+            equals: 1,
+          },
+        },
+      },
+    });
+
+    oneOrderUserIds = groupedOrders.map(g => g.userId).filter((id): id is string => id !== null);
+
+    // No users → return empty response early
+    if (oneOrderUserIds.length === 0) {
+      return {
+        meta: {
+          page,
+          limit,
+          total: 0,
+        },
+        result: [],
+      };
+    }
+
+    whereCondition.id = {
+      in: oneOrderUserIds,
+    };
+  }
+
+  /** -------------------------
+   * Status based filters
+   * ------------------------- */
+  switch (query.statusType) {
+    case "Active":
+      whereCondition.userAccesses = {
+        some: { isLoggedIn: true },
+      };
+      break;
+
+    case "Inactive":
+      whereCondition.userAccesses = {
+        none: { isLoggedIn: true },
+      };
+      break;
+
+    case "New":
+      whereCondition.createdAt = { gte: tenDaysAgo };
+      whereCondition.dailyOrders = { none: {} };
+      break;
+
+    case "NoOrderCustomer":
+      whereCondition.dailyOrders = { none: {} };
+      break;
+
+    case "OnlineCustomer":
+      whereCondition.agentId = null;
+      break;
+
+    case "OfflineCustomer":
+      whereCondition.agentId = { not: null };
+      break;
+
+    case "reloggedin":
+      whereCondition.userAccesses = {
+        some: {
+          loginAt: { gte: tenDaysAgo },
+          logoutAt: { not: null },
+        },
+      };
+      break;
+
+    case "Reactivated":
+      whereCondition.AND = [
+        {
+          dailyOrders: {
+            some: { createdAt: { gte: tenDaysAgo } },
+          },
+        },
+        {
+          userAccesses: {
+            some: { logoutAt: { lte: tenDaysAgo } },
+          },
+        },
+      ];
+      break;
+
+    case "All":
+    case "OneOrderCustomer":
+    default:
+      // No additional filtering needed
+      break;
+  }
+
+  /** -------------------------
+   * Query execution with proper includes
+   * ------------------------- */
+  const [customerData, total] = await Promise.all([
+    prisma.user.findMany({
+      where: whereCondition,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      include: {
+        userAccesses: true,
+        dailyOrders: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            createdAt: true,
+          },
+        },
+        Wallet: {
+          select: {
+            balance: true,
+          },
+        },
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+    prisma.user.count({
+      where: whereCondition,
+    }),
+  ]);
+
+  /** -------------------------
+   * Format data with agent information
+   * ------------------------- */
+  const formattedCustomers = await Promise.all(
+    customerData.map(async (customer) => {
+      // Get assigned agent if agentId exists
+      let assignedAgent = null;
+      if (customer.agentId) {
+        assignedAgent = await prisma.user.findUnique({
+          where: { id: customer.agentId },
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            profileImage: true,
+          },
+        });
+      }
+
+      // Get total orders count
+      const totalOrders = await prisma.dailyOrder.count({
+        where: {
+          userId: customer.id,
+        },
+      });
+
+      // Calculate last order duration
+      let lastOrderDuration = null;
+      if (customer.dailyOrders && customer.dailyOrders.length > 0) {
+        const lastOrderDate = customer.dailyOrders[0].createdAt;
+        const now = new Date();
+        const diffInMs = now.getTime() - new Date(lastOrderDate).getTime();
+        const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+        const diffInHours = Math.floor((diffInMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        
+        if (diffInDays > 0) {
+          lastOrderDuration = `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+        } else if (diffInHours > 0) {
+          lastOrderDuration = `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+        } else {
+          lastOrderDuration = "Today";
+        }
+      }
+
+      return {
+        id: customer.id,
+        customerName: customer.fullName || "N/A",
+        customerImage: customer.profileImage || null,
+        phone: customer.phone,
+        assignedAgent: assignedAgent
+          ? {
+              id: assignedAgent.id,
+              name: assignedAgent.fullName || "N/A",
+              phone: assignedAgent.phone,
+              image: assignedAgent.profileImage,
+            }
+          : null,
+        walletAmount: customer.Wallet?.balance || 0,
+        pendingAmount: customer.totalDuesAmount || 0,
+        totalOrders: totalOrders,
+        lastOrderDuration: lastOrderDuration || "No orders yet",
+        branch: customer.branch,
+      };
     })
-    .search(["fullName", "email"])
-    .filter()
-    .sort()
-    .exclude()
-    .include({
-      Wallet: true,
-      order: true,
-      Spin: true,
-      //pending ammounts
-    })
-    .paginate()
-    .execute();
-  const pagination = await customerQuery.countTotal();
+  );
+
   return {
-    meta: pagination,
-    result,
+    meta: {
+      page,
+      limit,
+      total,
+      statusType: query.statusType || "All",
+    },
+    result: formattedCustomers,
   };
 };
+
 const getAllAgentsFromDB = async (query: any) => {
   const keys = await getModelKeys("user");
   const agentQuery = new QueryBuilder(prisma.user, query, keys);
@@ -428,13 +812,35 @@ const updateUser = async (
     profileImage = await uploadInSpace(file, "users/profileImage");
   }
 
-  await prisma.user.update({
+  const updatedUser = await prisma.user.update({
     where: { id: userId },
     data: {
       ...payload,
       profileImage: file ? profileImage : user.profileImage,
     },
   });
+
+  // Notify if agent was assigned
+  if (payload.agentId && payload.agentId !== user.agentId) {
+    try {
+      await sendSingleNotification(
+        userId,
+        `A sales agent has been assigned to your account. They will help you with your orders.`,
+        payload.agentId,
+        "Agent Assigned"
+      );
+
+      // Notify agent about new customer
+      await sendSingleNotification(
+        payload.agentId,
+        `A new customer has been assigned to you: ${updatedUser.fullName || updatedUser.phone}`,
+        undefined,
+        "New Customer Assigned"
+      );
+    } catch (error) {
+      console.error("Failed to send agent assignment notification:", error);
+    }
+  }
 
   return;
 };

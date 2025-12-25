@@ -34,7 +34,7 @@ router.post(
 
 router.get("/", auth(UserRole.Owner), UserControllers.getUsers);
 router.get(
-  "/customers/:branchId",
+  "/customers-for-branch",
   auth(UserRole.Owner, UserRole.SuperAdmin),
   UserControllers.getCustomersForBranch
 );

@@ -18,6 +18,7 @@ import { cartValueRoutes } from "../modules/cartvalue/cartValue.routes";
 import { handalingChargeRoutes } from "../modules/handalingcharge/handalingCharge.routes";
 import { incentivesRoutes } from "../modules/incentives/incentives.routes";
 import { ownerRoutes } from "../modules/owner/owner.routes";
+import { notificationsRoute } from "../modules/notifications/notification.route";
 
 const router = express.Router();
 
@@ -97,6 +98,10 @@ const moduleRoutes = [
   {
     path: "/owner",
     route: ownerRoutes,
+  },
+  {
+    path: "/notifications",
+    route: notificationsRoute,
   },
 ];
 

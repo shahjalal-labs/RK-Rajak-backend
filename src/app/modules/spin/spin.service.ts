@@ -1,6 +1,7 @@
 import { PrismaClient, Spin } from '@prisma/client';
 import ApiError from '../../../errors/ApiErrors';
 import httpStatus from 'http-status';
+import { sendSingleNotification } from '../notifications/notification.services';
 const prisma = new PrismaClient();
 
 const setupSpinValues = async (data: {branchId : string , spinValue: number}) => {
@@ -153,6 +154,18 @@ const rechargeBySpins = async (userId: string , payload : {wonAmount : number}) 
       type: "Credit",
     },
   });
+
+  // Send notification about spin reward
+  try {
+    await sendSingleNotification(
+      userId,
+      `Congratulations! You won ₹${wonAmount} from the spin! The amount has been added to your wallet.`,
+      undefined,
+      "Spin Reward Won 🎉"
+    );
+  } catch (error) {
+    console.error("Failed to send spin reward notification:", error);
+  }
 
   return existingWallet;
 };
