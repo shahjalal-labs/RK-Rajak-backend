@@ -343,7 +343,7 @@
       // Configuration - Update this URL to match your backend server
       // Common ports: 3000, 5000, 8000
       const BACKEND_PORT = 8001; // Change this if your backend runs on a different port
-      const API_BASE_URL = `http://localhost:${BACKEND_PORT}/api/v1`;
+      const API_BASE_URL = `https://api.absfresh.co.in/api/v1`;
       const RECHARGE_ENDPOINT = `${API_BASE_URL}/payment/wallet/recharge`;
 
       console.log("🔧 API Configuration:", {
@@ -400,7 +400,7 @@
       // Test backend connection
       async function testBackendConnection() {
         try {
-          const response = await fetch(`http://localhost:${BACKEND_PORT}/`, {
+          const response = await fetch(`${API_BASE_URL}/`, {
             method: "GET",
           });
 
@@ -547,7 +547,7 @@
           if (response.ok && data.success) {
             // Get payment session ID from backend
             const paymentSessionId = data.result.payment_session_id;
-
+            console.log({ paymentSessionId, data });
             console.log("✅ Payment Session ID received:", payment_session_id);
 
             hideLoading();
