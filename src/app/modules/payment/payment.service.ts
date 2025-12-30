@@ -103,8 +103,8 @@ const generatePaymentId = () => {
 
 //     const payload = {
 //       payment_session_id: response.data.payment_session_id,
-//       payment_method: { 
-//         upi: { channel: "link" }, 
+//       payment_method: {
+//         upi: { channel: "link" },
 //        },
 //     };
 
@@ -126,7 +126,6 @@ const generatePaymentId = () => {
 //     );
 //   }
 // };
-
 
 const createWalletRecharge = async (
   payload: { amount: number },
@@ -208,7 +207,7 @@ const createWalletRecharge = async (
       },
     });
 
-    return {paymentSessionId};
+    return cashfreeOrder;
   } catch (error: any) {
     console.error("❌ Cashfree Error:", error.response?.data || error.message);
     console.log(error);
@@ -218,7 +217,6 @@ const createWalletRecharge = async (
     );
   }
 };
-
 
 /**
  * clear dues payment
@@ -280,7 +278,10 @@ const clearDuesPayment = async (
     );
   }
 
-  const totalDues = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const totalDues = orders.reduce(
+    (sum, order) => sum + order.RemainingAmount,
+    0
+  );
 
   if (amount !== totalDues) {
     throw new ApiError(
@@ -302,7 +303,7 @@ const clearDuesPayment = async (
     },
     order_note: "DUES_PAYMENT",
     order_meta: {
-      orderIds : orderIds, // forwarded to webhook
+      orderIds: orderIds, // forwarded to webhook
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
     },
@@ -323,17 +324,7 @@ const clearDuesPayment = async (
     );
 
     const cashfreeOrder = response.data;
-    const paymentSessionId = cashfreeOrder?.payment_session_id;
-
-    if (!paymentSessionId) {
-      console.error(
-        "❌ Cashfree API Response:",
-        JSON.stringify(cashfreeOrder, null, 2)
-      );
-      throw new Error("Payment session ID not returned by Cashfree API");
-    }
-
-    return {paymentSessionId};
+    return cashfreeOrder;
   } catch (error: any) {
     console.error("❌ Cashfree Error:", error.response?.data || error.message);
     console.log(error);
@@ -397,27 +388,27 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
     }
 
     // Update wallet balance
-    // await prisma.$transaction([
-    //   prisma.walletRecharge.update({
-    //     where: { id: walletRecharge.id },
-    //     data: { paymentStatus: PaymentStatus.Success },
-    //   }),
-    //   prisma.wallet.update({
-    //     where: { id: walletRecharge.walletId! },
-    //     data: { balance: { increment: payment_amount } },
-    //   }),
-    //   prisma.walletTransaction.create({
-    //     data: {
-    //       walletId: walletRecharge.walletId!,
-    //       amount: payment_amount,
-    //       type: "Credit",
-    //       description: "Wallet recharge via online payment",
-    //       status: "Success",
-    //     },
-    //   }),
-    // ]);
+    await prisma.$transaction([
+      prisma.walletRecharge.update({
+        where: { id: walletRecharge.id },
+        data: { paymentStatus: PaymentStatus.Completed },
+      }),
+      prisma.wallet.update({
+        where: { id: walletRecharge.walletId! },
+        data: { balance: { increment: payment_amount } },
+      }),
+      prisma.walletTransaction.create({
+        data: {
+          walletId: walletRecharge.walletId!,
+          amount: payment_amount,
+          type: "Credit",
+          description: "Wallet recharge via online payment",
+          status: "Success",
+        },
+      }),
+    ]);
 
-    // return { message: "Wallet recharged successfully", amount: payment_amount };
+    return { message: "Wallet recharged successfully", amount: payment_amount };
   }
 
   return { message: "Webhook received" };
@@ -438,44 +429,30 @@ const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
 
   const { type, data } = payload;
 
-  // if (type === "PAYMENT_SUCCESS_WEBHOOK") {
-  //   const { order_id } = data.order;
-  //   const { payment_amount } = data.payment;
+  if (type === "PAYMENT_SUCCESS_WEBHOOK") {
+    const { order_id } = data.order;
+    const { order_meta } = data.order;
+    const { payment_amount } = data.payment;
 
-  //   const duesPayment = await prisma.duesPayment.findFirst({
-  //     where: { cashfreeOrderId: order_id },
-  //     include: { user: true },
-  //   });
+    const orderIds: string[] = order_meta.orderIds;
+    // Clear dues
+    await prisma.$transaction([
+      prisma.dailyOrder.updateMany({
+        where: {
+          id: { in: orderIds },
+        },
+        data: {
+          isDues: false,
+          duesCleared: true,
+          RemainingAmount: 0,
+          paymentMethod : "Online",
+          duesClearedAt: new Date()
+        },
+      }),
+    ]);
 
-  //   if (!duesPayment) {
-  //     throw new ApiError(httpStatus.NOT_FOUND, "Dues payment not found");
-  //   }
-
-  //   // Clear dues
-  //   await prisma.$transaction([
-  //     prisma.duesPayment.update({
-  //       where: { id: duesPayment.id },
-  //       data: { paymentStatus: PaymentStatus.Success },
-  //     }),
-  //     prisma.order.updateMany({
-  //       where: { id: { in: duesPayment.orderIds } },
-  //       data: {
-  //         duesCleared: true,
-  //         duesClearedAt: new Date(),
-  //         isPaid: true,
-  //       },
-  //     }),
-  //     prisma.user.update({
-  //       where: { id: duesPayment.userId! },
-  //       data: {
-  //         activeDuesCount: { decrement: duesPayment.orderIds.length },
-  //         totalDuesAmount: { decrement: payment_amount },
-  //       },
-  //     }),
-  //   ]);
-
-  //   return { message: "Dues cleared successfully", amount: payment_amount };
-  // }
+    return { message: "Dues cleared successfully", amount: payment_amount };
+  }
 
   return { message: "Webhook received" };
 };
