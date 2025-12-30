@@ -546,9 +546,9 @@
           console.log({ data });
           if (response.ok && data.success) {
             // Get payment session ID from backend
-            const paymentSessionId = data.result.paymentSessionId;
+            const paymentSessionId = data.result.payment_session_id;
 
-            console.log("✅ Payment Session ID received:", paymentSessionId);
+            console.log("✅ Payment Session ID received:", payment_session_id);
 
             hideLoading();
             showAlert("🔄 Opening Cashfree checkout...", "info");
