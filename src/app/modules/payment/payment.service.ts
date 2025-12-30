@@ -169,6 +169,8 @@ const createWalletRecharge = async (
       walletId: wallet.id, // forwarded to webhook
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
+      notify_url:
+        "https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge",
     },
   };
 
@@ -197,6 +199,7 @@ const createWalletRecharge = async (
       throw new Error("Payment session ID not returned by Cashfree API");
     }
 
+    console.log("Recharge Pending................");
     await prisma.walletRecharge.create({
       data: {
         walletId: wallet.id,
@@ -306,6 +309,7 @@ const clearDuesPayment = async (
       orderIds: orderIds, // forwarded to webhook
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
+      notify_url: "https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment",
     },
   };
 
@@ -340,7 +344,8 @@ const clearDuesPayment = async (
  */
 const verifyWebhookSignature = (
   rawBody: string | Buffer,
-  headers: any
+  headers: any,
+  secret: string
 ): boolean => {
   const signature = headers["x-webhook-signature"];
   const timestamp = headers["x-webhook-timestamp"];
@@ -352,7 +357,7 @@ const verifyWebhookSignature = (
     : rawBody;
   const signedPayload = `${timestamp}${bodyString}`;
   const expectedSignature = crypto
-    .createHmac("sha256", config.cashfree.webhook_secret!)
+    .createHmac("sha256", secret)
     .update(signedPayload)
     .digest("base64");
 
@@ -363,10 +368,12 @@ const verifyWebhookSignature = (
  * Handle wallet recharge webhook
  */
 const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
+  console.log("Hit the recharge webhook......!!!!");
   const payload = Buffer.isBuffer(rawBody)
     ? JSON.parse(rawBody.toString("utf8"))
     : rawBody;
-  const isValid = verifyWebhookSignature(rawBody, headers);
+  const walletSecret = config.cashfree.webhook_wallet_secret;
+  const isValid = verifyWebhookSignature(rawBody, headers, walletSecret!);
 
   if (!isValid) {
     throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
@@ -421,7 +428,8 @@ const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
   const payload = Buffer.isBuffer(rawBody)
     ? JSON.parse(rawBody.toString("utf8"))
     : rawBody;
-  const isValid = verifyWebhookSignature(rawBody, headers);
+  const duesSecret = config.cashfree.webhook_dues_secret;
+  const isValid = verifyWebhookSignature(rawBody, headers, duesSecret!);
 
   if (!isValid) {
     throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
@@ -445,8 +453,8 @@ const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
           isDues: false,
           duesCleared: true,
           RemainingAmount: 0,
-          paymentMethod : "Online",
-          duesClearedAt: new Date()
+          paymentMethod: "Online",
+          duesClearedAt: new Date(),
         },
       }),
     ]);

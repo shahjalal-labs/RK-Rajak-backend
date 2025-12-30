@@ -24,16 +24,13 @@ export default {
     email: process.env.EMAIL,
     app_pass: process.env.APP_PASS,
   },
-  stripe: {
-    stripe_secret: process.env.STRIPE_SK,
-    webhook_secret: process.env.STRIPE_WEBHOOK_SECRET,
-  },
   cashfree: {
     app_id: process.env.CASHFREE_APP_ID,
     secret_key: process.env.CASHFREE_SECRET_KEY,
     api_version: process.env.CASHFREE_API_VERSION || "2023-08-01",
     environment: process.env.CASHFREE_ENV || "sandbox", // "sandbox" or "production"
-    webhook_secret: process.env.CASHFREE_WEBHOOK_SECRET,
+    webhook_dues_secret: process.env.CASHFREE_DUES_WEBHOOK_SECRET,
+    webhook_wallet_secret: process.env.CASHFREE_WALLET_WEBHOOK_SECRET,
     cashfree_base_api : process.env.CASHFREE_BASE_API,
   },
   do_space: {

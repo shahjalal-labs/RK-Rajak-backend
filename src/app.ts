@@ -27,9 +27,15 @@ app.use(cors());
 
 // Cashfree webhook needs raw body for signature verification
 app.use(
-  "/api/v1/payment/webhook/cashfree",
+  "/api/v1/payment/webhook/wallet-recharge",
   express.raw({ type: "application/json" })
 );
+console.log(`✅ Recharge Webhook URL: https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge`);
+app.use(
+  "/api/v1/payment/webhook/dues-payment",
+  express.raw({ type: "application/json" })
+);
+console.log(`✅ Dues Payment Webhook URL: https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment`);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
