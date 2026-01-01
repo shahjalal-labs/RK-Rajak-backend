@@ -153,7 +153,7 @@ const createWalletRecharge = async (
     });
   }
 
-  console.log({amount})
+  console.log({ amount });
 
   const orderId = `order_${Date.now()}`;
 
@@ -172,7 +172,7 @@ const createWalletRecharge = async (
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
       // notify_url:"https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge",
-      notify_url:"localhost:8001/api/v1/payment/webhook/wallet-recharge",
+      notify_url: "localhost:8001/api/v1/payment/webhook/wallet-recharge",
     },
   };
 
@@ -345,29 +345,29 @@ const clearDuesPayment = async (
 /**
  * Verify webhook signature
  */
-const verifyWebhookSignature = (
-  rawBody: string | Buffer,
-  headers: any,
-  secret: string
-): boolean => {
-  console.log("hit the verify webhook signature func");
-  const signature = headers["x-webhook-signature"];
-  const timestamp = headers["x-webhook-timestamp"];
+// const verifyWebhookSignature = (
+//   rawBody: string | Buffer,
+//   headers: any,
+//   secret: string
+// ): boolean => {
+//   console.log("hit the verify webhook signature func");
+//   const signature = headers["x-webhook-signature"];
+//   const timestamp = headers["x-webhook-timestamp"];
 
-  if (!signature || !timestamp) return false;
+//   if (!signature || !timestamp) return false;
 
-  const bodyString = Buffer.isBuffer(rawBody)
-    ? rawBody.toString("utf8")
-    : rawBody;
-  const signedPayload = `${timestamp}.${bodyString}`;
-  const expectedSignature = crypto
-    .createHmac("sha256", secret)
-    .update(signedPayload)
-    .digest("base64");
-  console.log({ signature, expectedSignature });
+//   const bodyString = Buffer.isBuffer(rawBody)
+//     ? rawBody.toString("utf8")
+//     : rawBody;
+//   const signedPayload = `${timestamp}.${bodyString}`;
+//   const expectedSignature = crypto
+//     .createHmac("sha256", secret)
+//     .update(signedPayload)
+//     .digest("base64");
+//   console.log({ signature, expectedSignature });
 
-  return signature === expectedSignature;
-};
+//   return signature === expectedSignature;
+// };
 
 /**
  * Handle wallet recharge webhook
@@ -378,7 +378,7 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
     ? JSON.parse(rawBody.toString("utf8"))
     : rawBody;
   const walletSecret = config.cashfree.webhook_wallet_secret;
-  console.log({walletSecret})
+  console.log({ walletSecret });
   // const isValid = verifyWebhookSignature(rawBody, headers, walletSecret!);
 
   // console.log({isValid});
@@ -398,7 +398,7 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
       include: { wallet: true },
     });
 
-    console.log({payment_amount})
+    console.log({ payment_amount });
 
     if (!walletRecharge) {
       throw new ApiError(httpStatus.NOT_FOUND, "Wallet recharge not found");
@@ -438,13 +438,15 @@ const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
   const payload = Buffer.isBuffer(rawBody)
     ? JSON.parse(rawBody.toString("utf8"))
     : rawBody;
+
+  console.log(`Handle Dues Payment Webhook called...!!!`);
   const duesSecret = config.cashfree.webhook_dues_secret;
-  const isValid = verifyWebhookSignature(rawBody, headers, duesSecret!);
+  // const isValid = verifyWebhookSignature(rawBody, headers, duesSecret!);
 
-  if (!isValid) {
-    throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
-  }
-
+  // if (!isValid) {
+  //   throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
+  // }
+  
   const { type, data } = payload;
 
   if (type === "PAYMENT_SUCCESS_WEBHOOK") {
