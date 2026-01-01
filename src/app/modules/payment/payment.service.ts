@@ -348,6 +348,7 @@ const verifyWebhookSignature = (
   headers: any,
   secret: string
 ): boolean => {
+  console.log("hit the verify webhook signature func");
   const signature = headers["x-webhook-signature"];
   const timestamp = headers["x-webhook-timestamp"];
 
@@ -361,6 +362,7 @@ const verifyWebhookSignature = (
     .createHmac("sha256", secret)
     .update(signedPayload)
     .digest("base64");
+  console.log({ signature, expectedSignature });
 
   return signature === expectedSignature;
 };
@@ -374,6 +376,7 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
     ? JSON.parse(rawBody.toString("utf8"))
     : rawBody;
   const walletSecret = config.cashfree.webhook_wallet_secret;
+  console.log({walletSecret})
   const isValid = verifyWebhookSignature(rawBody, headers, walletSecret!);
 
   if (!isValid) {
