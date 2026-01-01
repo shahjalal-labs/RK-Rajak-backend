@@ -153,6 +153,8 @@ const createWalletRecharge = async (
     });
   }
 
+  console.log({amount})
+
   const orderId = `order_${Date.now()}`;
 
   const payloadData = {
@@ -169,8 +171,8 @@ const createWalletRecharge = async (
       walletId: wallet.id, // forwarded to webhook
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
-      notify_url:
-        "https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge",
+      // notify_url:"https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge",
+      notify_url:"localhost:8001/api/v1/payment/webhook/wallet-recharge",
     },
   };
 
@@ -395,6 +397,8 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
       where: { cashfreeOrderId: order_id },
       include: { wallet: true },
     });
+
+    console.log({payment_amount})
 
     if (!walletRecharge) {
       throw new ApiError(httpStatus.NOT_FOUND, "Wallet recharge not found");
