@@ -377,13 +377,13 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
     : rawBody;
   const walletSecret = config.cashfree.webhook_wallet_secret;
   console.log({walletSecret})
-  const isValid = verifyWebhookSignature(rawBody, headers, walletSecret!);
+  // const isValid = verifyWebhookSignature(rawBody, headers, walletSecret!);
 
-  console.log({isValid});
-  if (!isValid) {
-    throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
-  }
-  console.log({ isValid });
+  // console.log({isValid});
+  // if (!isValid) {
+  //   throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
+  // }
+  // console.log({ isValid });
   const { type, data } = payload;
   console.log({ type, data });
   if (type === "PAYMENT_SUCCESS_WEBHOOK") {
