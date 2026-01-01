@@ -5,6 +5,11 @@ import generateOTP from "../../../helpers/generateOtp";
 import { getDistance } from "./auth.helpers";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
 
+let APIKEY = process.env.TWO_FACTOR_API_KEY || "";
+if (APIKEY === "") {
+  throw new Error("Missing 2Factor api key in environment");
+}
+const TwoFactor = new (require("2factor"))(APIKEY);
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
     where: {
@@ -35,7 +40,8 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
       },
     });
 
-    // Send OTP via Twilio
+    //** */ RAJAK_NUMBER ::: 9535056709
+    //** */ Send OTP via Twilio
     // try {
     //   await sendOTPViaTwilio(payload.phone, otp);
     //   console.log(`📱 OTP sent to new user: ${payload.phone}`);
@@ -43,6 +49,19 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
     //   console.error("Failed to send OTP via Twilio:", error);
     //   // Don't throw error - allow fallback to manual OTP entry
     // }
+
+    //** */ send otp via 2factor api
+    TwoFactor.sendOTP(`${payload.phone}`, {
+      otp: otp, // 4 digit OTP
+      template: "ABS Fresh", // Dashboard template name
+    }).then(
+      (response: any) => {
+        console.log("OTP Sent:", response);
+      },
+      (error: any) => {
+        console.error("OTP Error:", error);
+      }
+    );
 
     return { phone: payload.phone, otp, status: "new" };
   }
@@ -74,14 +93,28 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
     },
   });
 
-  // Send OTP via Twilio
+  //** */ RAJAK_NUMBER ::: 9535056709
+  //** */ Send OTP via Twilio
   // try {
   //   await sendOTPViaTwilio(payload.phone, otp);
-  //   console.log(`📱 OTP sent to existing user: ${payload.phone}`);
+  //   console.log(`📱 OTP sent to new user: ${payload.phone}`);
   // } catch (error) {
   //   console.error("Failed to send OTP via Twilio:", error);
   //   // Don't throw error - allow fallback to manual OTP entry
   // }
+
+  //** */ send otp via 2factor api
+  TwoFactor.sendOTP(`${payload.phone}`, {
+    otp: otp, // 4 digit OTP
+    template: "ABS Fresh", // Dashboard template name
+  }).then(
+    (response: any) => {
+      console.log("OTP Sent:", response);
+    },
+    (error: any) => {
+      console.error("Error:", error);
+    }
+  );
 
   return { phone: payload.phone, otp, status: "existing" };
 };
@@ -133,6 +166,18 @@ const authLoginIntoDB = async (payload: {
   //   console.error("Failed to send OTP via Twilio:", error);
   //   // Don't throw error - allow fallback to manual OTP entry
   // }
+  //** */ send otp via 2factor api
+  TwoFactor.sendOTP(`${payload.phone}`, {
+    otp: otp, // 4 digit OTP
+    template: "ABS Fresh", // Dashboard template name
+  }).then(
+    (response: any) => {
+      console.log("OTP Sent:", response);
+    },
+    (error: any) => {
+      console.error("Error:", error);
+    }
+  );
 
   return { phone: payload.phone, otp };
 };

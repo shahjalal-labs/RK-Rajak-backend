@@ -309,7 +309,8 @@ const clearDuesPayment = async (
       orderIds: orderIds, // forwarded to webhook
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
-      notify_url: "https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment",
+      notify_url:
+        "https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment",
     },
   };
 
@@ -378,10 +379,11 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
   if (!isValid) {
     throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
   }
-
+  console.log({ isValid });
   const { type, data } = payload;
-
+  console.log({ type, data });
   if (type === "PAYMENT_SUCCESS_WEBHOOK") {
+    console.log("Payment Successfull");
     const { order_id, order_amount } = data.order;
     const { payment_amount } = data.payment;
 
@@ -414,7 +416,7 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
         },
       }),
     ]);
-
+    console.log("update wallet balance please check your wallet!");
     return { message: "Wallet recharged successfully", amount: payment_amount };
   }
 
