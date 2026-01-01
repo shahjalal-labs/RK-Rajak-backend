@@ -357,7 +357,7 @@ const verifyWebhookSignature = (
   const bodyString = Buffer.isBuffer(rawBody)
     ? rawBody.toString("utf8")
     : rawBody;
-  const signedPayload = `${timestamp}${bodyString}`;
+  const signedPayload = `${timestamp}.${bodyString}`;
   const expectedSignature = crypto
     .createHmac("sha256", secret)
     .update(signedPayload)
