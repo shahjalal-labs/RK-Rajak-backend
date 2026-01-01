@@ -379,6 +379,7 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
   console.log({walletSecret})
   const isValid = verifyWebhookSignature(rawBody, headers, walletSecret!);
 
+  console.log({isValid});
   if (!isValid) {
     throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
   }
