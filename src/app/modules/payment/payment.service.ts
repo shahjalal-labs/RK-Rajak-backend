@@ -173,7 +173,8 @@ const createWalletRecharge = async (
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
       // notify_url:"https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge",
       // notify_url: "http://10.0.30.170:8001/api/v1/payment/webhook/wallet-recharge",
-      notify_url: "https://rk-razak.smtsigma.com/api/v1/payment/webhook/wallet-recharge",
+      notify_url:
+        "https://rk-razak.smtsigma.com/api/v1/payment/webhook/wallet-recharge",
     },
   };
 
@@ -312,9 +313,9 @@ const clearDuesPayment = async (
       orderIds: orderIds, // forwarded to webhook
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
-    //   notify_url:
-    //     "https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment",
-    // },
+      //   notify_url:
+      //     "https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment",
+      // },
       notify_url:
         "https://rk-razak.smtsigma.com/api/v1/payment/webhook/dues-payment",
     },
@@ -402,10 +403,17 @@ const handleWalletRechargeWebhook = async (rawBody: any, headers: any) => {
       include: { wallet: true },
     });
 
-    console.log({ payment_amount });
+    const isOrderAlraeadyProcessed =
+      walletRecharge?.paymentStatus === PaymentStatus.Completed;
 
     if (!walletRecharge) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Wallet recharge not found");
+      console.log("Order not found");
+      return { message: "Wallet recharge not found", amount: payment_amount };
+    }
+
+    if (isOrderAlraeadyProcessed) {
+      console.log("Order already processed");
+      return { message: "Wallet already recharged", amount: payment_amount };
     }
 
     // Update wallet balance
@@ -450,7 +458,7 @@ const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
   // if (!isValid) {
   //   throw new ApiError(httpStatus.UNAUTHORIZED, "Invalid webhook signature");
   // }
-  
+
   const { type, data } = payload;
 
   if (type === "PAYMENT_SUCCESS_WEBHOOK") {
