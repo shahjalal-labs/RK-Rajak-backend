@@ -172,7 +172,8 @@ const createWalletRecharge = async (
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
       // notify_url:"https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge",
-      notify_url: "localhost:8001/api/v1/payment/webhook/wallet-recharge",
+      // notify_url: "http://10.0.30.170:8001/api/v1/payment/webhook/wallet-recharge",
+      notify_url: "https://rk-razak.smtsigma.com/api/v1/payment/webhook/wallet-recharge",
     },
   };
 
@@ -311,8 +312,11 @@ const clearDuesPayment = async (
       orderIds: orderIds, // forwarded to webhook
       return_url: "",
       payment_methods: "cc,dc,nb,upi,paypal,ppc,emi,app,paylater",
+    //   notify_url:
+    //     "https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment",
+    // },
       notify_url:
-        "https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment",
+        "https://rk-razak.smtsigma.com/api/v1/payment/webhook/dues-payment",
     },
   };
 

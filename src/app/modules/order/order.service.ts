@@ -766,8 +766,14 @@ const getAllDailyOrders = async (queryParams: any) => {
  * Get daily product summary
  */
 const getDailyDispatch = async (queryParams?: any) => {
-  const { dateString, branchId, productCategoryId , packageType } = queryParams || {};
-  return await getDailyProductSummary(dateString, branchId, productCategoryId, packageType);
+  const { dateString, branchId, productCategoryId, packageType } =
+    queryParams || {};
+  return await getDailyProductSummary(
+    dateString,
+    branchId,
+    productCategoryId,
+    packageType
+  );
 };
 /**
 
@@ -1333,7 +1339,9 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   try {
     await sendSingleNotification(
       driverId,
-      `You have been assigned ${ordersIds.length} new order${ordersIds.length > 1 ? 's' : ''} for delivery. Check your delivery list!`,
+      `You have been assigned ${ordersIds.length} new order${
+        ordersIds.length > 1 ? "s" : ""
+      } for delivery. Check your delivery list!`,
       undefined,
       "New Orders Assigned"
     );
@@ -2363,7 +2371,11 @@ const cancelOrderByCustomer = async (
       if (order.userId) {
         await sendSingleNotification(
           order.userId,
-          `Your order has been cancelled. ${order.walletAmountUsed! > 0 ? `₹${order.walletAmountUsed} has been refunded to your wallet.` : ''}`,
+          `Your order has been cancelled. ${
+            order.walletAmountUsed! > 0
+              ? `₹${order.walletAmountUsed} has been refunded to your wallet.`
+              : ""
+          }`,
           undefined,
           "Order Cancelled"
         );
@@ -2856,8 +2868,15 @@ const getUserOrdersOverview = async (query: any, agentId: string) => {
   const totalPendingOrdersWeight = await getOrderSummary("Pending");
   const totalDeliveredOrdersWeight = await getOrderSummary("Delivered");
   const totalReturnedOrdersWeight = await getOrderSummary("Returned");
+  const totalOrderCount = await prisma.dailyOrder.count({
+    where: {
+      userId: { in: customerIds },
+      createdAt: dateFilter,
+    },
+  });
 
   return {
+    totalOrderCount: totalOrderCount,
     Booked: {
       totalPendingOrdersWeight: totalPendingOrdersWeight._sum.totalWeight || 0,
       totalPendingOrdersAmount: totalPendingOrdersWeight._sum.totalAmount || 0,
