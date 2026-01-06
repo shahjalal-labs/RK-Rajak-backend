@@ -155,7 +155,7 @@ const createWalletRecharge = async (
 
   console.log({ amount });
 
-  const orderId = `order_${Date.now()}`;
+  const orderId = `order_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
   const payloadData = {
     order_id: orderId,
@@ -208,7 +208,7 @@ const createWalletRecharge = async (
       data: {
         walletId: wallet.id,
         amount,
-        cashfreeOrderId: orderId,
+        cashfreeOrderId: response.data.order_id,
         paymentSessionId: paymentSessionId,
         paymentStatus: PaymentStatus.Pending,
       },
@@ -297,7 +297,7 @@ const clearDuesPayment = async (
     );
   }
 
-  const orderId = `order_${Date.now()}`;
+  const orderId = `order_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
   const payloadData = {
     order_id: orderId,
@@ -334,7 +334,15 @@ const clearDuesPayment = async (
       payloadData,
       { headers: headers1 }
     );
-
+    // save logs for verification later in webhook
+    await prisma.clearDuesLog.create({
+      data: {
+        userId: user.id,
+        cashfreeOrderId: response.data.order_id,
+        clearAmount: amount,
+        dailyOrderIds: orderIds,
+      },
+    });
     const cashfreeOrder = response.data;
     return cashfreeOrder;
   } catch (error: any) {
@@ -465,6 +473,36 @@ const handleDuesPaymentWebhook = async (rawBody: any, headers: any) => {
     const { order_id } = data.order;
     const { order_meta } = data.order;
     const { payment_amount } = data.payment;
+    const { customer_id } = data.order.customer_details;
+
+    // check the clear dues log for verification
+    const clearDuesLog = await prisma.clearDuesLog.findFirst({
+      where: {
+        cashfreeOrderId: data.order.order_id,
+        userId: customer_id,
+        NOT: { status: "Completed" },
+      },
+    });
+
+    // is Already cleared
+    const isAlreadyCleared = await prisma.clearDuesLog.findFirst({
+      where: {
+        cashfreeOrderId: data.order.order_id,
+        userId: customer_id,
+        status: "Completed",
+      },
+    });
+
+    if (!clearDuesLog) {
+      return {
+        message: "Failed to clear dues. Duplicate payment detected.",
+        amount: payment_amount,
+      };
+    }
+
+    if (isAlreadyCleared) {
+      return { message: "Dues already cleared", amount: payment_amount };
+    }
 
     const orderIds: string[] = order_meta.orderIds;
     // Clear dues
