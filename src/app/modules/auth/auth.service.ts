@@ -4,13 +4,8 @@ import { User, UserLocation, UserRole } from "@prisma/client";
 import generateOTP from "../../../helpers/generateOtp";
 import { getDistance } from "./auth.helpers";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { TwoFactor } from "../../../helpers/twofactor";
 
-let APIKEY = process.env.TWO_FACTOR_API_KEY || "";
-if (APIKEY === "") {
-  throw new Error("Missing 2Factor api key in environment");
-}
-const TwoFactor = new (require("2factor"))(APIKEY); 
-console.log({TwoFactor})
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
     where: {

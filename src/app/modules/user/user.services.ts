@@ -15,6 +15,7 @@ import {
   initializeProgressForNewAgent,
 } from "../incentives/incentives.helper";
 import { sendSingleNotification } from "../notifications/notification.services";
+import { TwoFactor } from "../../../helpers/twofactor";
 
 const resendVerifyOTP = async (phone: string) => {
   console.log(phone);
@@ -28,6 +29,19 @@ const resendVerifyOTP = async (phone: string) => {
   const otp = generateOTP();
   const OTP_EXPIRATION_TIME = 5 * 60 * 1000;
   const expiresAt = Date.now() + OTP_EXPIRATION_TIME;
+
+   TwoFactor.sendOTP(`${phone}`, {
+      otp: otp, // 4 digit OTP
+      template: "ABS_FRESH_OTP", // Dashboard template name
+    }).then(
+      (response: any) => {
+        console.log("OTP Sent:", response);
+      },
+      (error: any) => {
+        console.error("OTP Error:", error);
+      }
+    );
+
   await prisma.pendingUser.update({
     where: {
       phone: phone,
