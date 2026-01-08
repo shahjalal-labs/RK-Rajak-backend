@@ -197,6 +197,8 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     });
 
     return updatedOrder;
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex order operations
   });
 
   // Send notification to customer
@@ -415,6 +417,8 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     });
 
     return updatedOrder;
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex order operations
   });
 
   return result;
@@ -611,6 +615,8 @@ const createOrderByAgentForCustomer = async (
     });
 
     return updatedOrder;
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex order operations
   });
 
   return result;
@@ -1320,6 +1326,8 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
     });
 
     return { updatedAssignments, updatedMainOrders };
+  }, {
+    timeout: 10000, // 10 seconds
   });
 
   // =================== INCENTIVE TRACKING ===================
@@ -1370,19 +1378,17 @@ const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
 
   // Use today's date if no date provided
   // If date is provided as "YYYY-MM-DD", convert it to a proper Date object
-  let targetDate: Date;
+  let targetDate: Date = new Date();
   if (date) {
     // Parse YYYY-MM-DD format
     const parsedDate = new Date(date);
     targetDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-  } else {
-    targetDate = new Date();
   }
 
   let where: any = {
     driverId,
     assignedAt: {
-      gte: new Date(targetDate.setHours(0, 0, 0, 0)),
+      gte: new Date(targetDate.setHours(0, 0, 0, 0)) ?? undefined,
       lte: new Date(targetDate.setHours(23, 59, 59, 999)),
     },
   };
@@ -2172,6 +2178,8 @@ const markOrderAsDelivered = async (
         status: OrderStatus.Delivered,
       },
     });
+  }, {
+    timeout: 10000, // 10 seconds
   });
 
   // give referral bonus only for first delivery
@@ -2218,6 +2226,8 @@ const markOrderAsDelivered = async (
             status: "Success",
           },
         });
+      }, {
+        timeout: 10000, // 10 seconds
       });
     }
   }
@@ -2364,6 +2374,8 @@ const cancelOrderByCustomer = async (
           },
         });
       }
+    }, {
+      timeout: 15000, // 15 seconds timeout for complex refund operations
     });
 
     // Send notification to customer about order cancellation
@@ -2468,6 +2480,8 @@ const cancelOrderByCustomer = async (
         RemainingAmount: { decrement: decressRemainingAmount },
       },
     });
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex refund operations
   });
 
   // DONE : Check if all products are returned then update main order status to returned
@@ -2649,6 +2663,8 @@ const returnOrderProduct = async (
         status: "PartialReturned", // we'll finalize status check after transaction
       },
     });
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex refund operations
   }); // end transaction
 
   // 9) AFTER transaction: check if all products are returned to set main order status to Returned

@@ -9,7 +9,8 @@ let APIKEY = process.env.TWO_FACTOR_API_KEY || "";
 if (APIKEY === "") {
   throw new Error("Missing 2Factor api key in environment");
 }
-const TwoFactor = new (require("2factor"))(APIKEY);
+const TwoFactor = new (require("2factor"))(APIKEY); 
+console.log({TwoFactor})
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
   const user = await prisma.user.findUnique({
     where: {
@@ -40,20 +41,10 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
       },
     });
 
-    //** */ RAJAK_NUMBER ::: 9535056709
-    //** */ Send OTP via Twilio
-    // try {
-    //   await sendOTPViaTwilio(payload.phone, otp);
-    //   console.log(`📱 OTP sent to new user: ${payload.phone}`);
-    // } catch (error) {
-    //   console.error("Failed to send OTP via Twilio:", error);
-    //   // Don't throw error - allow fallback to manual OTP entry
-    // }
-
     //** */ send otp via 2factor api
     TwoFactor.sendOTP(`${payload.phone}`, {
       otp: otp, // 4 digit OTP
-      template: "ABS Fresh", // Dashboard template name
+      template: "ABS_FRESH_OTP", // Dashboard template name
     }).then(
       (response: any) => {
         console.log("OTP Sent:", response);
@@ -106,7 +97,7 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
   //** */ send otp via 2factor api
   TwoFactor.sendOTP(`${payload.phone}`, {
     otp: otp, // 4 digit OTP
-    template: "ABS Fresh", // Dashboard template name
+    template: "ABS_FRESH_OTP", // Dashboard template name
   }).then(
     (response: any) => {
       console.log("OTP Sent:", response);
@@ -169,7 +160,7 @@ const authLoginIntoDB = async (payload: {
   //** */ send otp via 2factor api
   TwoFactor.sendOTP(`${payload.phone}`, {
     otp: otp, // 4 digit OTP
-    template: "ABS Fresh", // Dashboard template name
+    template: "ABS_FRESH_OTP", // Dashboard template name
   }).then(
     (response: any) => {
       console.log("OTP Sent:", response);

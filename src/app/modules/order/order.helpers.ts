@@ -392,6 +392,8 @@ export const acceptOrderProduct = async (totalOrderProductId: string) => {
       });
     }
     return;
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex order operations
   });
 };
 
@@ -710,6 +712,8 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
     }
 
     return { message: "Product(s) rejected successfully" };
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex refund operations
   });
 };
 
@@ -971,6 +975,8 @@ export const adjustOrderProduct = async (
       currentWeight: originalWeight,
       currentPrice: originalPrice,
     };
+  }, {
+    timeout: 15000, // 15 seconds timeout for complex order operations
   });
 };
 
