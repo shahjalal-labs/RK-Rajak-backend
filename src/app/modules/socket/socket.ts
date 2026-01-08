@@ -10,6 +10,9 @@ export function setUpWebSocketServer(server: any) {
 
   wss.on("connection", async (ws, req) => {
     console.log("✅ New client connected");
+    const interval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.ping();
+    }, 30000);
 
     ws.send(
       JSON.stringify({ type: "connection", message: "Connected successfully" })
@@ -17,6 +20,7 @@ export function setUpWebSocketServer(server: any) {
 
     ws.on("close", () => {
       console.log("❌ Client disconnected");
+      clearInterval(interval);
     });
 
     ws.on("error", (error) => {
@@ -36,12 +40,13 @@ export function broadcastMessage(type: string, data: any) {
 
   const message = JSON.stringify({
     type,
-    data, 
-    timestamp: new Date().toISOString(), 
+    data,
+    timestamp: new Date().toISOString(),
   });
 
   wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) { // atar mane connect ace nki = state = 1
+    if (client.readyState === WebSocket.OPEN) {
+      // atar mane connect ace nki = state = 1
       try {
         client.send(message);
       } catch (error) {
