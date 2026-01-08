@@ -196,7 +196,7 @@ const authOtpLogin = async (phone: string, otp: string, fcmToken?: string) => {
     },
   });
   if (!userPending) {
-    throw new ApiError(409, "OTP request not found!");
+    throw new ApiError(409, "Admin/SuperAdmin Or Owner Not Found in Pending Users!");
   }
 
   const { otpCode, expiresAt } = userPending;
@@ -206,11 +206,7 @@ const authOtpLogin = async (phone: string, otp: string, fcmToken?: string) => {
   }
 
   if (Date.now() > expiresAt.getTime()) {
-    await prisma.pendingUser.delete({
-      where: {
-        phone: userPending.phone,
-      },
-    }); // OTP has expired
+    // OTP has expired
     throw new ApiError(410, "OTP has expired. Please request a new OTP.");
   }
 
