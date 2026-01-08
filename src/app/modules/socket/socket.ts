@@ -29,7 +29,6 @@ export function setUpWebSocketServer(server: any) {
  * Broadcast message to all connected WebSocket clients
  */
 export function broadcastMessage(type: string, data: any) {
-    console.log(`hit the brodcast functions!!`)
   if (!wss) {
     console.warn("WebSocket server not initialized");
     return;
@@ -37,21 +36,17 @@ export function broadcastMessage(type: string, data: any) {
 
   const message = JSON.stringify({
     type,
-    data,
-    timestamp: new Date().toISOString(),
+    data, 
+    timestamp: new Date().toISOString(), 
   });
 
-  let sentCount = 0;
   wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
+    if (client.readyState === WebSocket.OPEN) { // atar mane connect ace nki = state = 1
       try {
         client.send(message);
-        sentCount++;
       } catch (error) {
         console.error("Error sending message to client:", error);
       }
     }
   });
-
-  console.log(`📤 Broadcast "${type}" to ${sentCount} client(s)`);
 }
