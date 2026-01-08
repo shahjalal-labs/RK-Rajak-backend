@@ -3,6 +3,7 @@ import app from "./app";
 import config from "./config";
 import seedSuperAdmin from "./app/DB";
 import { startIncentiveCrons } from "./cron/incentives.cron";
+import { setUpWebSocketServer } from "./app/modules/socket/socket";
 
 async function main() {
   const server: Server = app.listen(config.port, () => {
@@ -12,6 +13,8 @@ async function main() {
     // Start incentive cron jobs
     startIncentiveCrons();
   });
+
+  setUpWebSocketServer(server);
 
   const exitHandler = () => {
     if (server) {

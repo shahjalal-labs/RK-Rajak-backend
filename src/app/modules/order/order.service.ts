@@ -32,6 +32,7 @@ import {
   updateAgentProgress,
 } from "../incentives/incentives.helper";
 import { sendSingleNotification } from "../notifications/notification.services";
+import { broadcastMessage } from "../socket/socket";
 
 const prisma = new PrismaClient();
 
@@ -216,6 +217,15 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     }
   } catch (error) {
     console.error("Failed to send order placed notification:", error);
+  }
+
+  // 🔔 Broadcast order placed event via WebSocket
+  try {
+    broadcastMessage("order_placed", {
+      message: "New order has been placed",
+    });
+  } catch (error) {
+    console.error("Failed to broadcast order event:", error);
   }
 
   return result;
@@ -427,6 +437,15 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     }
   );
 
+  // 🔔 Broadcast order placed event via WebSocket
+  try {
+    broadcastMessage("order_placed", {
+      message: "New order has been placed",
+    });
+  } catch (error) {
+    console.error("Failed to broadcast order event:", error);
+  }
+
   return result;
 };
 
@@ -627,6 +646,15 @@ const createOrderByAgentForCustomer = async (
       timeout: 15000, // 15 seconds timeout for complex order operations
     }
   );
+
+  // 🔔 Broadcast order placed event via WebSocket
+  try {
+    broadcastMessage("order_placed", {
+      message: "New order has been placed by agent",
+    });
+  } catch (error) {
+    console.error("Failed to broadcast order event:", error);
+  }
 
   return result;
 };
