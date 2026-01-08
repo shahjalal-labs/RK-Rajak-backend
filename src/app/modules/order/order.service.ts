@@ -129,77 +129,80 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
   }
 
   // Execute in transaction
-  const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's DailyOrder
-    // need to pass total weight for all products and also totalPrice
+  const result = await prisma.$transaction(
+    async (tx) => {
+      // Get or create today's DailyOrder
+      // need to pass total weight for all products and also totalPrice
 
-    const dailyOrder = await getOrCreateDailyOrder(
-      userId,
-      shippingAddressId,
-      user.branchId!,
-      PaymentMethod.COD,
-      tx
-    );
-
-    // Merge or create OrderProducts with snapshot pricing
-    const orderProducts = [];
-    for (const p of validatedProducts) {
-      const orderProduct = await mergeOrCreateOrderProduct(
-        dailyOrder.id,
-        p.productId,
-        p.variationId,
-        p.quantity,
-        p.perQuantitySellingPrice,
-        p.perQuantityRealPrice,
-        p.snapshotWeightPerUnit,
-        tx,
-        "COD"
+      const dailyOrder = await getOrCreateDailyOrder(
+        userId,
+        shippingAddressId,
+        user.branchId!,
+        PaymentMethod.COD,
+        tx
       );
-      orderProducts.push(orderProduct);
 
-      // Update daily product aggregation
-      const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = p.quantity * p.perQuantitySellingPrice;
-      await updateDailyProductAggregation(
-        p.productId,
+      // Merge or create OrderProducts with snapshot pricing
+      const orderProducts = [];
+      for (const p of validatedProducts) {
+        const orderProduct = await mergeOrCreateOrderProduct(
+          dailyOrder.id,
+          p.productId,
+          p.variationId,
+          p.quantity,
+          p.perQuantitySellingPrice,
+          p.perQuantityRealPrice,
+          p.snapshotWeightPerUnit,
+          tx,
+          "COD"
+        );
+        orderProducts.push(orderProduct);
+
+        // Update daily product aggregation
+        const weight = p.quantity * p.snapshotWeightPerUnit;
+        const price = p.quantity * p.perQuantitySellingPrice;
+        await updateDailyProductAggregation(
+          p.productId,
+          dailyOrder.id,
+          weight,
+          price,
+          "add",
+          tx,
+          p.categoryId,
+          user.branchId!
+        );
+      }
+
+      // Recalculate total
+      await recalculateDailyOrderTotal(
         dailyOrder.id,
-        weight,
-        price,
-        "add",
         tx,
-        p.categoryId,
-        user.branchId!
+        0,
+        handlingCharge,
+        note
       );
-    }
 
-    // Recalculate total
-    await recalculateDailyOrderTotal(
-      dailyOrder.id,
-      tx,
-      0,
-      handlingCharge,
-      note
-    );
-
-    // Fetch updated order
-    const updatedOrder = await tx.dailyOrder.findUnique({
-      where: { id: dailyOrder.id },
-      include: {
-        OrderProducts: {
-          include: {
-            product: true,
-            OrderProductVariation: true,
+      // Fetch updated order
+      const updatedOrder = await tx.dailyOrder.findUnique({
+        where: { id: dailyOrder.id },
+        include: {
+          OrderProducts: {
+            include: {
+              product: true,
+              OrderProductVariation: true,
+            },
           },
+          shippingAddress: true,
+          user: true,
         },
-        shippingAddress: true,
-        user: true,
-      },
-    });
+      });
 
-    return updatedOrder;
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex order operations
-  });
+      return updatedOrder;
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex order operations
+    }
+  );
 
   // Send notification to customer
   try {
@@ -326,100 +329,103 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
   }
 
   // Execute in transaction
-  const result = await prisma.$transaction(async (tx) => {
-    // Deduct wallet balance
-    await tx.wallet.update({
-      where: { id: user.Wallet!.id },
-      data: {
-        balance: { decrement: orderTotal },
-      },
-    });
-
-    // Get or create today's DailyOrder
-    const dailyOrder = await getOrCreateDailyOrder(
-      userId,
-      shippingAddressId,
-      user.branchId!,
-      PaymentMethod.Wallet,
-      tx
-    );
-
-    // Update wallet amount used
-    await tx.dailyOrder.update({
-      where: { id: dailyOrder.id },
-      data: {
-        walletAmountUsed: { increment: orderTotal },
-      },
-    });
-
-    // Merge products
-    for (const p of validatedProducts) {
-      await mergeOrCreateOrderProduct(
-        dailyOrder.id,
-        p.productId,
-        p.variationId,
-        p.quantity,
-        p.perQuantitySellingPrice,
-        p.perQuantityRealPrice,
-        p.snapshotWeightPerUnit,
-        tx,
-        "Wallet"
-      );
-
-      // Update aggregation
-      const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = p.quantity * p.perQuantitySellingPrice;
-      await updateDailyProductAggregation(
-        p.productId,
-        dailyOrder.id,
-        weight,
-        price,
-        "add",
-        tx,
-        p.categoryId,
-        user.branchId!
-      );
-    }
-
-    // Recalculate total
-    await recalculateDailyOrderTotal(
-      dailyOrder.id,
-      tx,
-      0,
-      handlingCharge,
-      note
-    );
-
-    // Record wallet transaction
-    await tx.walletTransaction.create({
-      data: {
-        walletId: user.Wallet!.id,
-        amount: orderTotal,
-        type: "Debit",
-        description: `Payment for daily order (${getDateString()})`,
-        status: "Success",
-      },
-    });
-
-    // Fetch updated order
-    const updatedOrder = await tx.dailyOrder.findUnique({
-      where: { id: dailyOrder.id },
-      include: {
-        OrderProducts: {
-          include: {
-            product: true,
-            OrderProductVariation: true,
-          },
+  const result = await prisma.$transaction(
+    async (tx) => {
+      // Deduct wallet balance
+      await tx.wallet.update({
+        where: { id: user.Wallet!.id },
+        data: {
+          balance: { decrement: orderTotal },
         },
-        shippingAddress: true,
-        user: true,
-      },
-    });
+      });
 
-    return updatedOrder;
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex order operations
-  });
+      // Get or create today's DailyOrder
+      const dailyOrder = await getOrCreateDailyOrder(
+        userId,
+        shippingAddressId,
+        user.branchId!,
+        PaymentMethod.Wallet,
+        tx
+      );
+
+      // Update wallet amount used
+      await tx.dailyOrder.update({
+        where: { id: dailyOrder.id },
+        data: {
+          walletAmountUsed: { increment: orderTotal },
+        },
+      });
+
+      // Merge products
+      for (const p of validatedProducts) {
+        await mergeOrCreateOrderProduct(
+          dailyOrder.id,
+          p.productId,
+          p.variationId,
+          p.quantity,
+          p.perQuantitySellingPrice,
+          p.perQuantityRealPrice,
+          p.snapshotWeightPerUnit,
+          tx,
+          "Wallet"
+        );
+
+        // Update aggregation
+        const weight = p.quantity * p.snapshotWeightPerUnit;
+        const price = p.quantity * p.perQuantitySellingPrice;
+        await updateDailyProductAggregation(
+          p.productId,
+          dailyOrder.id,
+          weight,
+          price,
+          "add",
+          tx,
+          p.categoryId,
+          user.branchId!
+        );
+      }
+
+      // Recalculate total
+      await recalculateDailyOrderTotal(
+        dailyOrder.id,
+        tx,
+        0,
+        handlingCharge,
+        note
+      );
+
+      // Record wallet transaction
+      await tx.walletTransaction.create({
+        data: {
+          walletId: user.Wallet!.id,
+          amount: orderTotal,
+          type: "Debit",
+          description: `Payment for daily order (${getDateString()})`,
+          status: "Success",
+        },
+      });
+
+      // Fetch updated order
+      const updatedOrder = await tx.dailyOrder.findUnique({
+        where: { id: dailyOrder.id },
+        include: {
+          OrderProducts: {
+            include: {
+              product: true,
+              OrderProductVariation: true,
+            },
+          },
+          shippingAddress: true,
+          user: true,
+        },
+      });
+
+      return updatedOrder;
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex order operations
+    }
+  );
 
   return result;
 };
@@ -549,75 +555,78 @@ const createOrderByAgentForCustomer = async (
   }
 
   // ================= TRANSACTION (Same pattern as placeOrderCOD) =================
-  const result = await prisma.$transaction(async (tx) => {
-    // Get or create today's DailyOrder for the customer
-    const dailyOrder = await getOrCreateDailyOrder(
-      customerId,
-      shippingAddressId,
-      customer.branchId!,
-      paymentMethod,
-      tx
-    );
-
-    // Merge or create OrderProducts with agent-provided pricing
-    const orderProducts = [];
-    for (const p of validatedProducts) {
-      const orderProduct = await mergeOrCreateOrderProduct(
-        dailyOrder.id,
-        p.productId,
-        p.variationId,
-        p.quantity,
-        p.perQuantitySellingPrice, // Agent-provided price
-        p.perQuantityRealPrice,
-        p.snapshotWeightPerUnit,
-        tx,
-        paymentMethod === PaymentMethod.COD ? "COD" : "Wallet"
+  const result = await prisma.$transaction(
+    async (tx) => {
+      // Get or create today's DailyOrder for the customer
+      const dailyOrder = await getOrCreateDailyOrder(
+        customerId,
+        shippingAddressId,
+        customer.branchId!,
+        paymentMethod,
+        tx
       );
-      orderProducts.push(orderProduct);
 
-      // Update daily product aggregation
-      const weight = p.quantity * p.snapshotWeightPerUnit;
-      const price = p.quantity * p.perQuantitySellingPrice; // Agent-provided total price
-      await updateDailyProductAggregation(
-        p.productId,
+      // Merge or create OrderProducts with agent-provided pricing
+      const orderProducts = [];
+      for (const p of validatedProducts) {
+        const orderProduct = await mergeOrCreateOrderProduct(
+          dailyOrder.id,
+          p.productId,
+          p.variationId,
+          p.quantity,
+          p.perQuantitySellingPrice, // Agent-provided price
+          p.perQuantityRealPrice,
+          p.snapshotWeightPerUnit,
+          tx,
+          paymentMethod === PaymentMethod.COD ? "COD" : "Wallet"
+        );
+        orderProducts.push(orderProduct);
+
+        // Update daily product aggregation
+        const weight = p.quantity * p.snapshotWeightPerUnit;
+        const price = p.quantity * p.perQuantitySellingPrice; // Agent-provided total price
+        await updateDailyProductAggregation(
+          p.productId,
+          dailyOrder.id,
+          weight,
+          price,
+          "add",
+          tx,
+          p.categoryId,
+          customer.branchId!
+        );
+      }
+
+      // Recalculate total
+      await recalculateDailyOrderTotal(
         dailyOrder.id,
-        weight,
-        price,
-        "add",
         tx,
-        p.categoryId,
-        customer.branchId!
+        0,
+        handlingCharge,
+        note
       );
-    }
 
-    // Recalculate total
-    await recalculateDailyOrderTotal(
-      dailyOrder.id,
-      tx,
-      0,
-      handlingCharge,
-      note
-    );
-
-    // Fetch updated order
-    const updatedOrder = await tx.dailyOrder.findUnique({
-      where: { id: dailyOrder.id },
-      include: {
-        OrderProducts: {
-          include: {
-            product: true,
-            OrderProductVariation: true,
+      // Fetch updated order
+      const updatedOrder = await tx.dailyOrder.findUnique({
+        where: { id: dailyOrder.id },
+        include: {
+          OrderProducts: {
+            include: {
+              product: true,
+              OrderProductVariation: true,
+            },
           },
+          shippingAddress: true,
+          user: true,
         },
-        shippingAddress: true,
-        user: true,
-      },
-    });
+      });
 
-    return updatedOrder;
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex order operations
-  });
+      return updatedOrder;
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex order operations
+    }
+  );
 
   return result;
 };
@@ -1312,23 +1321,26 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   }
 
   // Logic to assign orders to the driver
-  await prisma.$transaction(async (tx) => {
-    const updatedAssignments = await tx.driverAssignment.createMany({
-      data: ordersIds.map((orderId) => ({
-        dailyOrderId: orderId,
-        driverId,
-      })),
-    });
+  await prisma.$transaction(
+    async (tx) => {
+      const updatedAssignments = await tx.driverAssignment.createMany({
+        data: ordersIds.map((orderId) => ({
+          dailyOrderId: orderId,
+          driverId,
+        })),
+      });
 
-    const updatedMainOrders = await tx.dailyOrder.updateMany({
-      where: { id: { in: ordersIds } },
-      data: { status: OrderStatus.OnTheWay },
-    });
+      const updatedMainOrders = await tx.dailyOrder.updateMany({
+        where: { id: { in: ordersIds } },
+        data: { status: OrderStatus.OnTheWay },
+      });
 
-    return { updatedAssignments, updatedMainOrders };
-  }, {
-    timeout: 10000, // 10 seconds
-  });
+      return { updatedAssignments, updatedMainOrders };
+    },
+    {
+      timeout: 10000, // 10 seconds
+    }
+  );
 
   // =================== INCENTIVE TRACKING ===================
   // Track driver progress when orders are assigned
@@ -1385,13 +1397,25 @@ const getMyAssignedOrders = async (user: JwtPayload, queryParams: any) => {
     targetDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
   }
 
-  let where: any = {
-    driverId,
-    assignedAt: {
-      gte: new Date(targetDate.setHours(0, 0, 0, 0)) ?? undefined,
-      lte: new Date(targetDate.setHours(23, 59, 59, 999)),
-    },
-  };
+  const startOfDay = new Date(targetDate);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(targetDate);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  let where: any = date
+    ? {
+        driverId,
+        assignedAt: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
+      }
+    : {
+        driverId,
+      };
+  endOfDay.setHours(23, 59, 59, 999);
+
   // queryParams.status === "Active" ? send all onTheWay
   // queryParams.status === "Cancelled" ? send all cancelled
   // queryParams.status === "delivered" ? send all delivered
@@ -2171,16 +2195,19 @@ const markOrderAsDelivered = async (
   }
 
   // calculate delivered orders AFTER update
-  const deliveredOrderCount = await prisma.$transaction(async (tx) => {
-    return await tx.dailyOrder.count({
-      where: {
-        userId: order?.userId!,
-        status: OrderStatus.Delivered,
-      },
-    });
-  }, {
-    timeout: 10000, // 10 seconds
-  });
+  const deliveredOrderCount = await prisma.$transaction(
+    async (tx) => {
+      return await tx.dailyOrder.count({
+        where: {
+          userId: order?.userId!,
+          status: OrderStatus.Delivered,
+        },
+      });
+    },
+    {
+      timeout: 10000, // 10 seconds
+    }
+  );
 
   // give referral bonus only for first delivery
   if (deliveredOrderCount === 1) {
@@ -2211,24 +2238,27 @@ const markOrderAsDelivered = async (
 
       const walletId = referralUser.reffaralUser.Wallet.id;
 
-      await prisma.$transaction(async (tx) => {
-        await tx.wallet.update({
-          where: { id: walletId },
-          data: { balance: { increment: refarBalance?.rewardAmount || 40 } },
-        });
-        console.log("Created wallet transaction for referral bonus");
-        await tx.walletTransaction.create({
-          data: {
-            walletId,
-            amount: 40,
-            type: "Credit",
-            description: `${walletId} Referral bonus for first order delivery`,
-            status: "Success",
-          },
-        });
-      }, {
-        timeout: 10000, // 10 seconds
-      });
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.wallet.update({
+            where: { id: walletId },
+            data: { balance: { increment: refarBalance?.rewardAmount || 40 } },
+          });
+          console.log("Created wallet transaction for referral bonus");
+          await tx.walletTransaction.create({
+            data: {
+              walletId,
+              amount: 40,
+              type: "Credit",
+              description: `${walletId} Referral bonus for first order delivery`,
+              status: "Success",
+            },
+          });
+        },
+        {
+          timeout: 10000, // 10 seconds
+        }
+      );
     }
   }
 
@@ -2317,66 +2347,69 @@ const cancelOrderByCustomer = async (
   }
 
   if (!productId) {
-    await prisma.$transaction(async (tx) => {
-      // Cancel main order
-      await tx.dailyOrder.update({
-        where: { id: orderId },
-        data: {
-          status: "Returned",
-          cancellationReason: reason ?? "Cancelled by Customer",
-          totalReturnedWeight: order.totalAcceptedWeight,
-          totalReturnedPrice: order.totalAcceptedPrice,
-          RemainingAmount: 0,
-        },
-      });
-
-      // Cancel all products
-      for (const op of order.OrderProducts) {
-        await tx.orderProduct.update({
-          where: { id: op.id },
+    await prisma.$transaction(
+      async (tx) => {
+        // Cancel main order
+        await tx.dailyOrder.update({
+          where: { id: orderId },
           data: {
             status: "Returned",
-            returnedWeight: op.acceptedWeight,
-            returnedPrice: op.acceptedPrice,
-            acceptedWeight: 0,
-            acceptedPrice: 0,
-            returnedQuantity: op.acceptedQuantity,
+            cancellationReason: reason ?? "Cancelled by Customer",
+            totalReturnedWeight: order.totalAcceptedWeight,
+            totalReturnedPrice: order.totalAcceptedPrice,
+            RemainingAmount: 0,
           },
         });
 
-        // Daily aggregation update
-        await updateDailyProductAggregation(
-          op.productId!,
-          orderId,
-          op.acceptedWeight!,
-          op.acceptedPrice!,
-          "return",
-          tx,
-          "",
-          order.branchId!
-        );
-      }
+        // Cancel all products
+        for (const op of order.OrderProducts) {
+          await tx.orderProduct.update({
+            where: { id: op.id },
+            data: {
+              status: "Returned",
+              returnedWeight: op.acceptedWeight,
+              returnedPrice: op.acceptedPrice,
+              acceptedWeight: 0,
+              acceptedPrice: 0,
+              returnedQuantity: op.acceptedQuantity,
+            },
+          });
 
-      // refund logic if paid by wallet
-      if (order.walletAmountUsed! > 0 && order.user?.Wallet) {
-        await tx.wallet.update({
-          where: { id: order.user.Wallet.id },
-          data: { balance: { increment: order.walletAmountUsed || 0 } },
-        });
+          // Daily aggregation update
+          await updateDailyProductAggregation(
+            op.productId!,
+            orderId,
+            op.acceptedWeight!,
+            op.acceptedPrice!,
+            "return",
+            tx,
+            "",
+            order.branchId!
+          );
+        }
 
-        await tx.walletTransaction.create({
-          data: {
-            walletId: order.user.Wallet.id,
-            amount: order.walletAmountUsed || 0,
-            type: "Credit",
-            description: "Refund for returned order (Admin rejected)",
-            status: "Success",
-          },
-        });
+        // refund logic if paid by wallet
+        if (order.walletAmountUsed! > 0 && order.user?.Wallet) {
+          await tx.wallet.update({
+            where: { id: order.user.Wallet.id },
+            data: { balance: { increment: order.walletAmountUsed || 0 } },
+          });
+
+          await tx.walletTransaction.create({
+            data: {
+              walletId: order.user.Wallet.id,
+              amount: order.walletAmountUsed || 0,
+              type: "Credit",
+              description: "Refund for returned order (Admin rejected)",
+              status: "Success",
+            },
+          });
+        }
+      },
+      {
+        timeout: 15000, // 15 seconds timeout for complex refund operations
       }
-    }, {
-      timeout: 15000, // 15 seconds timeout for complex refund operations
-    });
+    );
 
     // Send notification to customer about order cancellation
     try {
@@ -2425,64 +2458,67 @@ const cancelOrderByCustomer = async (
     );
   }
 
-  await prisma.$transaction(async (tx) => {
-    // Full cancel product
-    await tx.orderProduct.update({
-      where: { id: orderProduct.id },
-      data: {
-        status: "Returned",
-        returnedWeight: orderProduct.acceptedWeight,
-        returnedPrice: orderProduct.acceptedPrice,
-        returnedQuantity: orderProduct.acceptedQuantity,
-      },
-    });
-
-    // Update aggregation
-    await updateDailyProductAggregation(
-      orderProduct.productId!,
-      orderId,
-      orderProduct.acceptedWeight!,
-      orderProduct.acceptedPrice!,
-      "return",
-      tx,
-      "",
-      order.branchId!
-    );
-
-    // refund logic if paid by wallet
-    const productRefundAmount = orderProduct.totalWalletAmountUsed || 0;
-    const decressRemainingAmount =
-      orderProduct.acceptedPrice! - productRefundAmount;
-    if (productRefundAmount > 0 && order.user?.Wallet) {
-      await tx.wallet.update({
-        where: { id: order.user.Wallet.id },
-        data: { balance: { increment: productRefundAmount } },
-      });
-      await tx.walletTransaction.create({
+  await prisma.$transaction(
+    async (tx) => {
+      // Full cancel product
+      await tx.orderProduct.update({
+        where: { id: orderProduct.id },
         data: {
-          walletId: order.user.Wallet.id,
-          amount: productRefundAmount,
-          type: "Credit",
-          description: `Refund for returned product ${orderProduct.productId} (Admin rejected)`,
-          status: "Success",
+          status: "Returned",
+          returnedWeight: orderProduct.acceptedWeight,
+          returnedPrice: orderProduct.acceptedPrice,
+          returnedQuantity: orderProduct.acceptedQuantity,
         },
       });
-    }
 
-    // Optional reason
-    await tx.dailyOrder.update({
-      where: { id: orderId },
-      data: {
-        status: "PartialReturned",
-        cancellationReason: reason ?? "Cancelled by Customer",
-        totalReturnedWeight: { increment: orderProduct.acceptedWeight! },
-        totalReturnedPrice: { increment: orderProduct.acceptedPrice! },
-        RemainingAmount: { decrement: decressRemainingAmount },
-      },
-    });
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex refund operations
-  });
+      // Update aggregation
+      await updateDailyProductAggregation(
+        orderProduct.productId!,
+        orderId,
+        orderProduct.acceptedWeight!,
+        orderProduct.acceptedPrice!,
+        "return",
+        tx,
+        "",
+        order.branchId!
+      );
+
+      // refund logic if paid by wallet
+      const productRefundAmount = orderProduct.totalWalletAmountUsed || 0;
+      const decressRemainingAmount =
+        orderProduct.acceptedPrice! - productRefundAmount;
+      if (productRefundAmount > 0 && order.user?.Wallet) {
+        await tx.wallet.update({
+          where: { id: order.user.Wallet.id },
+          data: { balance: { increment: productRefundAmount } },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            walletId: order.user.Wallet.id,
+            amount: productRefundAmount,
+            type: "Credit",
+            description: `Refund for returned product ${orderProduct.productId} (Admin rejected)`,
+            status: "Success",
+          },
+        });
+      }
+
+      // Optional reason
+      await tx.dailyOrder.update({
+        where: { id: orderId },
+        data: {
+          status: "PartialReturned",
+          cancellationReason: reason ?? "Cancelled by Customer",
+          totalReturnedWeight: { increment: orderProduct.acceptedWeight! },
+          totalReturnedPrice: { increment: orderProduct.acceptedPrice! },
+          RemainingAmount: { decrement: decressRemainingAmount },
+        },
+      });
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex refund operations
+    }
+  );
 
   // DONE : Check if all products are returned then update main order status to returned
   const updatedOrder = await prisma.dailyOrder.findUnique({
@@ -2548,124 +2584,132 @@ const returnOrderProduct = async (
   // helper for rounding (2 decimal places)
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-  await prisma.$transaction(async (tx) => {
-    // CURRENT numeric values
-    const prevAcceptedWeight = orderProduct.acceptedWeight || 0;
-    const prevAcceptedPrice = orderProduct.acceptedPrice || 0;
-    const prevReturnedWeight = orderProduct.returnedWeight || 0;
-    const prevReturnedPrice = orderProduct.returnedPrice || 0;
+  await prisma.$transaction(
+    async (tx) => {
+      // CURRENT numeric values
+      const prevAcceptedWeight = orderProduct.acceptedWeight || 0;
+      const prevAcceptedPrice = orderProduct.acceptedPrice || 0;
+      const prevReturnedWeight = orderProduct.returnedWeight || 0;
+      const prevReturnedPrice = orderProduct.returnedPrice || 0;
 
-    // 3) New accepted / returned values after this return
-    const newReturnedWeight = round2(prevReturnedWeight + returnWeight);
-    const newReturnedPrice = round2(prevReturnedPrice + returnPrice);
+      // 3) New accepted / returned values after this return
+      const newReturnedWeight = round2(prevReturnedWeight + returnWeight);
+      const newReturnedPrice = round2(prevReturnedPrice + returnPrice);
 
-    const newAcceptedWeight = round2(prevAcceptedWeight - returnWeight);
-    const newAcceptedPrice = round2(prevAcceptedPrice - returnPrice);
+      const newAcceptedWeight = round2(prevAcceptedWeight - returnWeight);
+      const newAcceptedPrice = round2(prevAcceptedPrice - returnPrice);
 
-    // 4) Wallet refund: pro-rata based on acceptedPrice portion
-    const walletAmountUsedForProduct = orderProduct.totalWalletAmountUsed || 0;
-    // if acceptedPrice was zero, avoid divide by zero
-    const refundAmount =
-      prevAcceptedPrice > 0
-        ? round2((walletAmountUsedForProduct * returnPrice) / prevAcceptedPrice)
-        : 0;
+      // 4) Wallet refund: pro-rata based on acceptedPrice portion
+      const walletAmountUsedForProduct =
+        orderProduct.totalWalletAmountUsed || 0;
+      // if acceptedPrice was zero, avoid divide by zero
+      const refundAmount =
+        prevAcceptedPrice > 0
+          ? round2(
+              (walletAmountUsedForProduct * returnPrice) / prevAcceptedPrice
+            )
+          : 0;
 
-    // 5) Update orderProduct fields
-    // - increment returnedWeight/Price
-    // - decrement acceptedWeight/Price
-    // - optionally update returnedQuantity/acceptedQuantity if you track quantity (left as is currently)
-    // - set status based on whether fully returned
-    const productStatus =
-      newAcceptedWeight === 0 && newAcceptedPrice === 0
-        ? "Returned"
-        : "PartialReturned";
+      // 5) Update orderProduct fields
+      // - increment returnedWeight/Price
+      // - decrement acceptedWeight/Price
+      // - optionally update returnedQuantity/acceptedQuantity if you track quantity (left as is currently)
+      // - set status based on whether fully returned
+      const productStatus =
+        newAcceptedWeight === 0 && newAcceptedPrice === 0
+          ? "Returned"
+          : "PartialReturned";
 
-    await tx.orderProduct.update({
-      where: { id: orderProductId },
-      data: {
-        returnedWeight: { set: newReturnedWeight },
-        returnedPrice: { set: newReturnedPrice },
-        acceptedWeight: { set: newAcceptedWeight },
-        acceptedPrice: { set: newAcceptedPrice },
-        status: productStatus,
-        // if you want, update returnedQuantity/acceptedQuantity here
-        // returnedQuantity: { increment: <...> },
-        // acceptedQuantity: { decrement: <...> },
-      },
-    });
-
-    // 6) Update daily aggregation for the returned amount
-    await updateDailyProductAggregation(
-      orderProduct.productId!,
-      orderProduct.orderId!,
-      returnWeight,
-      returnPrice,
-      "return",
-      tx,
-      "",
-      orderProduct?.order?.branchId!
-    );
-
-    // 7) Wallet refund transaction (if any)
-    if (refundAmount > 0 && orderProduct.order?.user?.Wallet) {
-      // increment wallet balance
-      await tx.wallet.update({
-        where: { id: orderProduct.order.user.Wallet.id },
-        data: { balance: { increment: refundAmount } },
-      });
-
-      // create wallet transaction
-      await tx.walletTransaction.create({
+      await tx.orderProduct.update({
+        where: { id: orderProductId },
         data: {
-          walletId: orderProduct.order.user.Wallet.id,
-          amount: refundAmount,
-          type: "Credit",
-          description: `Refund for returned product ${orderProduct.productId} (by admin)`,
-          status: "Success",
+          returnedWeight: { set: newReturnedWeight },
+          returnedPrice: { set: newReturnedPrice },
+          acceptedWeight: { set: newAcceptedWeight },
+          acceptedPrice: { set: newAcceptedPrice },
+          status: productStatus,
+          // if you want, update returnedQuantity/acceptedQuantity here
+          // returnedQuantity: { increment: <...> },
+          // acceptedQuantity: { decrement: <...> },
         },
       });
+
+      // 6) Update daily aggregation for the returned amount
+      await updateDailyProductAggregation(
+        orderProduct.productId!,
+        orderProduct.orderId!,
+        returnWeight,
+        returnPrice,
+        "return",
+        tx,
+        "",
+        orderProduct?.order?.branchId!
+      );
+
+      // 7) Wallet refund transaction (if any)
+      if (refundAmount > 0 && orderProduct.order?.user?.Wallet) {
+        // increment wallet balance
+        await tx.wallet.update({
+          where: { id: orderProduct.order.user.Wallet.id },
+          data: { balance: { increment: refundAmount } },
+        });
+
+        // create wallet transaction
+        await tx.walletTransaction.create({
+          data: {
+            walletId: orderProduct.order.user.Wallet.id,
+            amount: refundAmount,
+            type: "Credit",
+            description: `Refund for returned product ${orderProduct.productId} (by admin)`,
+            status: "Success",
+          },
+        });
+      }
+
+      // 8) Update main order totals: totalReturnedWeight/Price increment, totalAcceptedWeight/Price decrement
+      // Also adjust RemainingAmount: decrease by (returnPrice - refundAmount)
+      const remainingDecrement = round2(
+        Math.max(0, returnPrice - refundAmount)
+      );
+
+      // Ensure RemainingAmount not become negative
+      const orderRow = await tx.dailyOrder.findUnique({
+        where: { id: orderProduct.orderId! },
+        select: {
+          RemainingAmount: true,
+          totalAcceptedPrice: true,
+          totalAcceptedWeight: true,
+        },
+      });
+
+      const prevRemaining = orderRow?.RemainingAmount || 0;
+      const newRemaining = round2(
+        Math.max(0, prevRemaining - remainingDecrement)
+      );
+
+      await tx.dailyOrder.update({
+        where: { id: orderProduct.orderId! },
+        data: {
+          totalReturnedWeight: { increment: returnWeight },
+          totalReturnedPrice: { increment: returnPrice },
+          // optionally decrement totalAcceptedWeight/Price if you track those
+          totalAcceptedWeight:
+            orderRow?.totalAcceptedWeight !== undefined
+              ? { decrement: returnWeight }
+              : undefined,
+          totalAcceptedPrice:
+            orderRow?.totalAcceptedPrice !== undefined
+              ? { decrement: returnPrice }
+              : undefined,
+          RemainingAmount: { set: newRemaining },
+          status: "PartialReturned", // we'll finalize status check after transaction
+        },
+      });
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex refund operations
     }
-
-    // 8) Update main order totals: totalReturnedWeight/Price increment, totalAcceptedWeight/Price decrement
-    // Also adjust RemainingAmount: decrease by (returnPrice - refundAmount)
-    const remainingDecrement = round2(Math.max(0, returnPrice - refundAmount));
-
-    // Ensure RemainingAmount not become negative
-    const orderRow = await tx.dailyOrder.findUnique({
-      where: { id: orderProduct.orderId! },
-      select: {
-        RemainingAmount: true,
-        totalAcceptedPrice: true,
-        totalAcceptedWeight: true,
-      },
-    });
-
-    const prevRemaining = orderRow?.RemainingAmount || 0;
-    const newRemaining = round2(
-      Math.max(0, prevRemaining - remainingDecrement)
-    );
-
-    await tx.dailyOrder.update({
-      where: { id: orderProduct.orderId! },
-      data: {
-        totalReturnedWeight: { increment: returnWeight },
-        totalReturnedPrice: { increment: returnPrice },
-        // optionally decrement totalAcceptedWeight/Price if you track those
-        totalAcceptedWeight:
-          orderRow?.totalAcceptedWeight !== undefined
-            ? { decrement: returnWeight }
-            : undefined,
-        totalAcceptedPrice:
-          orderRow?.totalAcceptedPrice !== undefined
-            ? { decrement: returnPrice }
-            : undefined,
-        RemainingAmount: { set: newRemaining },
-        status: "PartialReturned", // we'll finalize status check after transaction
-      },
-    });
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex refund operations
-  }); // end transaction
+  ); // end transaction
 
   // 9) AFTER transaction: check if all products are returned to set main order status to Returned
   // Fetch updated order products to decide
