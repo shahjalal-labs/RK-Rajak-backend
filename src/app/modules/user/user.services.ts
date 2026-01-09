@@ -860,12 +860,9 @@ const deleteMyAccount = async (userId: string) => {
   if (!existingUser) {
     throw new ApiError(404, "user not found for delete this");
   }
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      status: "Deleted",
-    },
-  });
+  await prisma.user.delete({
+    where : { id: userId },
+  })
   return;
 };
 const deleteUserAccount = async (userId: string) => {
