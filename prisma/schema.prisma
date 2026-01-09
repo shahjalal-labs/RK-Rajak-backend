@@ -24,7 +24,7 @@ model User {
   referralCode      String?    @unique
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
-  branch            branch?    @relation(fields: [branchId], references: [id])
+  branch            branch?    @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId          String?    @db.ObjectId
   agentId           String?    @db.ObjectId
   threshold         Int?       @default(0)
@@ -55,7 +55,7 @@ model User {
 model UserAccess {
   id         String    @id @default(auto()) @map("_id") @db.ObjectId
   userId     String    @unique @db.ObjectId
-  user       User?     @relation(fields: [userId], references: [id])
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   isLoggedIn Boolean   @default(true)
   loginAt    DateTime  @default(now())
   logoutAt   DateTime?
@@ -65,7 +65,7 @@ model reffaralUsages {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   usedBy       String   @db.ObjectId
   userId       String   @db.ObjectId
-  reffaralUser User?    @relation(fields: [userId], references: [id])
+  reffaralUser User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
 }
 
@@ -120,14 +120,14 @@ model UserLocation {
   longitude Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_locations")
 }
 
 model shippingAddress {
   id          String       @id @default(auto()) @map("_id") @db.ObjectId
-  user        User?        @relation(fields: [userId], references: [id])
+  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String?      @db.ObjectId
   shopName    String
   landmark    String
@@ -143,7 +143,7 @@ model shippingAddress {
 
 model verificationUsers {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  user       User?    @relation(fields: [userId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String?  @unique @db.ObjectId
   buyerName  String
   buyerPhoto String
@@ -349,7 +349,7 @@ model productSubcategory {
 // daily Order  collection for user 
 model DailyOrder {
   id                  String           @id @default(auto()) @map("_id") @db.ObjectId
-  user                User?            @relation(fields: [userId], references: [id])
+  user                User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId              String?          @db.ObjectId
   OrderProducts       OrderProduct[] // all products in the order
   totalAmount         Float            @default(0) // calculated total amount from OrderProducts
@@ -366,7 +366,7 @@ model DailyOrder {
   note                String?
   DeliveryProof       String?
   shippingAddressId   String?          @db.ObjectId
-  shippingAddress     shippingAddress? @relation(fields: [shippingAddressId], references: [id])
+  shippingAddress     shippingAddress? @relation(fields: [shippingAddressId], references: [id], onDelete: Cascade)
   orderDate           String? // date string for daily orders aggregation
   branchId            String?          @db.ObjectId
 
@@ -405,7 +405,7 @@ model OrderProduct {
   id                    String                  @id @default(auto()) @map("_id") @db.ObjectId
   orderId               String?                 @db.ObjectId
   order                 DailyOrder?             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product               product?                @relation(fields: [productId], references: [id])
+  product               product?                @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId             String?                 @db.ObjectId
   totalWeight           Float?                  @default(0) // Total weight for this product and its can editable in future by admin and delivery driver
   totalQuantity         Float?                  @default(0) // Total quantity for this product and its can editable in future by admin and delivery driver
@@ -434,7 +434,7 @@ model OrderProductVariation {
   orderProduct          OrderProduct      @relation(fields: [orderProductId], references: [id], onDelete: Cascade)
   orderProductId        String            @db.ObjectId
   variationId           String            @db.ObjectId
-  variation             productVariation? @relation(fields: [variationId], references: [id])
+  variation             productVariation? @relation(fields: [variationId], references: [id], onDelete: Cascade)
   quantity              Float
   OrderTimeRealPrice    Float
   OrderTimeSellingPrice Float
@@ -447,11 +447,11 @@ model OrderProductVariation {
 model totalProductOrder {
   id                String             @id @default(auto()) @map("_id") @db.ObjectId
   productId         String             @db.ObjectId
-  product           product?           @relation(fields: [productId], references: [id])
-  productCategory   productCategory    @relation(fields: [productCategoryId], references: [id])
+  product           product?           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productCategory   productCategory    @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
   productCategoryId String             @db.ObjectId
   branchId          String             @db.ObjectId
-  branch            branch             @relation(fields: [branchId], references: [id])
+  branch            branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
   totalOrders       Int?
   totalQuantity     Int?               @default(0)
   totalWeight       Float?
@@ -499,9 +499,9 @@ enum OrderStatus {
 model DriverAssignment {
   id           String      @id @default(auto()) @map("_id") @db.ObjectId
   driverId     String      @db.ObjectId
-  driver       User?       @relation(fields: [driverId], references: [id])
+  driver       User?       @relation(fields: [driverId], references: [id], onDelete: Cascade)
   dailyOrderId String      @db.ObjectId
-  dailyOrder   DailyOrder? @relation(fields: [dailyOrderId], references: [id])
+  dailyOrder   DailyOrder? @relation(fields: [dailyOrderId], references: [id], onDelete: Cascade)
   assignedAt   DateTime    @default(now())
   deliveryDate DateTime?
   createdAt    DateTime    @default(now())
@@ -519,7 +519,7 @@ model Review {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    String?  @db.ObjectId
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("reviews")
 }
@@ -528,7 +528,7 @@ model Review {
 
 model Wallet {
   id                 String              @id @default(auto()) @map("_id") @db.ObjectId
-  user               User?               @relation(fields: [userId], references: [id])
+  user               User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId             String?             @unique @db.ObjectId
   balance            Float               @default(0)
   createdAt          DateTime            @default(now())
@@ -542,7 +542,7 @@ model Wallet {
 
 model WalletTransaction {
   id          String          @id @default(auto()) @map("_id") @db.ObjectId
-  wallet      Wallet?         @relation(fields: [walletId], references: [id])
+  wallet      Wallet?         @relation(fields: [walletId], references: [id], onDelete: Cascade)
   walletId    String?         @db.ObjectId
   amount      Float
   type        TransactionType
@@ -569,7 +569,7 @@ enum PaymentStatus {
 
 model WalletRecharge {
   id               String        @id @default(auto()) @map("_id") @db.ObjectId
-  wallet           Wallet?       @relation(fields: [walletId], references: [id])
+  wallet           Wallet?       @relation(fields: [walletId], references: [id], onDelete: Cascade)
   walletId         String?       @db.ObjectId
   amount           Float
   paymentGateway   String        @default("cashfree")
@@ -586,7 +586,7 @@ model WalletRecharge {
 
 model Spin {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String?  @db.ObjectId
   wonAmount Float
   createdAt DateTime @default(now())
@@ -651,7 +651,7 @@ model Incentive {
   targetAmount              Float?
   rewardAmount              Float
   branchId                  String?                   @db.ObjectId
-  branch                    branch?                   @relation(fields: [branchId], references: [id])
+  branch                    branch?                   @relation(fields: [branchId], references: [id], onDelete: Cascade)
   createdAt                 DateTime                  @default(now())
   updatedAt                 DateTime                  @updatedAt
   rewards                   Reward[]
@@ -685,8 +685,8 @@ model DriverIncentiveProgress {
   updatedAt           DateTime @updatedAt
   createdAt           DateTime @default(now())
 
-  user      User?      @relation(fields: [driverId], references: [id])
-  incentive Incentive? @relation(fields: [incentiveId], references: [id])
+  user      User?      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  incentive Incentive? @relation(fields: [incentiveId], references: [id], onDelete: Cascade)
 
   @@unique([driverId, incentiveId, currentDate])
   @@map("driver_incentive_progress")
@@ -707,8 +707,8 @@ model AgentIncentiveProgress {
   updatedAt     DateTime @updatedAt
   createdAt     DateTime @default(now())
 
-  user      User?      @relation(fields: [agentId], references: [id])
-  incentive Incentive? @relation(fields: [incentiveId], references: [id])
+  user      User?      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  incentive Incentive? @relation(fields: [incentiveId], references: [id], onDelete: Cascade)
 
   @@unique([agentId, incentiveId, startAt])
   @@map("agent_incentive_progress")
@@ -718,9 +718,9 @@ model AgentIncentiveProgress {
 model Reward {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
   userId      String     @db.ObjectId
-  user        User?      @relation(fields: [userId], references: [id])
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   incentiveId String     @db.ObjectId
-  incentive   Incentive? @relation(fields: [incentiveId], references: [id])
+  incentive   Incentive? @relation(fields: [incentiveId], references: [id], onDelete: Cascade)
   amount      Float
   achievedAt  DateTime
   createdAt   DateTime   @default(now())
