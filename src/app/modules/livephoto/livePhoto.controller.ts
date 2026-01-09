@@ -8,8 +8,8 @@ import httpStatus from "http-status";
 const createLivePhoto = catchAsync(async (req: Request, res: Response) => {
   const { categoryId } = req.params;
   const livePhotoFiles =
-    req.files && "livePhoto" in req.files
-      ? (req.files["livePhoto"] as Express.Multer.File[])
+    req.files && "file" in req.files
+      ? (req.files["file"] as Express.Multer.File[])
       : [];
   if (!livePhotoFiles || livePhotoFiles.length === 0) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Live photo file is required");
