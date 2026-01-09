@@ -2179,14 +2179,14 @@ const markOrderAsDelivered = async (
   }
 
   const totalPaid = payload.payments.reduce(
-    (sum, p) => sum + (p.amount || 0),
+    (sum, p) => sum + (Number(p.amount) || 0),
     0
   );
 
   let PaymentMethodPriority: PaymentMethod;
 
   //** ---- Jei payment use kore max amount pay korse seta assign korbo ------------------ */
-  const sortPayments = payload.payments.sort((a, b) => b.amount - a.amount);
+  const sortPayments = payload.payments.sort((a, b) => Number(b.amount) - Number(a.amount));
   PaymentMethodPriority = sortPayments[0].method as PaymentMethod;
 
   let deliveryProofUrl: string | undefined = undefined;
