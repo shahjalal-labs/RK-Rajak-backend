@@ -12,7 +12,7 @@ const router = express.Router();
 router.post(
   "/upload-photo/:categoryId",
   auth(UserRole.SuperAdmin),
-  fileUploader.uploadSingle,
+  fileUploader.uploadMultiple,
   parseBodyData,
   validateRequest(LivePhotoSchemaValidation.createLivePhotoSchema),
   livePhotoControllers.createLivePhoto

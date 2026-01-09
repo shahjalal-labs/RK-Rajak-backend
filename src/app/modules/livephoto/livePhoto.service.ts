@@ -7,7 +7,7 @@ import prisma from "../../../shared/prisma";
 const createLivePhoto = async (
   data: livePhoto,
   categoryId: string,
-  file: Express.Multer.File
+  file: Express.Multer.File[]
 ) => {
   const isCategoryExist = await prisma.livePhotoCategory.findUnique({
     where: {
@@ -23,10 +23,16 @@ const createLivePhoto = async (
   data.livePhotoCategoryId = categoryId;
   let photoUrl;
   try {
-    photoUrl = (await uploadToDigitalOceanAWS(file)).Location;
+    photoUrl = await Promise.all(
+      file.map(async (f) => {
+        const uploaded = await uploadToDigitalOceanAWS(f);
+        return uploaded.Location;
+      })
+    );
   } catch (error: any) {
     throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Photo upload failed");
   }
+
   return await prisma.livePhoto.create({ data: { ...data, photo: photoUrl , livePhotoCategoryId : categoryId } });
 };
 

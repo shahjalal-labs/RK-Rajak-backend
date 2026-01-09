@@ -7,20 +7,23 @@ import httpStatus from "http-status";
 
 const createLivePhoto = catchAsync(async (req: Request, res: Response) => {
   const { categoryId } = req.params;
-  const file = req.file as Express.Multer.File;
-  if (!file) {
+  const livePhotoFiles =
+    req.files && "livePhoto" in req.files
+      ? (req.files["livePhoto"] as Express.Multer.File[])
+      : [];
+  if (!livePhotoFiles || livePhotoFiles.length === 0) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Live photo file is required");
   }
-  const result = await livePhotoServices.createLivePhoto(req.body , categoryId, file);
+  const result = await livePhotoServices.createLivePhoto(req.body , categoryId, livePhotoFiles);
   sendResponse(res, {
-    success: true,
-    statusCode: 201,
-    message: "The livePhoto has been created successfully",
-    data: result,
+      success: true,
+      statusCode: 201,
+      message: "The livePhoto has been created successfully",
+      data: result,
+    });
   });
-});
 
-const deleteLivePhoto = catchAsync(async (req: Request, res: Response) => {
+  const deleteLivePhoto = catchAsync(async (req: Request, res: Response) => {
   await livePhotoServices.deleteLivePhoto(req.params.id);
   sendResponse(res, {
     success: true,
