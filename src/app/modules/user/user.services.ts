@@ -749,9 +749,9 @@ const getAllAgentsFromDB = async (query: any) => {
       .sort()
       .exclude()
       .include({
-        Wallet: true,
-        order: true,
-        Spin: true,
+        // Wallet: true,
+        // order: true,
+        // Spin: true,
         //pending ammounts
       })
       .paginate()
@@ -767,9 +767,9 @@ const getAllAgentsFromDB = async (query: any) => {
       .sort()
       .exclude()
       .include({
-        Wallet: true,
-        order: true,
-        Spin: true,
+        // Wallet: true,
+        // order: true,
+        // Spin: true,
         //pending ammounts
       })
       .paginate()
