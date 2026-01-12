@@ -726,6 +726,7 @@ const getCustomersForBranch = async (query: {
       page,
       limit,
       total,
+      totalPages: Math.ceil(total / limit),
       statusType: query.statusType || "All",
     },
     result: formattedCustomers,
