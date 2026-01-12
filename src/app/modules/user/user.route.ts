@@ -60,7 +60,7 @@ router.get(
 );
 router.patch(
   "/block-user/:id",
-  auth(UserRole.Admin),
+  auth(UserRole.Admin , UserRole.Owner, UserRole.SuperAdmin),
   UserControllers.blockUser
 );
 router.delete("/", auth(), UserControllers.deleteMyAccount);
