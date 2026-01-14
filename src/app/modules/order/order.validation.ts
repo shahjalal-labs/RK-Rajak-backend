@@ -100,7 +100,7 @@ const MarkOrderAsDeliveredSchema = z.object({
     .array(
       z.object({
         method: z.enum(["Cash", "Pre_Paid", "Credit", "QrCode"]),
-        amount: z.number().positive().optional(),
+        amount: z.string(),
       })
     )
     .min(1, "At least one payment entry is required"),
