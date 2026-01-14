@@ -414,6 +414,11 @@ const bestSelling = async (query: any) => {
         },
       },
     },
+    include : {
+      category: true,
+      productVariation: true,
+      
+    }
   });
 };
 
