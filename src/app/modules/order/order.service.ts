@@ -31,7 +31,10 @@ import {
   updateDriverProgressOnAssignment,
   updateAgentProgress,
 } from "../incentives/incentives.helper";
-import { sendSingleNotification } from "../notifications/notification.services";
+import {
+  sendSingleNotification,
+  createAdminNotification,
+} from "../notifications/notification.services";
 import { broadcastMessage } from "../socket/socket";
 
 const prisma = new PrismaClient();
@@ -217,6 +220,21 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     }
   } catch (error) {
     console.error("Failed to send order placed notification:", error);
+  }
+
+  // Admin notification: new order placed
+  try {
+    if (result) {
+      await createAdminNotification({
+        title: "New Order Placed",
+        content: `New order placed by ${
+          user.fullName || user.phone
+        } with total amount ₹${result.totalAmount}.`,
+        branchId: user.branchId || null,
+      });
+    }
+  } catch (error) {
+    console.error("Failed to create admin notification for order placed:", error);
   }
 
   // 🔔 Broadcast order placed event via WebSocket
@@ -446,6 +464,21 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     console.error("Failed to broadcast order event:", error);
   }
 
+   // Admin notification: new order placed (Wallet)
+  try {
+    if (result) {
+      await createAdminNotification({
+        title: "New Order Placed",
+        content: `New order placed (Wallet) by ${
+          user.fullName || user.phone
+        } with total amount ₹${result.totalAmount}.`,
+        branchId: user.branchId || null,
+      });
+    }
+  } catch (error) {
+    console.error("Failed to create admin notification for wallet order placed:", error);
+  }
+
   return result;
 };
 
@@ -654,6 +687,24 @@ const createOrderByAgentForCustomer = async (
     });
   } catch (error) {
     console.error("Failed to broadcast order event:", error);
+  }
+
+  // Admin notification: new order placed by agent for customer
+  try {
+    if (result) {
+      await createAdminNotification({
+        title: "New Order Placed (Agent)",
+        content: `Agent ${agentId} placed an order for customer ${
+          customer.fullName || customer.phone
+        } with total amount ₹${result.totalAmount}.`,
+        branchId: customer.branchId || null,
+      });
+    }
+  } catch (error) {
+    console.error(
+      "Failed to create admin notification for agent order placed:",
+      error
+    );
   }
 
   return result;
@@ -2210,7 +2261,7 @@ const markOrderAsDelivered = async (
   //** Check still remaing exist or not! if Exist then change the isDues : true with paymentMethod : "credit"*/
   const order = await prisma.dailyOrder.findUnique({
     where: { id: orderId },
-    select: { userId: true, RemainingAmount: true },
+    select: { userId: true, RemainingAmount: true, branchId: true },
   });
   if (order && order.RemainingAmount > 0) {
     await prisma.dailyOrder.update({
@@ -2342,6 +2393,22 @@ const markOrderAsDelivered = async (
     }
   } catch (error) {
     console.error("Failed to send delivery notification:", error);
+  }
+
+  // Admin notification: order delivered
+  try {
+    await createAdminNotification({
+      title: "Order Delivered",
+      content: `Order ${orderId} has been delivered successfully. Total paid: ₹${totalPaid}.`,
+      branchId: order?.branchId || null,
+    });
+  } catch (error) {
+    console.error("Failed to create admin notification for order delivery:", error);
+  }
+
+  return {
+    userId : order?.userId,
+    message: "Order marked as delivered successfully",
   }
 };
 

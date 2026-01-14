@@ -11,6 +11,15 @@ const getNotifications = catchAsync(async (req: any, res: any) => {
     data: notifications,
   });
 });
+const getNotificationsForAdmin = catchAsync(async (req: any, res: any) => {
+  const notifications = await notificationServices.getNotificationsForAdmin(req);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Notifications (Admin) retrieved successfully",
+    data: notifications,
+  });
+});
 
 const getSingleNotificationById = catchAsync(async (req: any, res: any) => {
   const notificationId = req.params.id;
@@ -30,4 +39,5 @@ const getSingleNotificationById = catchAsync(async (req: any, res: any) => {
 export const notificationController = {
   getNotifications,
   getSingleNotificationById,
+  getNotificationsForAdmin
 };

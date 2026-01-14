@@ -14,7 +14,10 @@ import {
   initializeProgressForNewDriver,
   initializeProgressForNewAgent,
 } from "../incentives/incentives.helper";
-import { sendSingleNotification } from "../notifications/notification.services";
+import {
+  sendSingleNotification,
+  createAdminNotification,
+} from "../notifications/notification.services";
 import { TwoFactor } from "../../../helpers/twofactor";
 
 const resendVerifyOTP = async (phone: string) => {
@@ -150,6 +153,17 @@ const buyerOtpLogin = async (
       },
     },
   });
+
+  // Admin notification: new customer registered
+  try {
+    await createAdminNotification({
+      title: "New Customer Registered",
+      content: `A new customer registered with phone ${phone}.`,
+      branchId: user.branchId ?? null,
+    });
+  } catch (error) {
+    console.error("Failed to create admin notification for new customer:", error);
+  }
 
   // reffaralCode calcualte + send money in raffaral useg account and add new user a random rafferal code 6 digit
 

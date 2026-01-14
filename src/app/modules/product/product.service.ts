@@ -34,7 +34,7 @@ const createProduct = async (
       })
     );
   } catch (error: any) {
-    console.log({error})
+    console.log({ error });
     throw new ApiError(500, "Failed to upload images: " + error.message);
   }
   const createdProduct = await prisma.product.create({
@@ -121,8 +121,8 @@ const getAllProducts = async (
     where.tag = { contains: searchTerm, mode: "insensitive" };
   }
 
-  if(packageType){
-    where.packageType = packageType
+  if (packageType) {
+    where.packageType = packageType;
   }
 
   // Sort order
@@ -179,7 +179,7 @@ const getAllProductsForBuyer = async (
     subcategory,
     searchTerm,
     status,
-    packageType
+    packageType,
   }: GetAllProductsParams = query;
 
   // Calculate pagination
@@ -197,7 +197,7 @@ const getAllProductsForBuyer = async (
     );
   }
   // Build where conditions
-  const where: any = { branchId: userData.branchId , status: true };
+  const where: any = { branchId: userData.branchId, status: true };
 
   // Price range filter (based on productVariation)
   // Tag filter
@@ -229,7 +229,7 @@ const getAllProductsForBuyer = async (
     where.tag = { contains: searchTerm, mode: "insensitive" };
   }
 
-  if(packageType){
+  if (packageType) {
     where.packageType = packageType;
   }
 
@@ -397,8 +397,14 @@ const updateProduct = async (
   })) as product;
 };
 
-const bestSelling = async () => {
+const bestSelling = async (query: any) => {
   return await prisma.product.findMany({
+    // i want to return those products which have been sold the most in delivered orders and sort them in descending order
+    orderBy: {
+      orderProducts: {
+        _count: "desc",
+      },
+    },
     where: {
       orderProducts: {
         some: {

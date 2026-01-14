@@ -1,6 +1,36 @@
+import { UserRole } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import admin from "../../../shared/firebase.admin";
 import prisma from "../../../shared/prisma";
+
+// Create notification entry for admin panel (no FCM push)
+export const createAdminNotification = async (params: {
+  content: string;
+  title?: string;
+  branchId?: string | null;
+  senderId?: string;
+}) => {
+  const { content, title, branchId, senderId } = params;
+
+  try {
+    const data: any = {
+      title,
+      content,
+      senderId,
+      userType: UserRole.Admin,
+    };
+
+    if (branchId) {
+      data.branchId = branchId;
+    }
+
+    await prisma.notification.create({
+      data,
+    });
+  } catch (error) {
+    console.error("Failed to create admin notification:", error);
+  }
+};
 
 // Send notification to a single user
 export const sendSingleNotification = async (
@@ -115,6 +145,43 @@ const getNotificationsFromDB = async (req: any) => {
 
   return notifications;
 };
+const getNotificationsForAdmin = async (req: any) => {
+  const { branchId, page = 1, limit = 10 } = req.query;
+
+  const where: any = {
+    userType: "Admin",
+  };
+
+  if (branchId) {
+    where.branchId = branchId;
+  }
+
+  const notifications = await prisma.notification.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: limit ? parseInt(limit as string, 10) : 20,
+    skip:
+      page && limit
+        ? (parseInt(page as string, 10) - 1) * parseInt(limit as string, 10)
+        : 0,
+  });
+
+  const totalNotifications = await prisma.notification.count({
+    where,
+  });
+
+  return {
+    meta: {
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? parseInt(limit as string, 10) : 10,
+      total: totalNotifications,
+      totalPage: limit
+        ? Math.ceil(totalNotifications / parseInt(limit as string, 10))
+        : 1,
+    },
+    result: notifications,
+  };
+};
 
 export const sendGroupNotifications = async (
   userIds: string[],
@@ -123,7 +190,7 @@ export const sendGroupNotifications = async (
   senderId?: string
 ) => {
   console.log("hitt the notifications");
-  console.log(userIds)
+  console.log(userIds);
   if (!userIds || userIds.length === 0) return;
 
   const users = await prisma.user.findMany({
@@ -152,7 +219,7 @@ export const sendGroupNotifications = async (
       content: body,
     })),
   });
-  console.log("from the teacher!",res);
+  console.log("from the teacher!", res);
 
   const response = await admin.messaging().sendEachForMulticast(message as any);
   // Save notifications for successful users
@@ -202,4 +269,5 @@ const getSingleNotificationFromDB = async (
 export const notificationServices = {
   getNotificationsFromDB,
   getSingleNotificationFromDB,
+  getNotificationsForAdmin,
 };

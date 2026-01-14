@@ -1,7 +1,10 @@
 import { IncentiveType, UserRole } from "@prisma/client";
 import prisma from "../../../shared/prisma";
 import { format, addDays, addMonths, startOfDay, endOfDay } from "date-fns";
-import { sendSingleNotification } from "../notifications/notification.services";
+import {
+  sendSingleNotification,
+  createAdminNotification,
+} from "../notifications/notification.services";
 
 /**
  * ========================================
@@ -129,7 +132,8 @@ export const updateDriverProgressOnAssignment = async (
 const createRewardForDriver = async (
   driverId: string,
   incentiveId: string,
-  amount: number
+  amount: number,
+  branchId?: string | null
 ) => {
   const existingReward = await prisma.reward.findFirst({
     where: {
@@ -144,7 +148,7 @@ const createRewardForDriver = async (
 
   if (existingReward) return existingReward;
 
-  return await prisma.reward.create({
+  const reward = await prisma.reward.create({
     data: {
       userId: driverId,
       incentiveId,
@@ -152,6 +156,22 @@ const createRewardForDriver = async (
       achievedAt: new Date(),
     },
   });
+
+  // Admin notification: driver incentive achieved
+  try {
+        await createAdminNotification({
+          title: "Driver Incentive Achieved",
+          content: `Driver ${driverId} achieved an incentive reward of ₹${amount}.`,
+          branchId: branchId ?? null,
+        });
+  } catch (error) {
+    console.error(
+      "Failed to create admin notification for driver incentive:",
+      error
+    );
+  }
+
+  return reward;
 };
 
 /**
@@ -187,7 +207,8 @@ export const resetDriverProgressDaily = async () => {
       await createRewardForDriver(
         progress.driverId,
         progress.incentiveId,
-        progress.incentive?.rewardAmount || 0
+        progress.incentive?.rewardAmount || 0,
+        progress.incentive?.branchId || null
       );
 
       // Send notification to driver about reward
@@ -340,7 +361,12 @@ export const updateAgentProgress = async (
       });
 
       // Create reward ONLY ONCE per period
-      await createRewardForAgent(agentId, incentive.id, incentive.rewardAmount);
+      await createRewardForAgent(
+        agentId,
+        incentive.id,
+        incentive.rewardAmount,
+        incentive.branchId || null
+      );
       
       // Mark reward as claimed to prevent duplicate rewards
       await prisma.agentIncentiveProgress.update({
@@ -372,9 +398,10 @@ export const updateAgentProgress = async (
 const createRewardForAgent = async (
   agentId: string,
   incentiveId: string,
-  amount: number
+  amount: number,
+  branchId?: string | null
 ) => {
-  return await prisma.reward.create({
+  const reward = await prisma.reward.create({
     data: {
       userId: agentId,
       incentiveId,
@@ -382,6 +409,22 @@ const createRewardForAgent = async (
       achievedAt: new Date(),
     },
   });
+
+  // Admin notification: agent incentive achieved
+  try {
+        await createAdminNotification({
+          title: "Agent Incentive Achieved",
+          content: `Agent ${agentId} achieved an incentive reward of ₹${amount}.`,
+          branchId: branchId ?? null,
+        });
+  } catch (error) {
+    console.error(
+      "Failed to create admin notification for agent incentive:",
+      error
+    );
+  }
+
+  return reward;
 };
 
 /**
@@ -412,7 +455,8 @@ export const resetAgentProgressPeriodic = async () => {
       await createRewardForAgent(
         progress.agentId,
         progress.incentiveId,
-        progress.incentive?.rewardAmount || 0
+        progress.incentive?.rewardAmount || 0,
+        progress.incentive?.branchId || null
       );
 
       await prisma.agentIncentiveProgress.update({

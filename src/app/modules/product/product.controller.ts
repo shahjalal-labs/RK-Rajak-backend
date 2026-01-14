@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response, query } from 'express';
 import { productServices } from "./product.service";
 import sendResponse from "../../../shared/sendResponse";
 import catchAsync from "../../../shared/catchAsync";
@@ -44,7 +44,7 @@ const getAllProductsForBuyer = catchAsync(async (_req: Request, res: Response) =
 });
 
 const bestSelling = catchAsync(async (_req: Request, res: Response) => {
-  const result = await productServices.bestSelling();
+  const result = await productServices.bestSelling(_req.query);
   sendResponse(res, {
     success: true,
     statusCode: 200,

@@ -1,6 +1,7 @@
 import { Review } from "@prisma/client";
 import prisma from "../../../shared/prisma";
 import ApiError from "../../../errors/ApiErrors";
+import { createAdminNotification } from "../notifications/notification.services";
 
 const createReview = async (
   data: Review,
@@ -14,7 +15,7 @@ const createReview = async (
     throw new ApiError(404, "Product not found");
   }
 
-  return await prisma.$transaction(async (tx) => {
+  const newReview = await prisma.$transaction(async (tx) => {
     // 1. Create the new review
     const newReview = await tx.review.create({
       data: {
@@ -39,6 +40,19 @@ const createReview = async (
 
     return newReview;
   });
+
+  // Admin notification: new review placed
+  try {
+    await createAdminNotification({
+      title: "New Review Placed",
+      content: `A new review (rating: ${data.rating}) was placed for product ${product.name}.`,
+      branchId: product.branchId,
+    });
+  } catch (error) {
+    console.error("Failed to create admin notification for new review:", error);
+  }
+
+  return newReview;
 };
 
 

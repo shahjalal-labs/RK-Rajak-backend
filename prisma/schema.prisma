@@ -622,14 +622,16 @@ model contact {
 
 // ---------------------------------  Notification Models -------------------------///
 model Notification {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  receiverId String?  @db.ObjectId
-  senderId   String?  @db.ObjectId
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  receiverId String?   @db.ObjectId
+  senderId   String?   @db.ObjectId
   title      String?
+  userType   UserRole? //Only for admin notifications
+  branchId   String?   @db.ObjectId
   content    String
-  isRead     Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@map("notifications")
 }
