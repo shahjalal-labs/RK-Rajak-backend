@@ -471,7 +471,7 @@ model totalProductOrder {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  @@unique([productId, orderDateString])
+  @@unique([productId, orderDateString, branchId])
   @@map("totalProductOrders")
 }
 

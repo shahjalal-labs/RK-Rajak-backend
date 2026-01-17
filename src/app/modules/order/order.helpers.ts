@@ -192,10 +192,10 @@ export const updateDailyProductAggregation = async (
 
   const existing = await tx.totalProductOrder.findUnique({
     where: {
-      productId_orderDateString: {
+      productId_orderDateString_branchId: {
         productId,
         orderDateString: dateString,
-        branchId: branchId
+        branchId: branchId!,
       },
     },
   });
