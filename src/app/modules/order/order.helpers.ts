@@ -821,17 +821,19 @@ export const adjustOrderProduct = async (
  * Get daily product summary (for admin dashboard)
  */
 export const getDailyProductSummary = async (
-  dateString?: any,
+  startDate?: any,
+  endDate?: any,
   branchId?: string,
   productCategoryId?: string,
   packageType?: packageType
 ) => {
-  const targetDate = dateString || getDateString();
+  const startDateString = startDate || getDateString();
+  const endDateString = endDate || getDateString();
   return await prisma.totalProductOrder.findMany({
     where: {
-      orderDateString: targetDate ? targetDate : undefined,
+      orderDateString: startDate || endDate ? { gte: startDateString, lte: endDateString } : undefined,
       branchId: branchId ? branchId : undefined,
-      productCategoryId: productCategoryId ? productCategoryId : undefined
+      productCategoryId: productCategoryId ? productCategoryId : undefined,
     },
     include: {
       product: {

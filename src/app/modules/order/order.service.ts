@@ -860,10 +860,11 @@ const getAllDailyOrders = async (queryParams: any) => {
  * Get daily product summary
  */
 const getDailyDispatch = async (queryParams?: any) => {
-  const { dateString, branchId, productCategoryId, packageType } =
+  const { startDate, endDate, branchId, productCategoryId, packageType } =
     queryParams || {};
   return await getDailyProductSummary(
-    dateString,
+    startDate,
+    endDate,
     branchId,
     productCategoryId,
     packageType
