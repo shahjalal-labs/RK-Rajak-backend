@@ -162,11 +162,28 @@ const GlobalErrorHandler = (
     ];
   }
 
+  // Sanitize error object to prevent circular structure errors
+  const sanitizeError = (err: any) => {
+    if (!err) return undefined;
+    
+    try {
+      // Only include safe, non-circular properties
+      return {
+        name: err.name,
+        message: err.message,
+        code: err.code,
+        statusCode: err.statusCode,
+      };
+    } catch (e) {
+      return { message: "Error details unavailable" };
+    }
+  };
+
   res.status(statusCode).json({
     success: false,
     message,
     errorMessages,
-    err: error,
+    err: config.env !== "production" ? sanitizeError(error) : undefined,
     stack: config.env !== "production" ? error?.stack : undefined,
   });
 };

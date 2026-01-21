@@ -3,7 +3,7 @@ import ApiError from "../../../errors/ApiErrors";
 import { User, UserLocation, UserRole } from "@prisma/client";
 import generateOTP from "../../../helpers/generateOtp";
 import { getDistance } from "./auth.helpers";
-import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import { TwoFactor } from "../../../helpers/twofactor";
 
 const buyerLoginIntoDB = async (payload: { phone: string }) => {
@@ -46,7 +46,7 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
       },
       (error: any) => {
         console.error("OTP Error:", error);
-      }
+      },
     );
 
     return { phone: payload.phone, otp, status: "new" };
@@ -54,7 +54,7 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
   if (user.status === "Blocked") {
     throw new ApiError(
       400,
-      "Your account is blocked, please contact Admin or super Admin"
+      "Your account is blocked, please contact Admin or super Admin",
     );
   }
 
@@ -99,7 +99,7 @@ const buyerLoginIntoDB = async (payload: { phone: string }) => {
     },
     (error: any) => {
       console.error("Error:", error);
-    }
+    },
   );
 
   return { phone: payload.phone, otp, status: "existing" };
@@ -120,7 +120,7 @@ const authLoginIntoDB = async (payload: {
   if (user.status === "Blocked") {
     throw new ApiError(
       400,
-      "Your account is blocked, please contact please contact Owner/ superAdmin"
+      "Your account is blocked, please contact please contact Owner/ superAdmin",
     );
   }
 
@@ -162,7 +162,7 @@ const authLoginIntoDB = async (payload: {
     },
     (error: any) => {
       console.error("Error:", error);
-    }
+    },
   );
 
   return { phone: payload.phone, otp };
@@ -227,24 +227,33 @@ const getProfileFromDB = async (userId: string) => {
 const updateProfileIntoDB = async (
   payload: User,
   userId: string,
-  file: Express.Multer.File
+  file: Express.Multer.File | undefined,
 ) => {
+  console.log({ payload, userId, file });
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  const isExistNum = await prisma.user.findFirst({
-    where: {
-      phone: payload.phone,
-    },
-  });
   if (!user) {
     throw new ApiError(404, "user not found for edit user");
   }
-  if (isExistNum && isExistNum.id !== userId) {
-    throw new ApiError(400, "Phone number already in use by another user");
+  if (payload.phone) {
+    const isExistNum = await prisma.user.findFirst({
+      where: {
+        phone: payload.phone,
+      },
+    });
+    if (user.phone !== payload.phone) {
+      if (isExistNum) {
+        throw new ApiError(
+          400,
+          "Phone number already in use by another user....!!",
+        );
+      }
+    }
   }
+
   if (user.status === "Blocked") {
     throw new ApiError(
       400,
-      "Your account is blocked, please contact please contact Owner/ superAdmin"
+      "Your account is blocked, please contact Owner/ superAdmin",
     );
   }
 
@@ -254,19 +263,30 @@ const updateProfileIntoDB = async (
     profileImage = (await uploadToDigitalOceanAWS(file)).Location;
   }
 
+  //   {
+  //     "fullName": "Roton",
+  //     "phone": "1499840000",
+  //     "email": "roton01@gmail.com",
+  //     "address": "rampura, banasree"
+  // }
+
   await prisma.user.update({
     where: { id: userId },
     data: {
-      ...payload,
+      fullName: payload.fullName || user.fullName,
+      phone: payload.phone || user.phone,
+      email: payload.email || user.email,
+      address: payload.address || user.address,
       profileImage: file ? profileImage : user.profileImage,
       isProfileComplete: true,
     },
   });
   return;
 };
+
 const userLocationUpdateInDB = async (
   userId: string,
-  userLocation: UserLocation
+  userLocation: UserLocation,
 ) => {
   await prisma.userLocation.upsert({
     where: {
@@ -288,11 +308,11 @@ const userLocationUpdateInDB = async (
   const nearestBranch = branches.reduce((prev, curr) => {
     const prevDistance = getDistance(
       { latitude: userLocation.latitude, longitude: userLocation.longitude },
-      { latitude: prev.latitude, longitude: prev.longitude }
+      { latitude: prev.latitude, longitude: prev.longitude },
     );
     const currDistance = getDistance(
       { latitude: userLocation.latitude, longitude: userLocation.longitude },
-      { latitude: curr.latitude, longitude: curr.longitude }
+      { latitude: curr.latitude, longitude: curr.longitude },
     );
     return currDistance < prevDistance ? curr : prev;
   });

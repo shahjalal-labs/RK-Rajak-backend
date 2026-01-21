@@ -1,5 +1,5 @@
 import { PrismaClient, product, branch, UserRole } from "@prisma/client";
-import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import ApiError from "../../../errors/ApiErrors";
 import {
   GetAllProductsResponse,

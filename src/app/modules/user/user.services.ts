@@ -4,10 +4,9 @@ import { jwtHelpers } from "../../../helpers/jwtHelpers";
 import config from "../../../config";
 import prisma from "../../../shared/prisma";
 import generateOTP from "../../../helpers/generateOtp";
-import { uploadInSpace } from "../../../shared/UploadHelper";
 import getModelKeys from "../../../helpers/getModelKeys";
 import QueryBuilder from "../../builder/QueryBuilder";
-import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import { userCreationByOwner } from "./user.const";
 import httpStatus from "http-status";
 import {
@@ -834,7 +833,7 @@ const updateUser = async (
   let profileImage;
 
   if (file) {
-    profileImage = await uploadInSpace(file, "users/profileImage");
+    profileImage = (await uploadToDigitalOceanAWS(file)).Location;
   }
 
   const updatedUser = await prisma.user.update({

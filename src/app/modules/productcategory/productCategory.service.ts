@@ -2,7 +2,7 @@ import { PrismaClient, productCategory, branch } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { JwtPayload } from "jsonwebtoken";
-import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 const prisma = new PrismaClient();
 
 const createProductCategory = async (

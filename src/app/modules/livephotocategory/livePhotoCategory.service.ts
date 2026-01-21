@@ -1,7 +1,7 @@
 import { livePhotoCategory, PrismaClient } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 const prisma = new PrismaClient();
 
 const createLivePhotoCategory = async (

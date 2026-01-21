@@ -25,7 +25,7 @@ import {
   getDailyProductSummary,
 } from "./order.helpers";
 import { JwtPayload } from "jsonwebtoken";
-import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import {
   updateDriverProgressOnDelivery,
   updateDriverProgressOnAssignment,

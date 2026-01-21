@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { uploadToDigitalOceanAWS } from '../../../helpers/uploadToDigitalOceanAWS';
+import { uploadToDigitalOceanAWS } from '../../../helpers/uploadToAWSS3';
 import ApiError from '../../../errors/ApiErrors';
 import httpStatus from 'http-status';
 

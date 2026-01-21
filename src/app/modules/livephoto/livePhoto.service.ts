@@ -1,7 +1,7 @@
 import { livePhoto, PrismaClient } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToDigitalOceanAWS";
+import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import prisma from "../../../shared/prisma";
 
 const createLivePhoto = async (
