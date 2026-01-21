@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
-import fs from "fs";
 import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import ffprobeStatic from "ffprobe-static";
