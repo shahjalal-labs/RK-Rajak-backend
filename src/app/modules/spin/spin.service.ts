@@ -74,6 +74,7 @@ const setupSpinValues = async (data: {
 };
 
 const getCurrentMonthSpinValuesForcustomer = async (customerId: string) => {
+  console.log(`working spin value`);
   const customer = await prisma.user.findUnique({
     where: { id: customerId, role: "Customer" },
   });
@@ -249,4 +250,3 @@ export const spinServices = {
   updateSpin,
   deleteSpin,
 };
-
