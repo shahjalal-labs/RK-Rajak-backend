@@ -61,14 +61,14 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
   if (!user.branchId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Please set you Location from profile!"
+      "Please set you Location from profile!",
     );
   }
 
   if (user.isProfileComplete === false) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Please complete your profile to place order!"
+      "Please complete your profile to place order!",
     );
   }
 
@@ -101,17 +101,17 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     if (!dbProduct) {
       throw new ApiError(
         httpStatus.NOT_FOUND,
-        `Product not found: ${p.productId}`
+        `Product not found: ${p.productId}`,
       );
     }
 
     const variation = dbProduct.productVariation.find(
-      (v) => v.id === p.variationId
+      (v) => v.id === p.variationId,
     );
     if (!variation) {
       throw new ApiError(
         httpStatus.NOT_FOUND,
-        `Variation not found for product: ${dbProduct.name}`
+        `Variation not found for product: ${dbProduct.name}`,
       );
     }
 
@@ -143,7 +143,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         shippingAddressId,
         user.branchId!,
         PaymentMethod.COD,
-        tx
+        tx,
       );
 
       // Merge or create OrderProducts with snapshot pricing
@@ -158,7 +158,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
           p.perQuantityRealPrice,
           p.snapshotWeightPerUnit,
           tx,
-          "COD"
+          "COD",
         );
         orderProducts.push(orderProduct);
 
@@ -173,7 +173,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
           "add",
           tx,
           p.categoryId,
-          user.branchId!
+          user.branchId!,
         );
       }
 
@@ -183,7 +183,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         tx,
         0,
         handlingCharge,
-        note
+        note,
       );
 
       // Fetch updated order
@@ -205,7 +205,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
     },
     {
       timeout: 15000, // 15 seconds timeout for complex order operations
-    }
+    },
   );
 
   // Send notification to customer
@@ -215,7 +215,7 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
         userId,
         `Your order has been placed successfully! Total amount: ₹${result.totalAmount}. We'll notify you once it's confirmed.`,
         undefined,
-        "Order Placed"
+        "Order Placed",
       );
     }
   } catch (error) {
@@ -234,7 +234,10 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
       });
     }
   } catch (error) {
-    console.error("Failed to create admin notification for order placed:", error);
+    console.error(
+      "Failed to create admin notification for order placed:",
+      error,
+    );
   }
 
   // 🔔 Broadcast order placed event via WebSocket
@@ -274,14 +277,14 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
   if (!user.branchId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Please set you Location from profile!"
+      "Please set you Location from profile!",
     );
   }
 
   if (user.isProfileComplete === false) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Please complete your profile to place order!"
+      "Please complete your profile to place order!",
     );
   }
 
@@ -318,17 +321,17 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     if (!dbProduct) {
       throw new ApiError(
         httpStatus.NOT_FOUND,
-        `Product not found: ${p.productId}`
+        `Product not found: ${p.productId}`,
       );
     }
 
     const variation = dbProduct.productVariation.find(
-      (v) => v.id === p.variationId
+      (v) => v.id === p.variationId,
     );
     if (!variation) {
       throw new ApiError(
         httpStatus.NOT_FOUND,
-        `Variation not found for product: ${dbProduct.name}`
+        `Variation not found for product: ${dbProduct.name}`,
       );
     }
 
@@ -352,7 +355,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
   if (user.Wallet.balance < orderTotal) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Insufficient wallet balance. Available: ₹${user.Wallet.balance}, Required: ₹${orderTotal}`
+      `Insufficient wallet balance. Available: ₹${user.Wallet.balance}, Required: ₹${orderTotal}`,
     );
   }
 
@@ -373,7 +376,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         shippingAddressId,
         user.branchId!,
         PaymentMethod.Wallet,
-        tx
+        tx,
       );
 
       // Update wallet amount used
@@ -395,7 +398,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
           p.perQuantityRealPrice,
           p.snapshotWeightPerUnit,
           tx,
-          "Wallet"
+          "Wallet",
         );
 
         // Update aggregation
@@ -409,7 +412,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
           "add",
           tx,
           p.categoryId,
-          user.branchId!
+          user.branchId!,
         );
       }
 
@@ -419,7 +422,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
         tx,
         0,
         handlingCharge,
-        note
+        note,
       );
 
       // Record wallet transaction
@@ -452,7 +455,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     },
     {
       timeout: 15000, // 15 seconds timeout for complex order operations
-    }
+    },
   );
 
   // 🔔 Broadcast order placed event via WebSocket
@@ -464,7 +467,7 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     console.error("Failed to broadcast order event:", error);
   }
 
-   // Admin notification: new order placed (Wallet)
+  // Admin notification: new order placed (Wallet)
   try {
     if (result) {
       await createAdminNotification({
@@ -476,7 +479,10 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
       });
     }
   } catch (error) {
-    console.error("Failed to create admin notification for wallet order placed:", error);
+    console.error(
+      "Failed to create admin notification for wallet order placed:",
+      error,
+    );
   }
 
   return result;
@@ -500,7 +506,7 @@ const createOrder = async (payload: ICreateOrderPayload) => {
   if (userDuesCount >= 3) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "You have 3 pending dues. Please clear your dues to place new orders."
+      "You have 3 pending dues. Please clear your dues to place new orders.",
     );
   }
 
@@ -517,7 +523,7 @@ const createOrder = async (payload: ICreateOrderPayload) => {
 //** BULK ORDER BY AGNET FOR HIS OWN ASSIGNED CUSTOMERS */
 
 const createOrderByAgentForCustomer = async (
-  payload: ICreateOrderPayloadByAgentForCustomer
+  payload: ICreateOrderPayloadByAgentForCustomer,
 ) => {
   const {
     userId: agentId,
@@ -576,13 +582,13 @@ const createOrderByAgentForCustomer = async (
     }
 
     const variation = dbProduct.productVariation.find(
-      (v) => v.id === p.variationId
+      (v) => v.id === p.variationId,
     );
 
     if (!variation) {
       throw new ApiError(
         404,
-        `Variation not found for product: ${dbProduct.name}`
+        `Variation not found for product: ${dbProduct.name}`,
       );
     }
 
@@ -615,7 +621,7 @@ const createOrderByAgentForCustomer = async (
         shippingAddressId,
         customer.branchId!,
         paymentMethod,
-        tx
+        tx,
       );
 
       // Merge or create OrderProducts with agent-provided pricing
@@ -630,7 +636,7 @@ const createOrderByAgentForCustomer = async (
           p.perQuantityRealPrice,
           p.snapshotWeightPerUnit,
           tx,
-          paymentMethod === PaymentMethod.COD ? "COD" : "Wallet"
+          paymentMethod === PaymentMethod.COD ? "COD" : "Wallet",
         );
         orderProducts.push(orderProduct);
 
@@ -645,7 +651,7 @@ const createOrderByAgentForCustomer = async (
           "add",
           tx,
           p.categoryId,
-          customer.branchId!
+          customer.branchId!,
         );
       }
 
@@ -655,7 +661,7 @@ const createOrderByAgentForCustomer = async (
         tx,
         0,
         handlingCharge,
-        note
+        note,
       );
 
       // Fetch updated order
@@ -677,7 +683,7 @@ const createOrderByAgentForCustomer = async (
     },
     {
       timeout: 15000, // 15 seconds timeout for complex order operations
-    }
+    },
   );
 
   // 🔔 Broadcast order placed event via WebSocket
@@ -703,7 +709,7 @@ const createOrderByAgentForCustomer = async (
   } catch (error) {
     console.error(
       "Failed to create admin notification for agent order placed:",
-      error
+      error,
     );
   }
 
@@ -867,7 +873,7 @@ const getDailyDispatch = async (queryParams?: any) => {
     endDate,
     branchId,
     productCategoryId,
-    packageType
+    packageType,
   );
 };
 /**
@@ -892,7 +898,7 @@ const rejectProductByAdmin = async (totalorderProductId: string) => {
 
 const adjustProductQuantity = async (
   orderProductId: string,
-  newWeight: number
+  newWeight: number,
 ) => {
   return await adjustOrderProduct(orderProductId, newWeight);
 };
@@ -963,7 +969,7 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Invalid date format. Please provide valid dates."
+        "Invalid date format. Please provide valid dates.",
       );
     }
 
@@ -978,7 +984,7 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
     if (isNaN(start.getTime())) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Invalid start date format. Please provide a valid date."
+        "Invalid start date format. Please provide a valid date.",
       );
     }
 
@@ -991,7 +997,7 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
     if (isNaN(end.getTime())) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Invalid end date format. Please provide a valid date."
+        "Invalid end date format. Please provide a valid date.",
       );
     }
 
@@ -1017,7 +1023,7 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
 
 const getBranchDayWiseCalculations = async (
   user: JwtPayload,
-  queryParams?: any
+  queryParams?: any,
 ) => {
   const { startDate, endDate, type, branchId } = queryParams || {};
   // Implement the logic to get branch day-wise calculations
@@ -1033,7 +1039,7 @@ const getBranchDayWiseCalculations = async (
   if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Invalid date format. Please provide valid dates."
+      "Invalid date format. Please provide valid dates.",
     );
   }
 
@@ -1338,7 +1344,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   if (!isDriverExist) {
     throw new ApiError(
       httpStatus.NOT_FOUND,
-      "Driver not found . please send a valid driverId"
+      "Driver not found . please send a valid driverId",
     );
   }
 
@@ -1355,26 +1361,26 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   if (existingOrders.length !== ordersIds.length) {
     throw new ApiError(
       httpStatus.NOT_FOUND,
-      "Some provided order IDs do not exist"
+      "Some provided order IDs do not exist",
     );
   }
 
   // check if any order is already assigned and also return the name which one is already assigned
   const alreadyAssigned = existingOrders.filter(
-    (order) => order.driverAssignments && order.driverAssignments.length > 0
+    (order) => order.driverAssignments && order.driverAssignments.length > 0,
   );
 
   if (alreadyAssigned.length > 0) {
     const assignedIds = alreadyAssigned.map((o) => o.id).join(", ");
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `These orders are already assigned to driver: ${assignedIds}`
+      `These orders are already assigned to driver: ${assignedIds}`,
     );
   }
 
   // check is this order any product is pending  // if still some of product pending then do not allow to assign!
   const pendingOrders = existingOrders.filter(
-    (order) => order.status === OrderStatus.Pending
+    (order) => order.status === OrderStatus.Pending,
   );
   if (pendingOrders.length > 0) {
     const pendingIds = pendingOrders
@@ -1382,7 +1388,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
       .join(", ");
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `There are pending products in these orders: ${pendingIds}`
+      `There are pending products in these orders: ${pendingIds}`,
     );
   }
   // check is this order cancelled or delivered
@@ -1396,7 +1402,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
     const invalidStatusIds = invalidStatusOrders.map((o) => o.id).join(", ");
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `These orders are either Cancelled or Delivered : ${invalidStatusIds}`
+      `These orders are either Cancelled or Delivered : ${invalidStatusIds}`,
     );
   }
 
@@ -1419,7 +1425,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
     },
     {
       timeout: 10000, // 10 seconds
-    }
+    },
   );
 
   // =================== INCENTIVE TRACKING ===================
@@ -1429,7 +1435,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   } catch (error) {
     console.error(
       "Error updating driver incentive progress on assignment:",
-      error
+      error,
     );
     // Don't fail the assignment if incentive tracking fails
   }
@@ -1443,7 +1449,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
         ordersIds.length > 1 ? "s" : ""
       } for delivery. Check your delivery list!`,
       undefined,
-      "New Orders Assigned"
+      "New Orders Assigned",
     );
 
     // Notify customers that their order is on the way
@@ -1453,7 +1459,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
           order.userId,
           `Good news! Your order is now on the way. Our delivery driver will reach you soon.`,
           undefined,
-          "Order Out for Delivery"
+          "Order Out for Delivery",
         );
       }
     }
@@ -1786,7 +1792,7 @@ const getTotalAssignedOrderProducts = async (driverId: string) => {
 
 const getTotalAssignedReturnedProducts = async (
   user: JwtPayload,
-  query: any
+  query: any,
 ) => {
   // Get today or query dates
   const today = getDateString();
@@ -1892,7 +1898,7 @@ const getTotalAssignedReturnedProducts = async (
 
   // Filter only products with returned weight > 0
   const filteredGroupedProducts = groupedProducts.filter(
-    (gp) => (gp._sum.returnedWeight || 0) > 0
+    (gp) => (gp._sum.returnedWeight || 0) > 0,
   );
 
   if (filteredGroupedProducts.length === 0) {
@@ -2021,7 +2027,7 @@ const getTotalAssignedReturnedProductsForSuperAdmin = async (query: any) => {
 
   // Filter only products with returned weight > 0
   const filteredGroupedProducts = groupedProducts.filter(
-    (gp) => (gp._sum.returnedWeight || 0) > 0
+    (gp) => (gp._sum.returnedWeight || 0) > 0,
   );
 
   if (filteredGroupedProducts.length === 0) {
@@ -2102,7 +2108,7 @@ const getTotalAssignedReturnedProductsForSuperAdmin = async (query: any) => {
         totalReturnedPrice: aggregates.totalReturnedPrice,
         orderCount: aggregates.orderCount,
       };
-    }
+    },
   );
 
   return {
@@ -2122,7 +2128,7 @@ const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
   if (!assignment) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "You are not assigned to this order"
+      "You are not assigned to this order",
     );
   }
   const order = await prisma.dailyOrder.findUnique({
@@ -2204,7 +2210,7 @@ const markOrderAsDelivered = async (
   orderId: string,
   driverId: string,
   payload: MarkOrderAsDeliveredPayload,
-  deliveryProof?: Express.Multer.File
+  deliveryProof?: Express.Multer.File,
 ) => {
   // Validate assignment
   const deliveryDate = new Date();
@@ -2218,7 +2224,7 @@ const markOrderAsDelivered = async (
   if (!assignment) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
-      "You are not assigned to this order"
+      "You are not assigned to this order",
     );
   }
 
@@ -2226,19 +2232,21 @@ const markOrderAsDelivered = async (
   if (!payload.payments || payload.payments.length === 0) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "At least one payment method is required"
+      "At least one payment method is required",
     );
   }
 
   const totalPaid = payload.payments.reduce(
     (sum, p) => sum + (Number(p.amount) || 0),
-    0
+    0,
   );
 
   let PaymentMethodPriority: PaymentMethod;
 
   //** ---- Jei payment use kore max amount pay korse seta assign korbo ------------------ */
-  const sortPayments = payload.payments.sort((a, b) => Number(b.amount) - Number(a.amount));
+  const sortPayments = payload.payments.sort(
+    (a, b) => Number(b.amount) - Number(a.amount),
+  );
   PaymentMethodPriority = sortPayments[0].method as PaymentMethod;
 
   let deliveryProofUrl: string | undefined = undefined;
@@ -2286,7 +2294,7 @@ const markOrderAsDelivered = async (
     },
     {
       timeout: 10000, // 10 seconds
-    }
+    },
   );
 
   // give referral bonus only for first delivery
@@ -2337,7 +2345,7 @@ const markOrderAsDelivered = async (
         },
         {
           timeout: 10000, // 10 seconds
-        }
+        },
       );
     }
   }
@@ -2389,7 +2397,7 @@ const markOrderAsDelivered = async (
         order.userId,
         `Your order has been delivered successfully! Total paid: ₹${totalPaid}. Thank you for your business!`,
         undefined,
-        "Order Delivered"
+        "Order Delivered",
       );
     }
   } catch (error) {
@@ -2404,17 +2412,20 @@ const markOrderAsDelivered = async (
       branchId: order?.branchId || null,
     });
   } catch (error) {
-    console.error("Failed to create admin notification for order delivery:", error);
+    console.error(
+      "Failed to create admin notification for order delivery:",
+      error,
+    );
   }
 
   return {
-    userId : order?.userId,
+    userId: order?.userId,
     message: "Order marked as delivered successfully",
-  }
+  };
 };
 
 const cancelOrderByCustomer = async (
-  payload: ICancelOrderByCustomerPayload
+  payload: ICancelOrderByCustomerPayload,
 ) => {
   const { orderId, productId, reason } = payload;
 
@@ -2438,7 +2449,7 @@ const cancelOrderByCustomer = async (
   ) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Order is already ${order.status.toLowerCase()}`
+      `Order is already ${order.status.toLowerCase()}`,
     );
   }
 
@@ -2480,7 +2491,7 @@ const cancelOrderByCustomer = async (
             "return",
             tx,
             "",
-            order.branchId!
+            order.branchId!,
           );
         }
 
@@ -2504,7 +2515,7 @@ const cancelOrderByCustomer = async (
       },
       {
         timeout: 15000, // 15 seconds timeout for complex refund operations
-      }
+      },
     );
 
     // Send notification to customer about order cancellation
@@ -2518,7 +2529,7 @@ const cancelOrderByCustomer = async (
               : ""
           }`,
           undefined,
-          "Order Cancelled"
+          "Order Cancelled",
         );
       }
     } catch (error) {
@@ -2533,13 +2544,13 @@ const cancelOrderByCustomer = async (
   // =====================================================================================
 
   const orderProduct = order.OrderProducts.find(
-    (op) => op.productId === productId
+    (op) => op.productId === productId,
   );
 
   if (!orderProduct) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Product ${productId} not found in this order`
+      `Product ${productId} not found in this order`,
     );
   }
   // Find the specific product in the order and is already returned or Confirmed or rejected
@@ -2550,7 +2561,7 @@ const cancelOrderByCustomer = async (
   ) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Product ${productId} is already ${orderProduct.status.toLowerCase()}`
+      `Product ${productId} is already ${orderProduct.status.toLowerCase()}`,
     );
   }
 
@@ -2576,7 +2587,7 @@ const cancelOrderByCustomer = async (
         "return",
         tx,
         "",
-        order.branchId!
+        order.branchId!,
       );
 
       // refund logic if paid by wallet
@@ -2613,7 +2624,7 @@ const cancelOrderByCustomer = async (
     },
     {
       timeout: 15000, // 15 seconds timeout for complex refund operations
-    }
+    },
   );
 
   // DONE : Check if all products are returned then update main order status to returned
@@ -2622,7 +2633,7 @@ const cancelOrderByCustomer = async (
     include: { OrderProducts: true },
   });
   const allReturned = updatedOrder?.OrderProducts.every(
-    (op) => op.status === "Returned" || op.status === "Cancelled"
+    (op) => op.status === "Returned" || op.status === "Cancelled",
   );
 
   if (allReturned) {
@@ -2637,7 +2648,7 @@ const cancelOrderByCustomer = async (
 
 const returnOrderProduct = async (
   orderProductId: string,
-  payload: IOrderAdjustMent
+  payload: IOrderAdjustMent,
 ) => {
   const { returnWeight, returnPrice } = payload;
 
@@ -2664,7 +2675,7 @@ const returnOrderProduct = async (
   if (returnWeight > maxReturnableWeight) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Return weight exceeds maximum returnable weight of ${maxReturnableWeight} kg`
+      `Return weight exceeds maximum returnable weight of ${maxReturnableWeight} kg`,
     );
   }
 
@@ -2673,7 +2684,7 @@ const returnOrderProduct = async (
   if (returnPrice > maxReturnablePrice) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Return price exceeds maximum returnable price of ${maxReturnablePrice}`
+      `Return price exceeds maximum returnable price of ${maxReturnablePrice}`,
     );
   }
 
@@ -2702,7 +2713,7 @@ const returnOrderProduct = async (
       const refundAmount =
         prevAcceptedPrice > 0
           ? round2(
-              (walletAmountUsedForProduct * returnPrice) / prevAcceptedPrice
+              (walletAmountUsedForProduct * returnPrice) / prevAcceptedPrice,
             )
           : 0;
 
@@ -2739,7 +2750,7 @@ const returnOrderProduct = async (
         "return",
         tx,
         "",
-        orderProduct?.order?.branchId!
+        orderProduct?.order?.branchId!,
       );
 
       // 7) Wallet refund transaction (if any)
@@ -2765,7 +2776,7 @@ const returnOrderProduct = async (
       // 8) Update main order totals: totalReturnedWeight/Price increment, totalAcceptedWeight/Price decrement
       // Also adjust RemainingAmount: decrease by (returnPrice - refundAmount)
       const remainingDecrement = round2(
-        Math.max(0, returnPrice - refundAmount)
+        Math.max(0, returnPrice - refundAmount),
       );
 
       // Ensure RemainingAmount not become negative
@@ -2780,7 +2791,7 @@ const returnOrderProduct = async (
 
       const prevRemaining = orderRow?.RemainingAmount || 0;
       const newRemaining = round2(
-        Math.max(0, prevRemaining - remainingDecrement)
+        Math.max(0, prevRemaining - remainingDecrement),
       );
 
       await tx.dailyOrder.update({
@@ -2804,7 +2815,7 @@ const returnOrderProduct = async (
     },
     {
       timeout: 15000, // 15 seconds timeout for complex refund operations
-    }
+    },
   ); // end transaction
 
   // 9) AFTER transaction: check if all products are returned to set main order status to Returned
@@ -2820,7 +2831,7 @@ const returnOrderProduct = async (
   }
 
   const allReturned = updatedOrder.OrderProducts.every(
-    (op) => op.status === "Returned" || op.status === "Cancelled"
+    (op) => op.status === "Returned" || op.status === "Cancelled",
   );
 
   if (allReturned) {
@@ -2930,7 +2941,7 @@ const getSalesHistory = async (query: any) => {
 
   // 💥 Flatten the data here and add agent name/image
   const agentIds = Array.from(
-    new Set(rawData.map((item) => item.user?.agentId).filter(Boolean))
+    new Set(rawData.map((item) => item.user?.agentId).filter(Boolean)),
   ) as string[];
   let agentMap: Record<
     string,
@@ -2941,10 +2952,16 @@ const getSalesHistory = async (query: any) => {
       where: { id: { in: agentIds } },
       select: { id: true, fullName: true, profileImage: true },
     });
-    agentMap = agents.reduce((acc, agent) => {
-      acc[agent.id] = agent;
-      return acc;
-    }, {} as Record<string, { id: string; fullName: string | null; profileImage: string | null }>);
+    agentMap = agents.reduce(
+      (acc, agent) => {
+        acc[agent.id] = agent;
+        return acc;
+      },
+      {} as Record<
+        string,
+        { id: string; fullName: string | null; profileImage: string | null }
+      >,
+    );
   }
 
   const formattedData = rawData.map((item) => {
@@ -3054,7 +3071,7 @@ const getUserOrdersOverview = async (query: any, agentId: string) => {
 
 const getAssignOrderOverviewForDriver = async (
   query: any,
-  driverId: string
+  driverId: string,
 ) => {
   let { startDate, endDate } = query || {};
 
@@ -3091,7 +3108,7 @@ const getAssignOrderOverviewForDriver = async (
           status: Array.isArray(statuses)
             ? {
                 in: (statuses as string[]).map(
-                  (s) => OrderStatus[s as keyof typeof OrderStatus]
+                  (s) => OrderStatus[s as keyof typeof OrderStatus],
                 ),
               }
             : (OrderStatus as any)[statuses as keyof typeof OrderStatus],
@@ -3203,7 +3220,7 @@ const getAssignOrderOverviewForDriver = async (
     const detailedOrders = orders.map((order) => {
       // Calculate delivered and returned products
       const deliveredProducts = order.OrderProducts.filter(
-        (op) => (op.acceptedWeight || 0) > 0
+        (op) => (op.acceptedWeight || 0) > 0,
       ).map((op) => {
         const productName = op.product?.name || "";
         const weight = op.acceptedWeight || 0;
@@ -3211,7 +3228,7 @@ const getAssignOrderOverviewForDriver = async (
       });
 
       const returnedProducts = order.OrderProducts.filter(
-        (op) => (op.returnedWeight || 0) > 0 || (op.rejectedWeight || 0) > 0
+        (op) => (op.returnedWeight || 0) > 0 || (op.rejectedWeight || 0) > 0,
       ).map((op) => {
         const productName = op.product?.name || "";
         const weight = (op.returnedWeight || 0) + (op.rejectedWeight || 0);
@@ -3221,7 +3238,7 @@ const getAssignOrderOverviewForDriver = async (
       // Calculate total crates dispatched (using total quantity of all products)
       const totalCrates = order.OrderProducts.reduce(
         (sum, op) => sum + (op.totalQuantity || 0),
-        0
+        0,
       );
 
       // Determine payment methods based on order data

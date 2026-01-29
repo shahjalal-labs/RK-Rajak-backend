@@ -6,8 +6,9 @@ import GlobalErrorHandler from "./app/middlewares/globalErrorHandler";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
 import redisClient from "./helpers/radis";
-import basicAuth  from "express-basic-auth"
+import basicAuth from "express-basic-auth";
 import { bullBoardRouter } from "./bullBoard";
+import { configRoutes } from "./config/viewRoutes";
 
 const app: Application = express();
 const prisma = new PrismaClient();
@@ -28,14 +29,18 @@ app.use(cors());
 // Cashfree webhook needs raw body for signature verification
 app.use(
   "/api/v1/payment/webhook/wallet-recharge",
-  express.raw({ type: "application/json" })
+  express.raw({ type: "application/json" }),
 );
-console.log(`✅ Recharge Webhook URL: https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge`);
+console.log(
+  `✅ Recharge Webhook URL: https://api.absfresh.co.in/api/v1/payment/webhook/wallet-recharge`,
+);
 app.use(
   "/api/v1/payment/webhook/dues-payment",
-  express.raw({ type: "application/json" })
+  express.raw({ type: "application/json" }),
 );
-console.log(`✅ Dues Payment Webhook URL: https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment`);
+console.log(
+  `✅ Dues Payment Webhook URL: https://api.absfresh.co.in/api/v1/payment/webhook/dues-payment`,
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -52,10 +57,11 @@ app.use(
     users: { admin: process.env.BULLBOARD_PASSWORD || "supersecret" },
     challenge: true,
   }),
-  bullBoardRouter
+  bullBoardRouter,
 );
 
 app.use("/api/v1", router);
+app.use("/", configRoutes);
 app.use(GlobalErrorHandler);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
