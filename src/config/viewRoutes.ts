@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-export const privacyPolicy = () => {
+const privacyPolicy = () => {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -147,7 +147,7 @@ export const privacyPolicy = () => {
 </html>`;
 };
 
-export const dataDelete = () => {
+const dataDelete = () => {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -157,115 +157,69 @@ export const dataDelete = () => {
 <style>
  
     * {
- 
       box-sizing: border-box;
- 
     }
  
     body {
- 
       font-family: Arial, sans-serif;
- 
       background-color: #f6f6f6;
- 
       padding: 0;
- 
       margin: 0;
- 
     }
  
     .container {
- 
       max-width: 400px;
- 
       margin: 80px auto;
- 
       background-color: #ffffff;
- 
       padding: 30px;
- 
       border-radius: 10px;
- 
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
- 
     }
  
     h2 {
- 
       color: #d32f2f;
- 
       text-align: center;
- 
       margin-bottom: 20px;
- 
     }
  
     label {
- 
       display: block;
- 
       margin-bottom: 6px;
- 
       font-weight: 600;
- 
     }
  
     input[type="email"],
- 
     input[type="password"] {
- 
       width: 100%;
- 
       padding: 10px;
- 
       margin-bottom: 20px;
- 
       border: 1px solid #ccc;
- 
       border-radius: 6px;
- 
       font-size: 14px;
- 
     }
  
     button {
- 
       width: 100%;
- 
       padding: 12px;
- 
       background-color: #d32f2f;
- 
       color: #ffffff;
- 
       border: none;
- 
       border-radius: 6px;
- 
       font-size: 16px;
- 
       cursor: pointer;
- 
       transition: background-color 0.3s ease;
  
     }
  
     button:hover {
- 
       background-color: #b71c1c;
- 
     }
  
     .note {
- 
       font-size: 13px;
- 
       color: #555;
- 
       text-align: center;
- 
       margin-top: 15px;
- 
     }
 </style>
 </head>
@@ -273,19 +227,15 @@ export const dataDelete = () => {
  
 <div class="container">
 <h2>Delete Your Data</h2>
- 
   <form onsubmit="handleDelete(event)">
 <label for="email">Email</label>
 <input type="email" id="email" name="email" required>
- 
     <label for="password">Password</label>
 <input type="password" id="password" name="password" required>
- 
     <button type="submit">Confirm</button>
 </form>
  
   <div class="note">
- 
     This action is irreversible. Please confirm carefully.
 </div>
 </div>
