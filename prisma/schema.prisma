@@ -383,6 +383,9 @@ model DailyOrder {
   duesClearedAt DateTime?
 
   createdAt         DateTime           @default(now())
+  assignedAt        DateTime?
+  onTheWayAt        DateTime?
+  deliveredAt       DateTime?
   updatedAt         DateTime           @updatedAt
   driverAssignments DriverAssignment[]
 

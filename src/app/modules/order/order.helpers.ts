@@ -1,4 +1,10 @@
-import { PrismaClient, UserRole, PaymentMethod, product, packageType } from "@prisma/client";
+import {
+  PrismaClient,
+  UserRole,
+  PaymentMethod,
+  product,
+  packageType,
+} from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 
@@ -23,7 +29,7 @@ export const getOrCreateDailyOrder = async (
   shippingAddressId: string,
   branchId: string,
   paymentMethod: PaymentMethod,
-  tx: any = prisma
+  tx: any = prisma,
 ) => {
   const dateString = getDateString();
 
@@ -85,7 +91,7 @@ export const mergeOrCreateOrderProduct = async (
   perQuantityRealPrice: number,
   snapshotWeightPerUnit: number,
   tx: any = prisma,
-  method: "COD" | "Wallet"
+  method: "COD" | "Wallet",
 ) => {
   const totalWeight = quantity * snapshotWeightPerUnit;
   const totalPrice = quantity * perQuantitySellingPrice;
@@ -107,7 +113,7 @@ export const mergeOrCreateOrderProduct = async (
     // MERGE: Update existing product
     // Check if this variation already exists
     const existingVariation = existingOrderProduct.OrderProductVariation.find(
-      (v: any) => v.variationId === variationId
+      (v: any) => v.variationId === variationId,
     );
 
     if (existingVariation) {
@@ -186,7 +192,7 @@ export const updateDailyProductAggregation = async (
   operation: "add" | "cancel" | "return",
   tx: any = prisma,
   productCategoryId?: string,
-  branchId?: string
+  branchId?: string,
 ) => {
   const dateString = getDateString();
 
@@ -275,7 +281,7 @@ export const recalculateDailyOrderTotal = async (
   tx: any = prisma,
   decressRemaining: number = 0,
   handlingCharge?: number,
-  note?: string
+  note?: string,
 ) => {
   const orderProducts = await tx.orderProduct.findMany({
     where: {
@@ -309,7 +315,10 @@ export const recalculateDailyOrderTotal = async (
       RemainingAmount: remainingAmount - decressRemaining,
       isDues,
       // increment handling charge if provided
-      handlingCharge: handlingCharge !== undefined ? dailyOrder.handlingCharge + handlingCharge : dailyOrder.handlingCharge,
+      handlingCharge:
+        handlingCharge !== undefined
+          ? dailyOrder.handlingCharge + handlingCharge
+          : dailyOrder.handlingCharge,
       note: `${dailyOrder.note}\n${note || ""}`.trim(),
     },
   });
@@ -319,239 +328,245 @@ export const recalculateDailyOrderTotal = async (
  * Accept (confirm) an OrderProduct by admin
  */
 export const acceptOrderProduct = async (totalOrderProductId: string) => {
-  return await prisma.$transaction(async (tx) => {
-    const totalOrderProduct = await tx.totalProductOrder.findUnique({
-      where: { id: totalOrderProductId },
-    });
-
-    if (!totalOrderProduct) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
-    }
-
-    if (totalOrderProduct.status === "Confirmed") {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        "Order product already confirmed"
-      );
-    }
-
-    await tx.totalProductOrder.update({
-      where: { id: totalOrderProductId },
-      data: {
-        status: "Confirmed",
-        acceptedWeight: totalOrderProduct.totalWeight,
-        acceptedPrice: totalOrderProduct.totalPrice,
-      },
-    });
-
-    // accepted product id
-    const productId = totalOrderProduct.productId;
-
-    // fetch all order and update all and update order products status to confirmed
-    const dailyOrders = await tx.dailyOrder.findMany({
-      where: {
-        id: { in: totalOrderProduct.orderIds },
-      },
-    });
-
-    for (const order of dailyOrders) {
-      const orderProducts = await tx.orderProduct.findMany({
-        where: { orderId: order.id, productId },
+  return await prisma.$transaction(
+    async (tx) => {
+      const totalOrderProduct = await tx.totalProductOrder.findUnique({
+        where: { id: totalOrderProductId },
       });
 
-      if (orderProducts.length === 0) continue; // Skip if no product found
+      if (!totalOrderProduct) {
+        throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
+      }
 
-      const orderTotalWeight = orderProducts.reduce(
-        (sum, prod) => sum + prod.totalWeight!,
-        0
-      );
+      if (totalOrderProduct.status === "Confirmed") {
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          "Order product already confirmed",
+        );
+      }
 
-      const orderTotalPrice = orderProducts.reduce(
-        (sum, prod) => sum + prod.totalPrice!,
-        0
-      );
-
-      // Update each order's products to Confirmed
-      await tx.orderProduct.updateMany({
-        where: { orderId: order.id, productId },
+      await tx.totalProductOrder.update({
+        where: { id: totalOrderProductId },
         data: {
           status: "Confirmed",
-          // need to save exactly this order weight as accepted weight couse totalOrderProduct is for multiple orders
-          acceptedWeight: orderTotalWeight,
-          acceptedPrice: orderTotalPrice,
+          acceptedWeight: totalOrderProduct.totalWeight,
+          acceptedPrice: totalOrderProduct.totalPrice,
         },
       });
 
-      // if all products are confirmed then update order status to confirmed // 27-11-25 - now i think when one product is confirmed then order will be active.
-      await tx.dailyOrder.update({
-        where: { id: order.id },
-        data: {
-          totalAcceptedPrice: { increment: orderTotalPrice },
-          totalAcceptedWeight: { increment: orderTotalWeight },
-          status: "Active",
+      // accepted product id
+      const productId = totalOrderProduct.productId;
+
+      // fetch all order and update all and update order products status to confirmed
+      const dailyOrders = await tx.dailyOrder.findMany({
+        where: {
+          id: { in: totalOrderProduct.orderIds },
         },
       });
-    }
-    return;
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex order operations
-  });
+
+      for (const order of dailyOrders) {
+        const orderProducts = await tx.orderProduct.findMany({
+          where: { orderId: order.id, productId },
+        });
+
+        if (orderProducts.length === 0) continue; // Skip if no product found
+
+        const orderTotalWeight = orderProducts.reduce(
+          (sum, prod) => sum + prod.totalWeight!,
+          0,
+        );
+
+        const orderTotalPrice = orderProducts.reduce(
+          (sum, prod) => sum + prod.totalPrice!,
+          0,
+        );
+
+        // Update each order's products to Confirmed
+        await tx.orderProduct.updateMany({
+          where: { orderId: order.id, productId },
+          data: {
+            status: "Confirmed",
+            // need to save exactly this order weight as accepted weight couse totalOrderProduct is for multiple orders
+            acceptedWeight: orderTotalWeight,
+            acceptedPrice: orderTotalPrice,
+          },
+        });
+
+        // if all products are confirmed then update order status to confirmed // 27-11-25 - now i think when one product is confirmed then order will be active.
+        await tx.dailyOrder.update({
+          where: { id: order.id },
+          data: {
+            totalAcceptedPrice: { increment: orderTotalPrice },
+            totalAcceptedWeight: { increment: orderTotalWeight },
+            status: "Active",
+            onTheWayAt: new Date(),
+          },
+        });
+      }
+      return;
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex order operations
+    },
+  );
 };
 
-
 export const rejectOrderProduct = async (totalorderProductId: string) => {
-  return await prisma.$transaction(async (tx) => {
-    // 1) Load the totalProductOrder aggregation record
-    const totalOrderProduct = await tx.totalProductOrder.findUnique({
-      where: { id: totalorderProductId },
-    });
+  return await prisma.$transaction(
+    async (tx) => {
+      // 1) Load the totalProductOrder aggregation record
+      const totalOrderProduct = await tx.totalProductOrder.findUnique({
+        where: { id: totalorderProductId },
+      });
 
-    if (!totalOrderProduct) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
-    }
+      if (!totalOrderProduct) {
+        throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
+      }
 
-    if (
-      totalOrderProduct.status === "Confirmed" ||
-      totalOrderProduct.status === "Cancelled"
-    ) {
-      throw new ApiError(
-        httpStatus.BAD_REQUEST,
-        `Order product already ${totalOrderProduct.status.toLowerCase()}`
-      );
-    }
+      if (
+        totalOrderProduct.status === "Confirmed" ||
+        totalOrderProduct.status === "Cancelled"
+      ) {
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          `Order product already ${totalOrderProduct.status.toLowerCase()}`,
+        );
+      }
 
-    let decressRemaining = 0;
+      let decressRemaining = 0;
 
-    // 2) Mark the totalProductOrder as cancelled (status only).
-    //    We will let updateDailyProductAggregation handle weight/price adjustments per order
-    await tx.totalProductOrder.update({
-      where: { id: totalorderProductId },
-      data: {
-        status: "Cancelled",
-        rejectedWeight: totalOrderProduct.totalWeight,
-        rejectedPrice: totalOrderProduct.totalPrice,
-      },
-    });
+      // 2) Mark the totalProductOrder as cancelled (status only).
+      //    We will let updateDailyProductAggregation handle weight/price adjustments per order
+      await tx.totalProductOrder.update({
+        where: { id: totalorderProductId },
+        data: {
+          status: "Cancelled",
+          rejectedWeight: totalOrderProduct.totalWeight,
+          rejectedPrice: totalOrderProduct.totalPrice,
+        },
+      });
 
-    const orderIds = totalOrderProduct.orderIds || [];
-    const productId = totalOrderProduct.productId;
+      const orderIds = totalOrderProduct.orderIds || [];
+      const productId = totalOrderProduct.productId;
 
-    // 3) Fetch all related daily orders
-    const dailyOrders = await tx.dailyOrder.findMany({
-      where: {
-        id: { in: orderIds },
-      },
-    });
+      // 3) Fetch all related daily orders
+      const dailyOrders = await tx.dailyOrder.findMany({
+        where: {
+          id: { in: orderIds },
+        },
+      });
 
-    // 4) Iterate each daily order and process cancellation for that specific product
-    for (const order of dailyOrders) {
-      // a) fetch orderProducts for this order & product, INCLUDING order->user->Wallet for refund info
-      const orderProducts = await tx.orderProduct.findMany({
-        where: { orderId: order.id, productId },
-        include: {
-          order: {
-            include: {
-              OrderProducts: true,
-              user: {
-                include: { Wallet: true },
+      // 4) Iterate each daily order and process cancellation for that specific product
+      for (const order of dailyOrders) {
+        // a) fetch orderProducts for this order & product, INCLUDING order->user->Wallet for refund info
+        const orderProducts = await tx.orderProduct.findMany({
+          where: { orderId: order.id, productId },
+          include: {
+            order: {
+              include: {
+                OrderProducts: true,
+                user: {
+                  include: { Wallet: true },
+                },
               },
             },
           },
-        },
-      });
+        });
 
-      if (!orderProducts || orderProducts.length === 0) continue; // nothing to cancel for this order
+        if (!orderProducts || orderProducts.length === 0) continue; // nothing to cancel for this order
 
-      // b) calculate cancelled weight & price for this order (for that product)
-      const orderTotalWeight = orderProducts.reduce(
-        (sum, p) => sum + Number(p.totalWeight || 0),
-        0
-      );
-      const orderTotalPrice = orderProducts.reduce(
-        (sum, p) => sum + Number(p.totalPrice || 0),
-        0
-      );
+        // b) calculate cancelled weight & price for this order (for that product)
+        const orderTotalWeight = orderProducts.reduce(
+          (sum, p) => sum + Number(p.totalWeight || 0),
+          0,
+        );
+        const orderTotalPrice = orderProducts.reduce(
+          (sum, p) => sum + Number(p.totalPrice || 0),
+          0,
+        );
 
-      // c) Update these orderProducts -> mark as Cancelled and set rejected fields
-      await tx.orderProduct.updateMany({
-        where: { orderId: order.id, productId },
-        data: {
-          status: "Cancelled",
-          rejectedWeight: orderTotalWeight,
-          rejectedPrice: orderTotalPrice,
-        },
-      });
+        // c) Update these orderProducts -> mark as Cancelled and set rejected fields
+        await tx.orderProduct.updateMany({
+          where: { orderId: order.id, productId },
+          data: {
+            status: "Cancelled",
+            rejectedWeight: orderTotalWeight,
+            rejectedPrice: orderTotalPrice,
+          },
+        });
 
-      // d) Update dailyOrder aggregates (per-order)
-      //    increment totalRejected*, and set status Cancelled if all products cancelled
-      const nonCancelledCount = await tx.orderProduct.count({
-        where: { orderId: order.id, status: { not: "Cancelled" } },
-      });
+        // d) Update dailyOrder aggregates (per-order)
+        //    increment totalRejected*, and set status Cancelled if all products cancelled
+        const nonCancelledCount = await tx.orderProduct.count({
+          where: { orderId: order.id, status: { not: "Cancelled" } },
+        });
 
-      await tx.dailyOrder.update({
-        where: { id: order.id },
-        data: {
-          totalRejectedWeight: { increment: orderTotalWeight },
-          totalRejectedPrice: { increment: orderTotalPrice },
-          status: nonCancelledCount === 0 ? "Cancelled" : "Active",
-        },
-      });
+        await tx.dailyOrder.update({
+          where: { id: order.id },
+          data: {
+            totalRejectedWeight: { increment: orderTotalWeight },
+            totalRejectedPrice: { increment: orderTotalPrice },
+            status: nonCancelledCount === 0 ? "Cancelled" : "Active",
+          },
+        });
 
-      // e) Update global per-product daily aggregation (totalProductOrder record)
-      //    this will: rejectedWeight += weight, totalWeight -= weight, totalPrice -= price
-      //    (implementation of updateDailyProductAggregation already handles these changes)
-      await updateDailyProductAggregation(
-        productId!,
-        order.id,
-        orderTotalWeight,
-        orderTotalPrice,
-        "cancel",
-        tx
-      );
+        // e) Update global per-product daily aggregation (totalProductOrder record)
+        //    this will: rejectedWeight += weight, totalWeight -= weight, totalPrice -= price
+        //    (implementation of updateDailyProductAggregation already handles these changes)
+        await updateDailyProductAggregation(
+          productId!,
+          order.id,
+          orderTotalWeight,
+          orderTotalPrice,
+          "cancel",
+          tx,
+        );
 
-      // f) Refund wallet if this order used Wallet payment
-      //    Use the order relation attached to any orderProduct (all have same order)
-      const orderRelation = orderProducts[0].order?.OrderProducts.find(
-        (op) => op.productId === productId
-      );
-      const user = orderProducts[0].order?.user;
-      if (
-        orderRelation &&
-        orderRelation.totalWalletAmountUsed &&
-        user?.Wallet
-      ) {
-        const walletId = user.Wallet.id;
-        const refundAmount = orderRelation.totalWalletAmountUsed;
-        decressRemaining = orderTotalPrice - refundAmount;
+        // f) Refund wallet if this order used Wallet payment
+        //    Use the order relation attached to any orderProduct (all have same order)
+        const orderRelation = orderProducts[0].order?.OrderProducts.find(
+          (op) => op.productId === productId,
+        );
+        const user = orderProducts[0].order?.user;
+        if (
+          orderRelation &&
+          orderRelation.totalWalletAmountUsed &&
+          user?.Wallet
+        ) {
+          const walletId = user.Wallet.id;
+          const refundAmount = orderRelation.totalWalletAmountUsed;
+          decressRemaining = orderTotalPrice - refundAmount;
 
-        //✅DONE : Ai amount  ta ai order er sokol product er jonno wallet theke use kora hoyeche amd bujte hobe exactly ai product er jonno koto ta use hoyeche then sei amount ta refund korte hobe
+          //✅DONE : Ai amount  ta ai order er sokol product er jonno wallet theke use kora hoyeche amd bujte hobe exactly ai product er jonno koto ta use hoyeche then sei amount ta refund korte hobe
 
-        if (refundAmount > 0) {
-          await tx.wallet.update({
-            where: { id: walletId },
-            data: { balance: { increment: refundAmount } }, // refundAmountUsingWallet
-          });
+          if (refundAmount > 0) {
+            await tx.wallet.update({
+              where: { id: walletId },
+              data: { balance: { increment: refundAmount } }, // refundAmountUsingWallet
+            });
 
-          await tx.walletTransaction.create({
-            data: {
-              walletId,
-              amount: refundAmount,
-              type: "Credit",
-              description: "Refund for rejected product (Admin rejected)",
-              status: "Success",
-            },
-          });
+            await tx.walletTransaction.create({
+              data: {
+                walletId,
+                amount: refundAmount,
+                type: "Credit",
+                description: "Refund for rejected product (Admin rejected)",
+                status: "Success",
+              },
+            });
+          }
         }
+
+        // g) Recalculate daily order total (skip cancelled products internally)
+        await recalculateDailyOrderTotal(order.id, tx, decressRemaining);
       }
 
-      // g) Recalculate daily order total (skip cancelled products internally)
-      await recalculateDailyOrderTotal(order.id, tx, decressRemaining);
-    }
-
-    return { message: "Product(s) rejected successfully" };
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex refund operations
-  });
+      return { message: "Product(s) rejected successfully" };
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex refund operations
+    },
+  );
 };
 
 /**
@@ -561,260 +576,264 @@ export const rejectOrderProduct = async (totalorderProductId: string) => {
  */
 export const adjustOrderProduct = async (
   orderProductId: string,
-  newWeight: number
+  newWeight: number,
 ) => {
-  return await prisma.$transaction(async (tx) => {
-    const orderProduct = await tx.orderProduct.findUnique({
-      where: { id: orderProductId },
-      include: {
-        order: {
-          include: {
-            user: {
-              include: { Wallet: true },
+  return await prisma.$transaction(
+    async (tx) => {
+      const orderProduct = await tx.orderProduct.findUnique({
+        where: { id: orderProductId },
+        include: {
+          order: {
+            include: {
+              user: {
+                include: { Wallet: true },
+              },
+            },
+          },
+          product: {
+            select: {
+              id: true,
+              categoryId: true,
+              branchId: true,
             },
           },
         },
-        product: {
-          select: {
-            id: true,
-            categoryId: true,
-            branchId: true,
-          },
-        },
-      },
-    });
-
-    if (!orderProduct || !orderProduct.order) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
-    }
-
-    const originalWeight = Number(orderProduct.totalWeight || 0);
-    const originalPrice = Number(orderProduct.totalPrice || 0);
-    const walletAmountUsed = Number(orderProduct.totalWalletAmountUsed || 0);
-
-    if (newWeight < 0) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Weight cannot be negative");
-    }
-
-    // Calculate price per unit weight
-    const pricePerKg = originalWeight > 0 ? originalPrice / originalWeight : 0;
-
-    // ==========================================
-    // CASE 1: newWeight = 0 (Full Return)
-    // ==========================================
-    if (newWeight === 0) {
-      const returnedWeight = originalWeight;
-      const returnedAmount = originalPrice;
-
-      // Calculate wallet refund amount (only refund what was paid via wallet)
-      const walletRefundAmount = Math.min(walletAmountUsed, returnedAmount);
-
-      // Update OrderProduct
-      await tx.orderProduct.update({
-        where: { id: orderProductId },
-        data: {
-          status: "Returned",
-          returnedWeight: returnedWeight,
-          returnedPrice: returnedAmount,
-          totalWeight: 0,
-          totalPrice: 0,
-          totalWalletAmountUsed: 0,
-        },
       });
 
-      // Refund wallet if applicable
-      if (walletRefundAmount > 0 && orderProduct.order.user?.Wallet) {
-        await tx.wallet.update({
-          where: { id: orderProduct.order.user.Wallet.id },
-          data: {
-            balance: { increment: walletRefundAmount },
-          },
-        });
-
-        await tx.walletTransaction.create({
-          data: {
-            walletId: orderProduct.order.user.Wallet.id,
-            amount: walletRefundAmount,
-            type: "Credit",
-            description: `Full refund for returned product`,
-            status: "Success",
-          },
-        });
+      if (!orderProduct || !orderProduct.order) {
+        throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
       }
 
-      // // Update TotalProductOrder aggregation
-      // await updateDailyProductAggregation(
-      //   orderProduct.productId!,
-      //   orderProduct.order.id,
-      //   returnedWeight,
-      //   returnedAmount,
-      //   "return",
-      //   tx,
-      //   orderProduct.product?.categoryId,
-      //   orderProduct.product?.branchId
-      // );
+      const originalWeight = Number(orderProduct.totalWeight || 0);
+      const originalPrice = Number(orderProduct.totalPrice || 0);
+      const walletAmountUsed = Number(orderProduct.totalWalletAmountUsed || 0);
 
-      // Update DailyOrder totals
-      await tx.dailyOrder.update({
-        where: { id: orderProduct.order.id },
-        data: {
-          totalReturnedWeight: { increment: returnedWeight },
-          totalReturnedPrice: { increment: returnedAmount },
-          totalWeight: { decrement: returnedWeight },
-          totalAmount: { decrement: returnedAmount },
-          walletAmountUsed: { decrement: walletRefundAmount },
-        },
-      });
-
-      // Recalculate order total
-      await recalculateDailyOrderTotal(orderProduct.order.id, tx);
-
-      return {
-        message: "Product fully returned",
-        returnedWeight,
-        returnedAmount,
-        walletRefunded: walletRefundAmount,
-      };
-    }
-
-    // ==========================================
-    // CASE 2: newWeight > originalWeight (Weight Increased)
-    // ==========================================
-    if (newWeight > originalWeight) {
-      const additionalWeight = newWeight - originalWeight;
-      const additionalPrice = additionalWeight * pricePerKg;
-      const newTotalPrice = newWeight * pricePerKg;
-
-      // Update OrderProduct
-      await tx.orderProduct.update({
-        where: { id: orderProductId },
-        data: {
-          totalWeight: newWeight,
-          totalPrice: newTotalPrice,
-          // Keep wallet amount same, additional is treated as COD
-        },
-      });
-
-      // Update DailyOrder - add to remaining amount (COD)
-      await tx.dailyOrder.update({
-        where: { id: orderProduct.order.id },
-        data: {
-          totalWeight: { increment: additionalWeight },
-          totalAmount: { increment: additionalPrice },
-          RemainingAmount: { increment: additionalPrice },
-        },
-      });
-
-      //! already handled in daily order update above
-      // // Update TotalProductOrder (add operation)
-      // await updateDailyProductAggregation(
-      //   orderProduct.productId!,
-      //   orderProduct.order.id,
-      //   additionalWeight,
-      //   additionalPrice,
-      //   "add",
-      //   tx,
-      //   orderProduct.product?.categoryId,
-      //   orderProduct.product?.branchId
-      // );
-
-      return {
-        message: "Product weight increased",
-        additionalWeight,
-        additionalPrice,
-        note: "Additional amount treated as COD",
-      };
-    }
-
-    // ==========================================
-    // CASE 3: newWeight < originalWeight (Weight Decreased)
-    // ==========================================
-    if (newWeight < originalWeight) {
-      const reducedWeight = originalWeight - newWeight;
-      const reducedPrice = reducedWeight * pricePerKg;
-      const newTotalPrice = newWeight * pricePerKg;
-
-      // Calculate wallet refund (proportional to wallet usage)
-      const walletUsageRatio = walletAmountUsed / originalPrice;
-      const walletRefundAmount = reducedPrice * walletUsageRatio;
-      const newWalletAmountUsed = walletAmountUsed - walletRefundAmount;
-
-      // Update OrderProduct
-      await tx.orderProduct.update({
-        where: { id: orderProductId },
-        data: {
-          totalWeight: newWeight,
-          totalPrice: newTotalPrice,
-          returnedWeight: { increment: reducedWeight },
-          returnedPrice: { increment: reducedPrice },
-          totalWalletAmountUsed: newWalletAmountUsed,
-        },
-      });
-
-      // Refund wallet if applicable
-      if (walletRefundAmount > 0 && orderProduct.order.user?.Wallet) {
-        await tx.wallet.update({
-          where: { id: orderProduct.order.user.Wallet.id },
-          data: {
-            balance: { increment: walletRefundAmount },
-          },
-        });
-
-        await tx.walletTransaction.create({
-          data: {
-            walletId: orderProduct.order.user.Wallet.id,
-            amount: walletRefundAmount,
-            type: "Credit",
-            description: `Partial refund for reduced quantity`,
-            status: "Success",
-          },
-        });
+      if (newWeight < 0) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Weight cannot be negative");
       }
 
-      // Update TotalProductOrder aggregation
-      // await updateDailyProductAggregation(
-      //   orderProduct.productId!,
-      //   orderProduct.order.id,
-      //   reducedWeight,
-      //   reducedPrice,
-      //   "return",
-      //   tx,
-      //   orderProduct.product?.categoryId,
-      //   orderProduct.product?.branchId
-      // );
+      // Calculate price per unit weight
+      const pricePerKg =
+        originalWeight > 0 ? originalPrice / originalWeight : 0;
 
-      // Update DailyOrder totals
-      await tx.dailyOrder.update({
-        where: { id: orderProduct.order.id },
-        data: {
-          totalReturnedWeight: { increment: reducedWeight },
-          totalReturnedPrice: { increment: reducedPrice },
-          totalWeight: { decrement: reducedWeight },
-          totalAmount: { decrement: reducedPrice },
-          walletAmountUsed: { decrement: walletRefundAmount },
-        },
-      });
+      // ==========================================
+      // CASE 1: newWeight = 0 (Full Return)
+      // ==========================================
+      if (newWeight === 0) {
+        const returnedWeight = originalWeight;
+        const returnedAmount = originalPrice;
 
-      // Recalculate order total
-      await recalculateDailyOrderTotal(orderProduct.order.id, tx);
+        // Calculate wallet refund amount (only refund what was paid via wallet)
+        const walletRefundAmount = Math.min(walletAmountUsed, returnedAmount);
 
+        // Update OrderProduct
+        await tx.orderProduct.update({
+          where: { id: orderProductId },
+          data: {
+            status: "Returned",
+            returnedWeight: returnedWeight,
+            returnedPrice: returnedAmount,
+            totalWeight: 0,
+            totalPrice: 0,
+            totalWalletAmountUsed: 0,
+          },
+        });
+
+        // Refund wallet if applicable
+        if (walletRefundAmount > 0 && orderProduct.order.user?.Wallet) {
+          await tx.wallet.update({
+            where: { id: orderProduct.order.user.Wallet.id },
+            data: {
+              balance: { increment: walletRefundAmount },
+            },
+          });
+
+          await tx.walletTransaction.create({
+            data: {
+              walletId: orderProduct.order.user.Wallet.id,
+              amount: walletRefundAmount,
+              type: "Credit",
+              description: `Full refund for returned product`,
+              status: "Success",
+            },
+          });
+        }
+
+        // // Update TotalProductOrder aggregation
+        // await updateDailyProductAggregation(
+        //   orderProduct.productId!,
+        //   orderProduct.order.id,
+        //   returnedWeight,
+        //   returnedAmount,
+        //   "return",
+        //   tx,
+        //   orderProduct.product?.categoryId,
+        //   orderProduct.product?.branchId
+        // );
+
+        // Update DailyOrder totals
+        await tx.dailyOrder.update({
+          where: { id: orderProduct.order.id },
+          data: {
+            totalReturnedWeight: { increment: returnedWeight },
+            totalReturnedPrice: { increment: returnedAmount },
+            totalWeight: { decrement: returnedWeight },
+            totalAmount: { decrement: returnedAmount },
+            walletAmountUsed: { decrement: walletRefundAmount },
+          },
+        });
+
+        // Recalculate order total
+        await recalculateDailyOrderTotal(orderProduct.order.id, tx);
+
+        return {
+          message: "Product fully returned",
+          returnedWeight,
+          returnedAmount,
+          walletRefunded: walletRefundAmount,
+        };
+      }
+
+      // ==========================================
+      // CASE 2: newWeight > originalWeight (Weight Increased)
+      // ==========================================
+      if (newWeight > originalWeight) {
+        const additionalWeight = newWeight - originalWeight;
+        const additionalPrice = additionalWeight * pricePerKg;
+        const newTotalPrice = newWeight * pricePerKg;
+
+        // Update OrderProduct
+        await tx.orderProduct.update({
+          where: { id: orderProductId },
+          data: {
+            totalWeight: newWeight,
+            totalPrice: newTotalPrice,
+            // Keep wallet amount same, additional is treated as COD
+          },
+        });
+
+        // Update DailyOrder - add to remaining amount (COD)
+        await tx.dailyOrder.update({
+          where: { id: orderProduct.order.id },
+          data: {
+            totalWeight: { increment: additionalWeight },
+            totalAmount: { increment: additionalPrice },
+            RemainingAmount: { increment: additionalPrice },
+          },
+        });
+
+        //! already handled in daily order update above
+        // // Update TotalProductOrder (add operation)
+        // await updateDailyProductAggregation(
+        //   orderProduct.productId!,
+        //   orderProduct.order.id,
+        //   additionalWeight,
+        //   additionalPrice,
+        //   "add",
+        //   tx,
+        //   orderProduct.product?.categoryId,
+        //   orderProduct.product?.branchId
+        // );
+
+        return {
+          message: "Product weight increased",
+          additionalWeight,
+          additionalPrice,
+          note: "Additional amount treated as COD",
+        };
+      }
+
+      // ==========================================
+      // CASE 3: newWeight < originalWeight (Weight Decreased)
+      // ==========================================
+      if (newWeight < originalWeight) {
+        const reducedWeight = originalWeight - newWeight;
+        const reducedPrice = reducedWeight * pricePerKg;
+        const newTotalPrice = newWeight * pricePerKg;
+
+        // Calculate wallet refund (proportional to wallet usage)
+        const walletUsageRatio = walletAmountUsed / originalPrice;
+        const walletRefundAmount = reducedPrice * walletUsageRatio;
+        const newWalletAmountUsed = walletAmountUsed - walletRefundAmount;
+
+        // Update OrderProduct
+        await tx.orderProduct.update({
+          where: { id: orderProductId },
+          data: {
+            totalWeight: newWeight,
+            totalPrice: newTotalPrice,
+            returnedWeight: { increment: reducedWeight },
+            returnedPrice: { increment: reducedPrice },
+            totalWalletAmountUsed: newWalletAmountUsed,
+          },
+        });
+
+        // Refund wallet if applicable
+        if (walletRefundAmount > 0 && orderProduct.order.user?.Wallet) {
+          await tx.wallet.update({
+            where: { id: orderProduct.order.user.Wallet.id },
+            data: {
+              balance: { increment: walletRefundAmount },
+            },
+          });
+
+          await tx.walletTransaction.create({
+            data: {
+              walletId: orderProduct.order.user.Wallet.id,
+              amount: walletRefundAmount,
+              type: "Credit",
+              description: `Partial refund for reduced quantity`,
+              status: "Success",
+            },
+          });
+        }
+
+        // Update TotalProductOrder aggregation
+        // await updateDailyProductAggregation(
+        //   orderProduct.productId!,
+        //   orderProduct.order.id,
+        //   reducedWeight,
+        //   reducedPrice,
+        //   "return",
+        //   tx,
+        //   orderProduct.product?.categoryId,
+        //   orderProduct.product?.branchId
+        // );
+
+        // Update DailyOrder totals
+        await tx.dailyOrder.update({
+          where: { id: orderProduct.order.id },
+          data: {
+            totalReturnedWeight: { increment: reducedWeight },
+            totalReturnedPrice: { increment: reducedPrice },
+            totalWeight: { decrement: reducedWeight },
+            totalAmount: { decrement: reducedPrice },
+            walletAmountUsed: { decrement: walletRefundAmount },
+          },
+        });
+
+        // Recalculate order total
+        await recalculateDailyOrderTotal(orderProduct.order.id, tx);
+
+        return {
+          message: "Product weight decreased",
+          reducedWeight,
+          reducedPrice,
+          walletRefunded: walletRefundAmount,
+        };
+      }
+
+      // If newWeight equals originalWeight, no changes needed
       return {
-        message: "Product weight decreased",
-        reducedWeight,
-        reducedPrice,
-        walletRefunded: walletRefundAmount,
+        message: "No changes - weight remains the same",
+        currentWeight: originalWeight,
+        currentPrice: originalPrice,
       };
-    }
-
-    // If newWeight equals originalWeight, no changes needed
-    return {
-      message: "No changes - weight remains the same",
-      currentWeight: originalWeight,
-      currentPrice: originalPrice,
-    };
-  }, {
-    timeout: 15000, // 15 seconds timeout for complex order operations
-  });
+    },
+    {
+      timeout: 15000, // 15 seconds timeout for complex order operations
+    },
+  );
 };
 
 /**
@@ -825,13 +844,16 @@ export const getDailyProductSummary = async (
   endDate?: any,
   branchId?: string,
   productCategoryId?: string,
-  packageType?: packageType
+  packageType?: packageType,
 ) => {
   const startDateString = startDate || getDateString();
   const endDateString = endDate || getDateString();
   return await prisma.totalProductOrder.findMany({
     where: {
-      orderDateString: startDate || endDate ? { gte: startDateString, lte: endDateString } : undefined,
+      orderDateString:
+        startDate || endDate
+          ? { gte: startDateString, lte: endDateString }
+          : undefined,
       branchId: branchId ? branchId : undefined,
       productCategoryId: productCategoryId ? productCategoryId : undefined,
     },
@@ -894,7 +916,7 @@ export const generateOrderId = (): string => {
  */
 export const getOrCreateTodayMainOrder = async (
   userId: string,
-  tx: any = prisma
+  tx: any = prisma,
 ) => {
   const today = new Date();
   const now = new Date();
@@ -930,5 +952,3 @@ export const getOrCreateTodayMainOrder = async (
 
   return mainOrder;
 };
-
-

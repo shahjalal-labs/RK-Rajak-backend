@@ -1358,7 +1358,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
 
       const updatedMainOrders = await tx.dailyOrder.updateMany({
         where: { id: { in: ordersIds } },
-        data: { status: OrderStatus.OnTheWay },
+        data: { status: OrderStatus.OnTheWay, assignedAt: new Date() },
       });
 
       return { updatedAssignments, updatedMainOrders };
@@ -2189,6 +2189,7 @@ const markOrderAsDelivered = async (
       paymentMethod: PaymentMethodPriority,
       RemainingAmount: { decrement: totalPaid },
       DeliveryProof: deliveryProofUrl,
+      deliveredAt: new Date(),
     },
   });
 
