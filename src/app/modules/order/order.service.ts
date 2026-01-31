@@ -871,6 +871,7 @@ const getOrderById = async (id: string) => {
   const order = await prisma.dailyOrder.findUnique({
     where: { id },
     include: {
+      // include driver
       driverAssignments: {
         select: {
           driver: {
