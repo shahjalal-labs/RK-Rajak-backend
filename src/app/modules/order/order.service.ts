@@ -54,23 +54,13 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
   // Validate user
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-  }
+  if (!user) throw new ApiError(404, "User not found");
 
-  if (!user.branchId) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Please set you Location from profile!",
-    );
-  }
+  if (!user.branchId)
+    throw new ApiError(400, "Please set you Location from profile!");
 
-  if (user.isProfileComplete === false) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Please complete your profile to place order!",
-    );
-  }
+  if (user.isProfileComplete === false)
+    throw new ApiError(400, "Please complete your profile to place order!");
 
   // Fetch all products with variations
   const productIds = products.map((p) => p.productId);
@@ -98,22 +88,17 @@ const placeOrderCOD = async (payload: ICreateOrderPayload) => {
 
   for (const p of products) {
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
-    if (!dbProduct) {
-      throw new ApiError(
-        httpStatus.NOT_FOUND,
-        `Product not found: ${p.productId}`,
-      );
-    }
+    if (!dbProduct)
+      throw new ApiError(404, `Product not found: ${p.productId}`);
 
     const variation = dbProduct.productVariation.find(
       (v) => v.id === p.variationId,
     );
-    if (!variation) {
+    if (!variation)
       throw new ApiError(
-        httpStatus.NOT_FOUND,
+        404,
         `Variation not found for product: ${dbProduct.name}`,
       );
-    }
 
     const price = p.quantity * variation.sellingPrice;
     orderTotal += price;
@@ -270,27 +255,15 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
     include: { Wallet: true },
   });
 
-  if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-  }
+  if (!user) throw new ApiError(404, "User not found");
 
-  if (!user.branchId) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Please set you Location from profile!",
-    );
-  }
+  if (!user.branchId)
+    throw new ApiError(400, "Please set you Location from profile!");
 
-  if (user.isProfileComplete === false) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Please complete your profile to place order!",
-    );
-  }
+  if (user.isProfileComplete === false)
+    throw new ApiError(400, "Please complete your profile to place order!");
 
-  if (!user.Wallet) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Wallet not found for user");
-  }
+  if (!user.Wallet) throw new ApiError(404, "Wallet not found for user");
 
   // Fetch products
   const productIds = products.map((p) => p.productId);
@@ -318,22 +291,17 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
 
   for (const p of products) {
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
-    if (!dbProduct) {
-      throw new ApiError(
-        httpStatus.NOT_FOUND,
-        `Product not found: ${p.productId}`,
-      );
-    }
+    if (!dbProduct)
+      throw new ApiError(404, `Product not found: ${p.productId}`);
 
     const variation = dbProduct.productVariation.find(
       (v) => v.id === p.variationId,
     );
-    if (!variation) {
+    if (!variation)
       throw new ApiError(
-        httpStatus.NOT_FOUND,
+        404,
         `Variation not found for product: ${dbProduct.name}`,
       );
-    }
 
     const price = p.quantity * variation.sellingPrice;
     orderTotal += price;
@@ -352,12 +320,11 @@ const placeOrderWallet = async (payload: ICreateOrderPayload) => {
   }
 
   // Check wallet balance
-  if (user.Wallet.balance < orderTotal) {
+  if (user.Wallet.balance < orderTotal)
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
+      400,
       `Insufficient wallet balance. Available: ₹${user.Wallet.balance}, Required: ₹${orderTotal}`,
     );
-  }
 
   // Execute in transaction
   const result = await prisma.$transaction(
@@ -503,12 +470,11 @@ const createOrder = async (payload: ICreateOrderPayload) => {
     },
   });
 
-  if (userDuesCount >= 3) {
+  if (userDuesCount >= 3)
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
+      400,
       "You have 3 pending dues. Please clear your dues to place new orders.",
     );
-  }
 
   switch (payload.paymentMethod) {
     case "COD":
@@ -541,16 +507,14 @@ const createOrderByAgentForCustomer = async (
   });
   if (!customer) throw new ApiError(404, "Customer not found");
 
-  if (customer.agentId !== agentId) {
+  if (customer.agentId !== agentId)
     throw new ApiError(403, "This customer does not belong to you");
-  }
 
   const shipping = await prisma.shippingAddress.findUnique({
     where: { id: shippingAddressId },
   });
-  if (!shipping || shipping.userId !== customerId) {
+  if (!shipping || shipping.userId !== customerId)
     throw new ApiError(400, "Invalid shipping address");
-  }
 
   // ============== Fetch products for validation ==============
   const productIds = products.map((p) => p.productId);
@@ -577,24 +541,21 @@ const createOrderByAgentForCustomer = async (
 
   for (const p of products) {
     const dbProduct = dbProducts.find((prod) => prod.id === p.productId);
-    if (!dbProduct) {
+    if (!dbProduct)
       throw new ApiError(404, `Product not found: ${p.productId}`);
-    }
 
     const variation = dbProduct.productVariation.find(
       (v) => v.id === p.variationId,
     );
 
-    if (!variation) {
+    if (!variation)
       throw new ApiError(
         404,
         `Variation not found for product: ${dbProduct.name}`,
       );
-    }
 
-    if (variation.availableQuantity < p.quantity) {
+    if (variation.availableQuantity < p.quantity)
       throw new ApiError(400, `Insufficient quantity for ${dbProduct.name}`);
-    }
 
     // Use agent-provided price per quantity instead of product's selling price
     const perQuantityPrice = p.price / p.quantity;
@@ -928,9 +889,7 @@ const getOrderById = async (id: string) => {
     },
   });
 
-  if (!order) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
-  }
+  if (!order) throw new ApiError(404, "Order not found");
 
   return order;
 };
@@ -938,9 +897,7 @@ const getOrderById = async (id: string) => {
 const getMyCustomerOrders = async (userId: string, queryParams: any) => {
   const { startDate, endDate } = queryParams;
 
-  if (!userId) {
-    throw new Error("User ID is required");
-  }
+  if (!userId) throw new Error("User ID is required");
 
   // Fetch all customers for this agent
   const customers = await prisma.user.findMany({
@@ -950,9 +907,7 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
 
   const customerIds = customers.map((c) => c.id);
 
-  if (customerIds.length === 0) {
-    return [];
-  }
+  if (customerIds.length === 0) return [];
 
   const where: any = {
     userId: { in: customerIds },
@@ -966,12 +921,11 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
     // end date midnight handling
     end.setHours(23, 59, 59, 999);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    if (isNaN(start.getTime()) || isNaN(end.getTime()))
       throw new ApiError(
-        httpStatus.BAD_REQUEST,
+        400,
         "Invalid date format. Please provide valid dates.",
       );
-    }
 
     // since orderDate is STRING in DB → use ISO string
     where.orderDate = {
@@ -981,12 +935,11 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
   } else if (startDate) {
     const start = new Date(startDate);
 
-    if (isNaN(start.getTime())) {
+    if (isNaN(start.getTime()))
       throw new ApiError(
-        httpStatus.BAD_REQUEST,
+        400,
         "Invalid start date format. Please provide a valid date.",
       );
-    }
 
     where.orderDate = {
       gte: start.toISOString(),
@@ -994,12 +947,11 @@ const getMyCustomerOrders = async (userId: string, queryParams: any) => {
   } else if (endDate) {
     const end = new Date(endDate);
 
-    if (isNaN(end.getTime())) {
+    if (isNaN(end.getTime()))
       throw new ApiError(
-        httpStatus.BAD_REQUEST,
+        400,
         "Invalid end date format. Please provide a valid date.",
       );
-    }
 
     end.setHours(23, 59, 59, 999);
 
@@ -1036,12 +988,8 @@ const getBranchDayWiseCalculations = async (
   const endDateTime = new Date(endDateString);
 
   // Validate dates
-  if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "Invalid date format. Please provide valid dates.",
-    );
-  }
+  if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime()))
+    throw new ApiError(400, "Invalid date format. Please provide valid dates.");
 
   // Set hours for start and end of day
   startDateTime.setHours(0, 0, 0, 0);
@@ -1341,12 +1289,8 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
       id: driverId,
     },
   });
-  if (!isDriverExist) {
-    throw new ApiError(
-      httpStatus.NOT_FOUND,
-      "Driver not found . please send a valid driverId",
-    );
-  }
+  if (!isDriverExist)
+    throw new ApiError(404, "Driver not found . please send a valid driverId");
 
   console.log({ ordersIds, driverId });
 
@@ -1358,12 +1302,8 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   });
 
   // if some orders are not found
-  if (existingOrders.length !== ordersIds.length) {
-    throw new ApiError(
-      httpStatus.NOT_FOUND,
-      "Some provided order IDs do not exist",
-    );
-  }
+  if (existingOrders.length !== ordersIds.length)
+    throw new ApiError(404, "Some provided order IDs do not exist");
 
   // check if any order is already assigned and also return the name which one is already assigned
   const alreadyAssigned = existingOrders.filter(
@@ -1373,7 +1313,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   if (alreadyAssigned.length > 0) {
     const assignedIds = alreadyAssigned.map((o) => o.id).join(", ");
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
+      400,
       `These orders are already assigned to driver: ${assignedIds}`,
     );
   }
@@ -1387,7 +1327,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
       .map((o) => o.OrderProducts.map((op) => op.id))
       .join(", ");
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
+      400,
       `There are pending products in these orders: ${pendingIds}`,
     );
   }
@@ -1401,7 +1341,7 @@ const assignOrdersDeliveryToDriver = async (payload: AssignOrdersPayload) => {
   if (invalidStatusOrders.length > 0) {
     const invalidStatusIds = invalidStatusOrders.map((o) => o.id).join(", ");
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
+      400,
       `These orders are either Cancelled or Delivered : ${invalidStatusIds}`,
     );
   }
@@ -1944,6 +1884,7 @@ const getTotalAssignedReturnedProducts = async (
     totalUniqueProducts: finalResult.length,
   };
 };
+
 const getTotalAssignedReturnedProductsForSuperAdmin = async (query: any) => {
   console.log("hitsssin");
   const { startDate, endDate, branchId, productCategoryId } = query || {};
@@ -1973,9 +1914,7 @@ const getTotalAssignedReturnedProductsForSuperAdmin = async (query: any) => {
     branch = await prisma.branch.findUnique({
       where: { id: branchId },
     });
-    if (!branch) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Branch not found");
-    }
+    if (!branch) throw new ApiError(404, "Branch not found");
   }
   const orders = await prisma.dailyOrder.findMany({
     where: {
@@ -2125,12 +2064,9 @@ const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
       driverId: driverId,
     },
   });
-  if (!assignment) {
-    throw new ApiError(
-      httpStatus.FORBIDDEN,
-      "You are not assigned to this order",
-    );
-  }
+  if (!assignment)
+    throw new ApiError(403, "You are not assigned to this order");
+
   const order = await prisma.dailyOrder.findUnique({
     where: { id: orderId },
     select: {
@@ -2190,9 +2126,7 @@ const getOrderDetailsForDriver = async (orderId: string, driverId: string) => {
     },
   });
 
-  if (!order) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
-  }
+  if (!order) throw new ApiError(404, "Order not found");
 
   return order;
 };
@@ -2221,20 +2155,12 @@ const markOrderAsDelivered = async (
     },
   });
 
-  if (!assignment) {
-    throw new ApiError(
-      httpStatus.FORBIDDEN,
-      "You are not assigned to this order",
-    );
-  }
+  if (!assignment)
+    throw new ApiError(403, "You are not assigned to this order");
 
   // Validation: at least 1 payment required
-  if (!payload.payments || payload.payments.length === 0) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "At least one payment method is required",
-    );
-  }
+  if (!payload.payments || payload.payments.length === 0)
+    throw new ApiError(400, "At least one payment method is required");
 
   const totalPaid = payload.payments.reduce(
     (sum, p) => sum + (Number(p.amount) || 0),
@@ -2435,7 +2361,7 @@ const cancelOrderByCustomer = async (
     include: { OrderProducts: true, user: { include: { Wallet: true } } },
   });
 
-  if (!order) throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
+  if (!order) throw new ApiError(404, "Order not found");
 
   // =====================================================================================
   //   CASE 1: FULL ORDER CANCEL (ONLY orderId PROVIDED)
@@ -2446,12 +2372,8 @@ const cancelOrderByCustomer = async (
     order.status === "Delivered" ||
     order.status === "Returned" ||
     order.status === "Cancelled"
-  ) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `Order is already ${order.status.toLowerCase()}`,
-    );
-  }
+  )
+    throw new ApiError(400, `Order is already ${order.status.toLowerCase()}`);
 
   if (!productId) {
     await prisma.$transaction(
@@ -2665,28 +2587,24 @@ const returnOrderProduct = async (
     },
   });
 
-  if (!orderProduct) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Order product not found");
-  }
+  if (!orderProduct) throw new ApiError(404, "Order product not found");
 
   // 2) Validation
   const maxReturnableWeight =
     (orderProduct.acceptedWeight || 0) - (orderProduct.returnedWeight || 0);
-  if (returnWeight > maxReturnableWeight) {
+  if (returnWeight > maxReturnableWeight)
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
+      400,
       `Return weight exceeds maximum returnable weight of ${maxReturnableWeight} kg`,
     );
-  }
 
   const maxReturnablePrice =
     (orderProduct.acceptedPrice || 0) - (orderProduct.returnedPrice || 0);
-  if (returnPrice > maxReturnablePrice) {
+  if (returnPrice > maxReturnablePrice)
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
+      400,
       `Return price exceeds maximum returnable price of ${maxReturnablePrice}`,
     );
-  }
 
   // helper for rounding (2 decimal places)
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -2825,10 +2743,9 @@ const returnOrderProduct = async (
     include: { OrderProducts: true },
   });
 
-  if (!updatedOrder) {
+  if (!updatedOrder)
     // this is unlikely, but handle defensively
     return { message: "Product returned and order updated" };
-  }
 
   const allReturned = updatedOrder.OrderProducts.every(
     (op) => op.status === "Returned" || op.status === "Cancelled",
@@ -2884,9 +2801,9 @@ const getSalesHistory = async (query: any) => {
       where: { id: agentId },
     });
 
-    if (!agent || agent.role !== UserRole.Agent) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Agent not found");
-    }
+    if (!agent || agent.role !== UserRole.Agent)
+      throw new ApiError(404, "Agent not found");
+
     // Fetch agent's customers
     const customers = await prisma.user.findMany({
       where: { agentId },
@@ -3212,9 +3129,7 @@ const getAssignOrderOverviewForDriver = async (
       },
     });
 
-    if (!orders || orders.length === 0) {
-      return [];
-    }
+    if (!orders || orders.length === 0) return [];
 
     // Transform each order into the detailed format
     const detailedOrders = orders.map((order) => {
