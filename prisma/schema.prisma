@@ -105,12 +105,12 @@ enum UserStatus {
 }
 
 enum UserRole {
+  Customer
+  Driver
   SuperAdmin
   Admin
-  Customer
   Agent
   Owner
-  Driver
 }
 
 model UserLocation {

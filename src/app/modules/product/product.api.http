@@ -1,0 +1,4 @@
+### get best selling products
+
+GET {{port8001}}/product/highestSellingProducts HTTP/1.1
+Authorization: {{buyerToken}}
