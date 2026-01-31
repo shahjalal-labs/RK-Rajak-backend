@@ -871,12 +871,14 @@ const getOrderById = async (id: string) => {
   const order = await prisma.dailyOrder.findUnique({
     where: { id },
     include: {
-      // include driver
+      // include driver details
       driverAssignments: {
         select: {
           driver: {
             select: {
               phone: true,
+              fullName: true,
+              address: true,
             },
           },
         },
