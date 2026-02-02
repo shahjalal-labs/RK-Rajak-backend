@@ -5,7 +5,7 @@
   "scripts": {
     "start": "concurrently \"node ./dist/server.js\" \"node ./dist/workers/email.worker.js\"",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "concurrently \"ts-node-dev --respawn --transpile-only src/server.ts\" \"ts-node-dev --respawn --transpile-only src/workers/email.worker.ts\"",
+    "dev": "concurrently \"tsx src/server.ts\" \"tsx src/workers/email.worker.ts\"",
     "build": "tsc",
     "postinstall": "prisma generate"
   },
@@ -27,6 +27,7 @@
     "prisma": "^6.3.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.5.3"
   },
   "dependencies": {

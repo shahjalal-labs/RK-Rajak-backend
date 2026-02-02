@@ -3,6 +3,7 @@ import {
   PaymentMethod,
   UserRole,
   OrderStatus,
+  Prisma,
 } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
@@ -683,10 +684,22 @@ const createOrderByAgentForCustomer = async (
 const getUserDailyOrders = async (userId: string, queryParams: any) => {
   const { status, startDate, endDate } = queryParams;
 
-  const where: any = { userId };
+  const where: Prisma.DailyOrderWhereInput = { userId };
 
-  if (status) {
+  if (status && status !== "Active") {
     where.status = status;
+  }
+
+  if (status === "Active") {
+    where.status = {
+      notIn: [
+        "Pending",
+        "Returned",
+        "Delivered",
+        "Cancelled",
+        "PartialReturned",
+      ],
+    };
   }
 
   if (startDate || endDate) {
