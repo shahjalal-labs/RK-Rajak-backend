@@ -1,9 +1,8 @@
-import { PrismaClient, productCategory, branch } from "@prisma/client";
+import { PrismaClient, productCategory } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
-import { JwtPayload } from "jsonwebtoken";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
-const prisma = new PrismaClient();
+import prisma from "../../../shared/prisma";
 
 const createProductCategory = async (
   data: productCategory,
@@ -58,10 +57,10 @@ const getAllProductCategorys = async (branchId: string) => {
   };
 };
 
-const getAllProductCategorysForBuyer = async (user: JwtPayload) => {
+const getAllProductCategorysForBuyer = async (userId: string) => {
   const userdata = await prisma.user.findUnique({
     where: {
-      id: user.id,
+      id: userId,
     },
   });
 

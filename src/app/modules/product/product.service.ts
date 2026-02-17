@@ -1,4 +1,4 @@
-import { PrismaClient, product, branch, UserRole } from "@prisma/client";
+import { product, UserRole } from "@prisma/client";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import ApiError from "../../../errors/ApiErrors";
 import {
@@ -6,9 +6,7 @@ import {
   ICreateProduct,
   UpdateProductPayload,
 } from "./const";
-import { JwtPayload } from "jsonwebtoken";
-
-const prisma = new PrismaClient();
+import prisma from "../../../shared/prisma";
 
 const createProduct = async (
   data: ICreateProduct,
@@ -170,7 +168,7 @@ const getAllProducts = async (
 
 const getAllProductsForBuyer = async (
   query: GetAllProductsParams,
-  user: JwtPayload,
+  userId: string,
 ) => {
   const {
     page = 1,
@@ -188,7 +186,7 @@ const getAllProductsForBuyer = async (
   const skip: number = (page - 1) * limit;
 
   const userData = await prisma.user.findUnique({
-    where: { id: user.id },
+    where: { id: userId },
     include: { branch: true },
   });
 
@@ -281,8 +279,11 @@ const getAllProductsForBuyer = async (
   return response;
 };
 
-const getProductById = async (id: string, user: JwtPayload) => {
-  const userRole = user.role;
+const getProductById = async (id: string, userId: string) => {
+  const userData = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+  const userRole = userData?.role;
   if (userRole === UserRole.Customer) {
     const productData = await prisma.product.findUnique({
       where: { id },
@@ -434,8 +435,6 @@ const deleteProduct = async (id: string) => {
   }
   return await prisma.product.delete({ where: { id } });
 };
-
-
 
 export const productServices = {
   createProduct,

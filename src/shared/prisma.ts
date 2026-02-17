@@ -7,10 +7,10 @@ const prisma = new PrismaClient({
       level: "error",
     },
   ],
-  transactionOptions :{
-    maxWait : 10000,
-    timeout : 20000,
-  }
+  transactionOptions: {
+    maxWait: 10000,
+    timeout: 20000,
+  },
 });
 
 prisma.$on("error", (e) => {

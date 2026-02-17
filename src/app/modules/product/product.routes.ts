@@ -5,7 +5,6 @@ import { parseBodyData } from "../../middlewares/parseBodyData";
 import validateRequest from "../../middlewares/validateRequest";
 import { ProductSchemaValidation } from "./product.validation";
 import auth from "../../middlewares/auth";
-import { UserRole } from "@prisma/client";
 
 const router = express.Router();
 router.post(
