@@ -1,4 +1,4 @@
-import { PrismaClient, productCategory } from "@prisma/client";
+import { productCategory } from "@prisma/client";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
@@ -45,14 +45,7 @@ const getAllProductCategorys = async (branchId: string) => {
     where: { branchId },
   });
 
-  const productStatus =
-    categories.length > 0 &&
-    categories.every((category) => category.status === false)
-      ? false
-      : true;
-
   return {
-    productStatus,
     categories,
   };
 };
