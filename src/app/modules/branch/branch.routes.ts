@@ -6,7 +6,11 @@ import { UserRole } from "@prisma/client";
 const router = express.Router();
 
 router.post("/", auth(UserRole.Owner), branchControllers.createBranch);
-router.get("/", auth(UserRole.Owner), branchControllers.getAllBranchs);
+router.get(
+  "/",
+  auth(UserRole.Owner, UserRole.SuperAdmin),
+  branchControllers.getAllBranchs,
+);
 router.get("/:id", auth(UserRole.Owner), branchControllers.getBranchById);
 router.patch("/:id", auth(UserRole.Owner), branchControllers.updateBranch);
 router.delete("/:id", auth(UserRole.Owner), branchControllers.deleteBranch);
