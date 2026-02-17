@@ -324,6 +324,7 @@ model productCategory {
   image              String?
   branchId           String               @db.ObjectId
   branch             branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  status             Boolean              @default(true)
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   productSubcategory productSubcategory[]

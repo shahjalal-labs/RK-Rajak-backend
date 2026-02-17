@@ -1,4 +1,4 @@
-import { Request, Response, query } from 'express';
+import { Request, Response } from "express";
 import { productServices } from "./product.service";
 import sendResponse from "../../../shared/sendResponse";
 import catchAsync from "../../../shared/catchAsync";
@@ -24,7 +24,10 @@ const createProduct = catchAsync(async (req: Request, res: Response) => {
 
 const getAllProducts = catchAsync(async (_req: Request, res: Response) => {
   const branchId = _req.params.branchId;
-  const result = await productServices.getAllProducts({ ..._req.query }, branchId);
+  const result = await productServices.getAllProducts(
+    { ..._req.query },
+    branchId,
+  );
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -33,15 +36,20 @@ const getAllProducts = catchAsync(async (_req: Request, res: Response) => {
   });
 });
 
-const getAllProductsForBuyer = catchAsync(async (_req: Request, res: Response) => {
-  const result = await productServices.getAllProductsForBuyer({ ..._req.query } , _req.user);
-  sendResponse(res, {
-    success: true,
-    statusCode: 200,
-    message: "All products has been retrived For App successfully",
-    data: result,
-  });
-});
+const getAllProductsForBuyer = catchAsync(
+  async (_req: Request, res: Response) => {
+    const result = await productServices.getAllProductsForBuyer(
+      { ..._req.query },
+      _req.user,
+    );
+    sendResponse(res, {
+      success: true,
+      statusCode: 200,
+      message: "All products has been retrived For App successfully",
+      data: result,
+    });
+  },
+);
 
 const bestSelling = catchAsync(async (_req: Request, res: Response) => {
   const result = await productServices.bestSelling(_req.query);
@@ -54,7 +62,7 @@ const bestSelling = catchAsync(async (_req: Request, res: Response) => {
 });
 
 const getProductById = catchAsync(async (req: Request, res: Response) => {
-  const result = await productServices.getProductById(req.params.id , req.user);
+  const result = await productServices.getProductById(req.params.id, req.user);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -69,7 +77,11 @@ const updateProduct = catchAsync(async (req: Request, res: Response) => {
     (req.files as { [fieldname: string]: Express.Multer.File[] })[
       "productImages"
     ];
-  const result = await productServices.updateProduct(req.params.id, req.body , productImages);
+  const result = await productServices.updateProduct(
+    req.params.id,
+    req.body,
+    productImages,
+  );
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -87,6 +99,7 @@ const deleteProduct = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+
 export const productControllers = {
   createProduct,
   getAllProducts,
@@ -94,5 +107,5 @@ export const productControllers = {
   updateProduct,
   deleteProduct,
   bestSelling,
-  getAllProductsForBuyer
+  getAllProductsForBuyer,
 };

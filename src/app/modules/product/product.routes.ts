@@ -5,6 +5,7 @@ import { parseBodyData } from "../../middlewares/parseBodyData";
 import validateRequest from "../../middlewares/validateRequest";
 import { ProductSchemaValidation } from "./product.validation";
 import auth from "../../middlewares/auth";
+import { UserRole } from "@prisma/client";
 
 const router = express.Router();
 router.post(
@@ -13,7 +14,7 @@ router.post(
   fileUploader.uploadMultiple,
   parseBodyData,
   validateRequest(ProductSchemaValidation.createProductSchema),
-  productControllers.createProduct
+  productControllers.createProduct,
 );
 router.get("/highestSellingProducts", auth(), productControllers.bestSelling);
 router.get("/for-buyer", auth(), productControllers.getAllProductsForBuyer);
@@ -25,7 +26,7 @@ router.patch(
   fileUploader.uploadMultiple,
   parseBodyData,
   validateRequest(ProductSchemaValidation.updateProductSchema),
-  productControllers.updateProduct
+  productControllers.updateProduct,
 );
 router.delete("/:id", auth(), productControllers.deleteProduct);
 

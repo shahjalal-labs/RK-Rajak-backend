@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 const createProductCategory = async (
   data: productCategory,
-  file?: Express.Multer.File
+  file?: Express.Multer.File,
 ) => {
   let imageUrl = "";
   if (file) {
@@ -24,7 +24,7 @@ const createProductCategory = async (
   if (!isBranchExist) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Branch id is invalid. please provide a valid branch id"
+      "Branch id is invalid. please provide a valid branch id",
     );
   }
   return await prisma.productCategory.create({
@@ -39,13 +39,25 @@ const getAllProductCategorys = async (branchId: string) => {
   if (!isBranchExist) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Branch id is invalid. please provide a valid branch id"
+      "Branch id is invalid. please provide a valid branch id",
     );
   }
-  return await prisma.productCategory.findMany({
+  const categories = await prisma.productCategory.findMany({
     where: { branchId },
   });
+
+  const productStatus =
+    categories.length > 0 &&
+    categories.every((category) => category.status === false)
+      ? false
+      : true;
+
+  return {
+    productStatus,
+    categories,
+  };
 };
+
 const getAllProductCategorysForBuyer = async (user: JwtPayload) => {
   const userdata = await prisma.user.findUnique({
     where: {
@@ -58,7 +70,7 @@ const getAllProductCategorysForBuyer = async (user: JwtPayload) => {
   if (!branchId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Your account is not associated with any branch"
+      "Your account is not associated with any branch",
     );
   }
   return await prisma.productCategory.findMany({
@@ -76,7 +88,7 @@ const getProductCategoryById = async (id: string) => {
 const updateProductCategory = async (
   id: string,
   data: Partial<productCategory>,
-  file?: Express.Multer.File
+  file?: Express.Multer.File,
 ) => {
   let imageUrl = "";
 
@@ -84,7 +96,7 @@ const updateProductCategory = async (
   if (!isExist) {
     throw new ApiError(httpStatus.NOT_FOUND, " No data found");
   }
-  
+
   if (file) {
     try {
       imageUrl = (await uploadToDigitalOceanAWS(file)).Location;
@@ -107,6 +119,37 @@ const deleteProductCategory = async (id: string) => {
   return await prisma.productCategory.delete({ where: { id } });
 };
 
+const updateStatusByCategoryId = async (
+  categoryId: string,
+  status: boolean,
+) => {
+  const category = await prisma.productCategory.findUnique({
+    where: { id: categoryId },
+  });
+  if (!category) throw new ApiError(404, "Category not found");
+
+  await prisma.productCategory.update({
+    where: { id: categoryId },
+    data: { status },
+  });
+
+  return;
+};
+
+const updateStatusByBranchId = async (branchId: string, status: boolean) => {
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+  });
+  if (!branch) throw new ApiError(404, "Branch not found");
+
+  await prisma.productCategory.updateMany({
+    where: { branchId },
+    data: { status },
+  });
+
+  return;
+};
+
 export const productCategoryServices = {
   createProductCategory,
   getAllProductCategorys,
@@ -114,4 +157,6 @@ export const productCategoryServices = {
   updateProductCategory,
   deleteProductCategory,
   getAllProductCategorysForBuyer,
+  updateStatusByCategoryId,
+  updateStatusByBranchId,
 };

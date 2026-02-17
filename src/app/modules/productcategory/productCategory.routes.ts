@@ -15,17 +15,17 @@ router.post(
   fileUploader.uploadSingle,
   parseBodyData,
   validateRequest(ProductCategorySchemaValidation.createProductCategorySchema),
-  productCategoryControllers.createProductCategory
+  productCategoryControllers.createProductCategory,
 );
 router.get(
   "/buyer",
   auth(UserRole.Customer),
-  productCategoryControllers.getAllProductCategorysForBuyer
+  productCategoryControllers.getAllProductCategorysForBuyer,
 );
 router.get(
   "/:branchId",
   auth(),
-  productCategoryControllers.getAllProductCategorys
+  productCategoryControllers.getAllProductCategorys,
 );
 router.get("/:id", auth(), productCategoryControllers.getProductCategoryById);
 router.patch(
@@ -33,8 +33,18 @@ router.patch(
   auth(),
   fileUploader.uploadSingle,
   parseBodyData,
-  productCategoryControllers.updateProductCategory
+  productCategoryControllers.updateProductCategory,
 );
 router.delete("/:id", auth(), productCategoryControllers.deleteProductCategory);
+router.patch(
+  "/update-status-by-category/:categoryId",
+  auth(UserRole.SuperAdmin),
+  productCategoryControllers.updateStatusByCategoryId,
+);
+router.patch(
+  "/update-status-by-branch/:branchId",
+  auth(UserRole.SuperAdmin),
+  productCategoryControllers.updateStatusByBranchId,
+);
 
 export const productCategoryRoutes = router;

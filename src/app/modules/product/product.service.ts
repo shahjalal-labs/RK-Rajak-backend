@@ -7,11 +7,12 @@ import {
   UpdateProductPayload,
 } from "./const";
 import { JwtPayload } from "jsonwebtoken";
+
 const prisma = new PrismaClient();
 
 const createProduct = async (
   data: ICreateProduct,
-  productImages: Express.Multer.File[]
+  productImages: Express.Multer.File[],
 ) => {
   const { productVariations, ...productData } = data;
   const isCategoryExist = await prisma.productCategory.findFirst({
@@ -31,7 +32,7 @@ const createProduct = async (
     imagesUpload = await Promise.all(
       productImages.map(async (file: Express.Multer.File) => {
         return (await uploadToDigitalOceanAWS(file)).Location;
-      })
+      }),
     );
   } catch (error: any) {
     console.log({ error });
@@ -70,7 +71,7 @@ interface GetAllProductsParams {
 
 const getAllProducts = async (
   query: GetAllProductsParams,
-  branchId: string
+  branchId: string,
 ) => {
   const {
     page = 1,
@@ -166,9 +167,10 @@ const getAllProducts = async (
 
   return response;
 };
+
 const getAllProductsForBuyer = async (
   query: GetAllProductsParams,
-  user: JwtPayload
+  user: JwtPayload,
 ) => {
   const {
     page = 1,
@@ -193,7 +195,7 @@ const getAllProductsForBuyer = async (
   if (!userData || !userData.branch) {
     throw new ApiError(
       400,
-      "you are not assigned to any branch. please contact with Owner"
+      "you are not assigned to any branch. please contact with Owner",
     );
   }
   // Build where conditions
@@ -320,7 +322,7 @@ const getProductById = async (id: string, user: JwtPayload) => {
 const updateProduct = async (
   id: string,
   data: UpdateProductPayload,
-  productImages?: Express.Multer.File[]
+  productImages?: Express.Multer.File[],
 ) => {
   const { productVariations, ...productData } = data;
   const isProductExist = await prisma.product.findUnique({
@@ -358,7 +360,7 @@ const updateProduct = async (
       imagesUpload = await Promise.all(
         productImages.map(async (file: Express.Multer.File) => {
           return (await uploadToDigitalOceanAWS(file)).Location;
-        })
+        }),
       );
     } catch (error: any) {
       throw new ApiError(500, "Failed to upload images: " + error.message);
@@ -378,7 +380,7 @@ const updateProduct = async (
       if (!isVariationExist) {
         throw new ApiError(
           404,
-          `Product variation with ID ${variationId} not found`
+          `Product variation with ID ${variationId} not found`,
         );
       }
       await prisma.productVariation.update({
@@ -414,11 +416,10 @@ const bestSelling = async (query: any) => {
         },
       },
     },
-    include : {
+    include: {
       category: true,
       productVariation: true,
-      
-    }
+    },
   });
 };
 
@@ -433,6 +434,8 @@ const deleteProduct = async (id: string) => {
   }
   return await prisma.product.delete({ where: { id } });
 };
+
+
 
 export const productServices = {
   createProduct,

@@ -1,11 +1,12 @@
 {
-  "name": "RK-Razak-ABS-Fruits-backend",
+  "name": "rk-razak-backend",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
     "start": "concurrently \"node ./dist/server.js\" \"node ./dist/workers/email.worker.js\"",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "concurrently \"tsx src/server.ts\" \"tsx src/workers/email.worker.ts\"",
+    "dev2": "concurrently \"tsx src/server.ts\" \"tsx src/workers/email.worker.ts\"",
+    "dev": "concurrently \"ts-node-dev --respawn --transpile-only src/server.ts\" \"ts-node-dev --respawn --transpile-only src/workers/email.worker.ts\"",
     "build": "tsc",
     "postinstall": "prisma generate"
   },
