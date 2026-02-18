@@ -332,6 +332,7 @@ model productCategory {
   productSubcategory productSubcategory[]
   product            product[]
   totalProductOrders totalProductOrder[]
+  queryLists         queryList[]
 
   @@map("productCategories")
 }
@@ -347,6 +348,18 @@ model productSubcategory {
   products          product[]
 
   @@map("productSubcategories")
+}
+
+model queryList {
+  id         String          @id @default(auto()) @map("_id") @db.ObjectId
+  branchId   String          @db.ObjectId
+  categoryId String          @db.ObjectId
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  category   productCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, categoryId])
+  @@map("queryLists")
 }
 
 //###############-########----- Order System -------------#######################

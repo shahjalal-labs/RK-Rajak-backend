@@ -3,6 +3,7 @@ import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import prisma from "../../../shared/prisma";
+import { skip } from "@prisma/client/runtime/library";
 
 const createProductCategory = async (
   data: productCategory,
@@ -180,7 +181,55 @@ const updateStatusByBranchId = async (branchId: string, status: boolean) => {
   return;
 };
 
-const addCategoriesToQueryList = () => {};
+const addCategoriesToQueryList = async (
+  branchId: string,
+  categoryIds: string[],
+) => {
+  // 1️⃣ Get existing categoryIds for branch
+  const existing = await prisma.queryList.findMany({
+    where: { branchId },
+    select: { categoryId: true },
+  });
+
+  const existingIds = new Set(existing.map((e) => e.categoryId));
+
+  // 2️⃣ Filter out duplicates
+  const newCategoryIds = categoryIds.filter((id) => !existingIds.has(id));
+
+  if (newCategoryIds.length === 0) return;
+
+  // 3️⃣ Insert only new ones
+  await prisma.queryList.createMany({
+    data: newCategoryIds.map((categoryId) => ({
+      branchId,
+      categoryId,
+    })),
+  });
+};
+
+const getQueryList = async (branchId: string) => {
+  return await prisma.queryList.findMany({
+    where: { branchId },
+    select: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+};
+
+const getSubcategories = async (categoryId: string) => {
+  return await prisma.productSubcategory.findMany({
+    where: { productCategoryId: categoryId },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+};
 
 export const productCategoryServices = {
   createProductCategory,
@@ -192,4 +241,7 @@ export const productCategoryServices = {
   getAllProductCategorysForBuyer,
   updateStatusByCategoryId,
   updateStatusByBranchId,
+  addCategoriesToQueryList,
+  getQueryList,
+  getSubcategories,
 };

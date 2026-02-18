@@ -54,5 +54,20 @@ router.patch(
   auth(UserRole.SuperAdmin),
   productCategoryControllers.updateStatusByBranchId,
 );
+router.post(
+  "/add-categories-to-query-list/:branchId",
+  auth(UserRole.SuperAdmin),
+  productCategoryControllers.addCategoriesToQueryList,
+);
+router.get(
+  "/get-query-list/:branchId",
+  auth(UserRole.SuperAdmin),
+  productCategoryControllers.getQueryList,
+);
+router.get(
+  "/get-subcategories/:categoryId",
+  auth(UserRole.SuperAdmin),
+  productCategoryControllers.getSubcategories,
+);
 
 export const productCategoryRoutes = router;

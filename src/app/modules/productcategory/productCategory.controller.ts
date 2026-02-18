@@ -117,6 +117,40 @@ const updateStatusByBranchId = catchAsync(async (req, res) => {
   });
 });
 
+const addCategoriesToQueryList = catchAsync(async (req, res) => {
+  const { branchId } = req.params;
+  const { categoryIds } = req.body;
+  await productCategoryServices.addCategoriesToQueryList(branchId, categoryIds);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "ProductCategories has been added to query list successfully",
+  });
+});
+
+const getQueryList = catchAsync(async (req, res) => {
+  const { branchId } = req.params;
+  const result = await productCategoryServices.getQueryList(branchId);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message:
+      "ProductCategories has been retrieved from query list successfully",
+    data: result,
+  });
+});
+
+const getSubcategories = catchAsync(async (req, res) => {
+  const { categoryId } = req.params;
+  const result = await productCategoryServices.getSubcategories(categoryId);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Subcategories has been retrieved successfully",
+    data: result,
+  });
+});
+
 export const productCategoryControllers = {
   createProductCategory,
   createSubCategory,
@@ -127,4 +161,7 @@ export const productCategoryControllers = {
   getAllProductCategorysForBuyer,
   updateStatusByCategoryId,
   updateStatusByBranchId,
+  addCategoriesToQueryList,
+  getQueryList,
+  getSubcategories,
 };
