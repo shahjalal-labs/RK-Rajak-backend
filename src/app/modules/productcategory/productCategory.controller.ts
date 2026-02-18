@@ -18,6 +18,21 @@ const createProductCategory = catchAsync(async (req, res) => {
   });
 });
 
+const createSubCategory = catchAsync(async (req, res) => {
+  const file = req.file as Express.Multer.File;
+  const result = await productCategoryServices.createSubCategory(
+    req.params.categoryId,
+    req.body,
+    file,
+  );
+  sendResponse(res, {
+    success: true,
+    statusCode: 201,
+    message: "The productSubcategory has been created successfully",
+    data: result,
+  });
+});
+
 const getAllProductCategorys = catchAsync(async (req, res) => {
   const branchId = req.params.branchId;
   if (!branchId) {
@@ -104,6 +119,7 @@ const updateStatusByBranchId = catchAsync(async (req, res) => {
 
 export const productCategoryControllers = {
   createProductCategory,
+  createSubCategory,
   getAllProductCategorys,
   getProductCategoryById,
   updateProductCategory,

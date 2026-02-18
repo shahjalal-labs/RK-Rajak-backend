@@ -1,18 +1,18 @@
 import { product } from "@prisma/client";
 
-  export interface GetAllProductsMeta {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  }
+export interface GetAllProductsMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
 
- export interface GetAllProductsResponse {
-    meta: GetAllProductsMeta;
-    result: product[];
-  }
+export interface GetAllProductsResponse {
+  meta: GetAllProductsMeta;
+  result: product[];
+}
 
-  // Product Unit Type
+// Product Unit Type
 export type Unit = "KG" | "Box" | "Punnet" | "Tray";
 
 // Product Variation Interface
@@ -34,6 +34,7 @@ export interface ICreateProduct {
   packageType?: "Bulk" | "Mini";
   branchId: string;
   categoryId: string;
+  subCategoryId: string;
   productVariations: IProductVariation[];
 }
 
@@ -43,7 +44,6 @@ export interface IProduct extends ICreateProduct {
   createdAt?: Date;
   updatedAt?: Date;
 }
-
 
 export interface ProductVariationUpdate {
   variationId: string;

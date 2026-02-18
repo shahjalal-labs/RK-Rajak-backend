@@ -17,6 +17,14 @@ router.post(
   validateRequest(ProductCategorySchemaValidation.createProductCategorySchema),
   productCategoryControllers.createProductCategory,
 );
+router.post(
+  "/sub-category/:categoryId",
+  auth(),
+  fileUploader.uploadSingle,
+  parseBodyData,
+  validateRequest(ProductCategorySchemaValidation.createSubcategorySchema),
+  productCategoryControllers.createSubCategory,
+);
 router.get(
   "/buyer",
   auth(UserRole.Customer),

@@ -31,6 +31,35 @@ const createProductCategory = async (
   });
 };
 
+const createSubCategory = async (
+  categoryId: string,
+  data: { name: string },
+  file: Express.Multer.File,
+) => {
+  const isCategoryExist = await prisma.productCategory.findUnique({
+    where: { id: categoryId },
+  });
+  if (!isCategoryExist)
+    throw new ApiError(httpStatus.BAD_REQUEST, "Category id is invalid");
+
+  if (file === undefined)
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Image file is required for subcategory",
+    );
+
+  const imageUrl = (await uploadToDigitalOceanAWS(file)).Location;
+
+  await prisma.productSubcategory.create({
+    data: {
+      productCategoryId: categoryId,
+      name: data.name,
+      image: imageUrl,
+    },
+  });
+  return;
+};
+
 const getAllProductCategorys = async (branchId: string) => {
   const isBranchExist = await prisma.branch.findUnique({
     where: { id: branchId },
@@ -43,6 +72,15 @@ const getAllProductCategorys = async (branchId: string) => {
   }
   const categories = await prisma.productCategory.findMany({
     where: { branchId },
+    include: {
+      productSubcategory: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+        },
+      },
+    },
   });
 
   return {
@@ -142,8 +180,11 @@ const updateStatusByBranchId = async (branchId: string, status: boolean) => {
   return;
 };
 
+const addCategoriesToQueryList = () => {};
+
 export const productCategoryServices = {
   createProductCategory,
+  createSubCategory,
   getAllProductCategorys,
   getProductCategoryById,
   updateProductCategory,

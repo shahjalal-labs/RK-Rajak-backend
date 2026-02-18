@@ -271,16 +271,18 @@ model horizontalBannerSlider {
 //-//-------------------------------------- Product and Order Models --------------------//
 
 model product {
-  id          String          @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  images      String[]
-  tag         String
-  status      Boolean         @default(true)
-  packageType packageType     @default(Bulk)
-  branchId    String          @db.ObjectId
-  branch      branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  categoryId  String          @db.ObjectId
-  category    productCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  id            String             @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  images        String[]
+  tag           String
+  status        Boolean            @default(true)
+  packageType   packageType        @default(Bulk)
+  branchId      String             @db.ObjectId
+  branch        branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  categoryId    String             @db.ObjectId
+  subCategoryId String             @db.ObjectId
+  category      productCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  subCategory   productSubcategory @relation(fields: [subCategoryId], references: [id], onDelete: Cascade)
 
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -321,7 +323,7 @@ enum unit {
 model productCategory {
   id                 String               @id @default(auto()) @map("_id") @db.ObjectId
   name               String               @unique
-  image              String?
+  image              String
   branchId           String               @db.ObjectId
   branch             branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
   status             Boolean              @default(true)
@@ -335,12 +337,14 @@ model productCategory {
 }
 
 model productSubcategory {
-  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  id                String          @id @default(auto()) @map("_id") @db.ObjectId
   name              String
-  productCategoryId String?          @db.ObjectId
-  productCategory   productCategory? @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  productCategoryId String          @db.ObjectId
+  image             String
+  productCategory   productCategory @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  products          product[]
 
   @@map("productSubcategories")
 }
