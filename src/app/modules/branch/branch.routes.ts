@@ -8,7 +8,7 @@ const router = express.Router();
 router.post("/", auth(UserRole.Owner), branchControllers.createBranch);
 router.get(
   "/",
-  auth(UserRole.Owner, UserRole.SuperAdmin),
+  auth(UserRole.Owner, UserRole.SuperAdmin, UserRole.Admin),
   branchControllers.getAllBranchs,
 );
 router.get("/:id", auth(UserRole.Owner), branchControllers.getBranchById);
