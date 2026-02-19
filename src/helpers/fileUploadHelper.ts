@@ -43,6 +43,8 @@ const uploadMultiple = upload.fields([
   { name: "horizontalBanner", maxCount: 4 }, // Changed to 4 for horizontal banners
 ]);
 
+const uploadBulkProducts = upload.any();
+
 export const fileUploader = {
   upload,
   videoUrl,
@@ -51,4 +53,5 @@ export const fileUploader = {
   coverPhoto,
   uploadSingle,
   experienceFile,
+  uploadBulkProducts,
 };

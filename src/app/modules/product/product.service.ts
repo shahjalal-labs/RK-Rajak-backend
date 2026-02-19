@@ -55,6 +55,88 @@ const createProduct = async (
   })) as product;
 };
 
+const createProductsBulk = async (
+  products: ICreateProduct[],
+  productImages: Express.Multer.File[][],
+) => {
+  if (!products.length) {
+    throw new ApiError(400, "No products provided");
+  }
+
+  // 1️⃣ Collect unique category & branch IDs
+  const categoryIds = [...new Set(products.map((p) => p.categoryId))];
+  const branchIds = [...new Set(products.map((p) => p.branchId))];
+
+  // 2️⃣ Validate categories & branches in parallel
+  const [categories, branches] = await Promise.all([
+    prisma.productCategory.findMany({
+      where: { id: { in: categoryIds } },
+      select: { id: true },
+    }),
+    prisma.branch.findMany({
+      where: { id: { in: branchIds } },
+      select: { id: true },
+    }),
+  ]);
+
+  if (categories.length !== categoryIds.length) {
+    throw new ApiError(404, "One or more product categories not found");
+  }
+
+  if (branches.length !== branchIds.length) {
+    throw new ApiError(404, "One or more branches not found");
+  }
+
+  // 3️⃣ Upload all images grouped per product
+  let uploadedImages: string[][] = [];
+
+  try {
+    uploadedImages = await Promise.all(
+      productImages.map(async (files) =>
+        Promise.all(
+          files.map(async (file) => {
+            const uploaded = await uploadToDigitalOceanAWS(file);
+            return uploaded.Location;
+          }),
+        ),
+      ),
+    );
+  } catch (error: any) {
+    throw new ApiError(500, "Failed to upload images: " + error.message);
+  }
+
+  // 4️⃣ Create products & variations inside transaction
+  await prisma.$transaction(async (tx) => {
+    const createdProducts = [];
+
+    for (let i = 0; i < products.length; i++) {
+      const { productVariations, ...productData } = products[i];
+
+      const createdProduct = await tx.product.create({
+        data: {
+          ...productData,
+          images: uploadedImages[i] || [],
+        },
+      });
+
+      if (productVariations?.length) {
+        await tx.productVariation.createMany({
+          data: productVariations.map((variation) => ({
+            ...variation,
+            productId: createdProduct.id,
+          })),
+        });
+      }
+
+      createdProducts.push(createdProduct.id);
+    }
+
+    return createdProducts;
+  });
+
+  return;
+};
+
 interface GetAllProductsParams {
   page?: number;
   limit?: number;
@@ -438,6 +520,7 @@ const deleteProduct = async (id: string) => {
 
 export const productServices = {
   createProduct,
+  createProductsBulk,
   getAllProducts,
   getProductById,
   updateProduct,

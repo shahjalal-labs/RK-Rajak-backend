@@ -1,6 +1,7 @@
 import { productServices } from "./product.service";
 import sendResponse from "../../../shared/sendResponse";
 import catchAsync from "../../../shared/catchAsync";
+import ApiError from "../../../errors/ApiErrors";
 
 const createProduct = catchAsync(async (req, res) => {
   const productImages =
@@ -17,6 +18,69 @@ const createProduct = catchAsync(async (req, res) => {
     success: true,
     statusCode: 201,
     message: "The product has been created successfully",
+    data: result,
+  });
+});
+
+const createProductsBulk = catchAsync(async (req, res) => {
+  const products = req.body;
+
+  if (!Array.isArray(products) || products.length === 0) {
+    throw new ApiError(400, "Products must be a non-empty array");
+  }
+
+  if (!Array.isArray(products) || !products.length) {
+    throw new ApiError(400, "Products must be a non-empty array");
+  }
+
+  /**
+   * 2️⃣ Group Images Dynamically
+   */
+  const files = req.files as Express.Multer.File[];
+
+  const groupedImages: Express.Multer.File[][] = Array.from(
+    { length: products.length },
+    () => [],
+  );
+
+  files?.forEach((file) => {
+    const match = file.fieldname.match(/^productImages_(\d+)$/);
+
+    if (match) {
+      const index = Number(match[1]);
+
+      if (index >= products.length) {
+        throw new ApiError(400, `Image index ${index} exceeds products length`);
+      }
+
+      groupedImages[index].push(file);
+    }
+  });
+
+  /**
+   * Optional validation
+   */
+  groupedImages.forEach((images, index) => {
+    if (!images.length) {
+      throw new ApiError(
+        400,
+        `Product at index ${index} must have at least one image`,
+      );
+    }
+  });
+
+  /**
+   * 3️⃣ Call Service
+   */
+  const result = await productServices.createProductsBulk(
+    products,
+    groupedImages,
+  );
+
+  sendResponse(res, {
+    success: true,
+    statusCode: 201,
+    message: "Products have been created successfully",
     data: result,
   });
 });
@@ -101,6 +165,7 @@ const deleteProduct = catchAsync(async (req, res) => {
 
 export const productControllers = {
   createProduct,
+  createProductsBulk,
   getAllProducts,
   getProductById,
   updateProduct,

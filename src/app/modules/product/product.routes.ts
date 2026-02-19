@@ -7,6 +7,7 @@ import { ProductSchemaValidation } from "./product.validation";
 import auth from "../../middlewares/auth";
 
 const router = express.Router();
+
 router.post(
   "/",
   auth(),
@@ -14,6 +15,13 @@ router.post(
   parseBodyData,
   validateRequest(ProductSchemaValidation.createProductSchema),
   productControllers.createProduct,
+);
+router.post(
+  "/bulk",
+  auth(),
+  fileUploader.uploadBulkProducts,
+  parseBodyData,
+  productControllers.createProductsBulk,
 );
 router.get("/highestSellingProducts", auth(), productControllers.bestSelling);
 router.get("/for-buyer", auth(), productControllers.getAllProductsForBuyer);

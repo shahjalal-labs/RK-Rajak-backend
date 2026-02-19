@@ -3,7 +3,6 @@ import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { uploadToDigitalOceanAWS } from "../../../helpers/uploadToAWSS3";
 import prisma from "../../../shared/prisma";
-import { skip } from "@prisma/client/runtime/library";
 
 const createProductCategory = async (
   data: productCategory,
