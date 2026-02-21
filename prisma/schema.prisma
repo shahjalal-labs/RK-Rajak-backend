@@ -276,6 +276,7 @@ model product {
   images        String[]
   tag           String
   status        Boolean            @default(true)
+  description   String?
   packageType   packageType        @default(Bulk)
   branchId      String             @db.ObjectId
   branch        branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)

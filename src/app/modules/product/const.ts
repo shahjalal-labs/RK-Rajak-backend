@@ -31,6 +31,7 @@ export interface IProductVariation {
 export interface ICreateProduct {
   name: string;
   tag: string;
+  description: string;
   packageType?: "Bulk" | "Mini";
   branchId: string;
   categoryId: string;
