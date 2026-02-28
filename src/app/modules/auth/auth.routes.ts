@@ -8,19 +8,23 @@ import { authValidation } from "./auth.validation";
 
 const router = express.Router();
 
-router.post("/buyer-login", validateRequest(authValidation.authLoginSchema), authController.buyerLogin);
+router.post(
+  "/buyer-login",
+  validateRequest(authValidation.authLoginSchema),
+  authController.buyerLogin,
+);
 router.post("/auth-login", authController.authLogin);
 router.get("/profile", auth(), authController.getProfile);
-router.put(
+router.patch(
   "/set-profile",
   auth(),
   fileUploader.profileImage,
   parseBodyData,
-  authController.updateProfile
+  authController.updateProfile,
 );
 router.patch(
   "/update/user-location",
   auth(),
-  authController.updateUserLocation
+  authController.updateUserLocation,
 );
 export const authRoute = router;
