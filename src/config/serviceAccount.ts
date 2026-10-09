@@ -1,0 +1,14 @@
+// Dummy service account template for development/staging
+export const serviceAccount = {
+  type: "service_account",
+  project_id: "your-project-id",
+  private_key_id: "0000000000000000000000000000000000000000",
+  private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n-----END PRIVATE KEY-----\n",
+  client_email: "firebase-adminsdk@your-project-id.iam.gserviceaccount.com",
+  client_id: "000000000000000000000",
+  auth_uri: "https://accounts.google.com/o/oauth2/auth",
+  token_uri: "https://oauth2.googleapis.com/token",
+  auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+  client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk",
+  universe_domain: "googleapis.com"
+};
