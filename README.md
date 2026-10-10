@@ -1,4 +1,4 @@
-# 🍏 RK Rajak ABS — Fresh Produce & Agro-Distribution Engine
+# ⚡ RK Rajak ABS — Hyperlocal Quick-Commerce & Driver Fleet Delivery Dispatch Engine
 
 ![Architecture Banner](./assets/banner.svg)
 
@@ -17,7 +17,8 @@
   <img src="https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
   <img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma" />
   <img src="https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB" />
-  <img src="https://img.shields.io/badge/Agro_Logistics-10B981?style=for-the-badge&logo=leaf&logoColor=white" alt="Agro_Logistics" />
+  <img src="https://img.shields.io/badge/Quick_Commerce-10B981?style=for-the-badge&logo=shoppingcart&logoColor=white" alt="Quick_Commerce" />
+  <img src="https://img.shields.io/badge/Fleet_Dispatch-3B82F6?style=for-the-badge&logo=truck&logoColor=white" alt="Fleet_Dispatch" />
   
 </p>
 
@@ -25,17 +26,17 @@
 
 ## 📌 Executive Overview
 
-RK Rajak ABS Fruits coordinates agricultural supply chain logistics, wholesale crate ordering, perishable batch lifecycle tracking, and cold-storage inventory telemetry.
+**RK Rajak ABS Backend** is an enterprise quick-commerce and delivery fleet orchestration platform. Engineered with **Node.js, TypeScript, Express, and Prisma ORM**, the system coordinates rapid hyperlocal grocery fulfillment across multi-branch distribution hubs: **catalog variations & handling fees**, **automated driver order assignment**, **driver tiered incentive milestones**, agent commission tracking, digital customer wallet with recharge and interactive spin rewards, and financial cash-clearance settlement logs.
 
 ---
 
-## 🚀 Key Architectural Highlights
+## 🚀 Key Architectural & Domain Capabilities
 
-- **Batch & Expiry Telemetry**: Perishable inventory management with automated expiry alerts.
-- **Wholesale Order Processing**: Dynamic tiered pricing based on bulk quantity thresholds.
-- **Dispatch Routing**: Multi-depot distribution planning and vehicle load allocation.
-- **Accounting Sync**: Real-time balance ledger tracking for wholesale buyers.
-- **Resilient Architecture**: Zero-downtime MongoDB schema indexing via Prisma.
+- **Multi-Branch Fulfillment Routing**: Dynamic inventory dispatch mapped to regional branch hubs with handling fee calculations.
+- **Driver Fleet Assignment & Dues Clearing**: Automated delivery driver dispatching, transit telemetry, and cash-on-delivery settlement logs (`ClearDuesLog`).
+- **Tiered Driver Incentive Engine**: Automated milestone progress tracking (`DriverIncentiveProgress`) rewarding drivers based on completed order quotas.
+- **Customer Digital Wallet & Spin Rewards**: Integrated prepaid wallet, balance recharges, transaction audit ledgers, and gamified spin rewards.
+- **Marketing Banners & Visual Merchandising**: Dynamic vertical and horizontal promotional banners with slider scheduling.
 
 ---
 
@@ -44,16 +45,19 @@ RK Rajak ABS Fruits coordinates agricultural supply chain logistics, wholesale c
 The complete REST API specification is published in our public Postman showcase workspace:
 
 * 🌐 **Instant Live API Documentation**: [Explore RK-Rajak-backend in Postman (Instant Web View)](https://www.postman.com/shahjalal-backend-9458759/shahjalal-api-portfolio/collection/48491387-bde72b2b-5fa9-40b2-b8f0-473e8b29817e)
-* 📁 **Local Postman File**: [`docs/postman_collection.json`](./docs/postman_collection.json) (import directly into Postman Desktop or Newman CLI).
+* 📁 **Local Postman File**: [`docs/postman_collection.json`](./docs/postman_collection.json) (ready for Postman Desktop or Newman CLI).
 
 ### Core Endpoint Modules
 
 | Module | Base Route | Key Capabilities |
 |---|---|---|
-| **Authentication** | `/api/v1/auth` | Wholesale buyer and depot manager authentication |
-| **Products** | `/api/v1/product` | Fresh produce catalog, grade classifications, lot numbers |
-| **Orders** | `/api/v1/order` | Wholesale purchase orders, delivery time windows, fulfillment |
-| **Depots** | `/api/v1/depot` | Warehouse stock levels, cold storage logs, batch dispatches |
+| **Authentication & Access** | `/api/v1/auth` | Customer, branch manager, agent, and driver authentication with RBAC |
+| **Product Catalog** | `/api/v1/product` | Product variations, categories, subcategories, inventory levels |
+| **Daily Orders** | `/api/v1/order` | Order placement, variation pricing, branch routing, fulfillment state machine |
+| **Driver Fleet Dispatch** | `/api/v1/driverAssignment` | Order allocation to drivers, delivery confirmation, COD clearance |
+| **Driver & Agent Incentives** | `/api/v1/incentive` | Milestone targets, completed order quotas, incentive payout progress |
+| **Wallet & Recharges** | `/api/v1/wallet` | Prepaid balance, recharge transactions, payment gateway sync |
+| **Gamified Spin** | `/api/v1/spin` | Spin-the-wheel rewards, promotional discount credits, winning rates |
 
 ---
 
@@ -62,18 +66,18 @@ The complete REST API specification is published in our public Postman showcase 
 ```plaintext
 RK-Rajak-backend/
 ├── assets/
-│   └── banner.svg               # Project architecture visual banner
+│   └── banner.svg               # Architectural visual banner
 ├── docs/
 │   └── postman_collection.json  # Full Postman API collection v2.1
 ├── src/
 │   ├── app/
 │   │   ├── middlewares/         # Global error handlers, auth & validation guards
-│   │   ├── modules/             # Domain-driven feature modules
-│   │   └── routes/              # Centralized route aggregator
+│   │   ├── modules/             # Domain feature modules
+│   │   └── routes/              # Centralized route registration
 │   ├── config/                  # Environment & external service configurations
-│   └── server.ts                # Application bootstrapper & HTTP server
+│   └── server.ts                # Application bootstrapper
 ├── prisma/
-│   └── schema.prisma            # Database schema definition
+│   └── schema.prisma            # Prisma database schema definition
 ├── .env.example                 # Sanitized environment template
 ├── package.json
 └── tsconfig.json
@@ -94,13 +98,12 @@ cd RK-Rajak-backend
 npm install
 ```
 
-### 2. Environment Configuration
-Copy the provided `.env.example` file to create your local `.env`:
+### 2. Configure Environment Variables
 ```bash
 cp .env.example .env
 ```
 
-### 3. Initialize Prisma Client
+### 3. Generate Prisma Client
 ```bash
 npx prisma generate
 ```
@@ -114,7 +117,7 @@ npm run dev
 
 ## 👨‍💻 Engineering & Authorship
 
-Developed and maintained by **Md. Shahjalal**.
+Developed and engineered by **Md. Shahjalal**.
 
 * **GitHub**: [@shahjalal-labs](https://github.com/shahjalal-labs)
 * **Email**: [muhommodshahjalal@gmail.com](mailto:muhommodshahjalal@gmail.com)
